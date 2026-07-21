@@ -19,6 +19,7 @@ from handlers import farm as farm_h
 from handlers import profile as profile_h
 from handlers import shop as shop_h
 from keyboards import keyboards as kb
+from models import User
 from services import combat, dogs as dog_svc, economy, farming, shop_svc, users
 from utils import esc, fa_dur, fa_num, find_by_name, money, normalize_fa
 
@@ -165,7 +166,7 @@ async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await respond(update, text, kb.home_kb())
 
 
-# ───────── حمله با ریپلای (گروه و PV) ─────────
+# ───────── حمله با ریپلای (گروه و PV) — با تاییدیه ─────────
 
 async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reply = update.message.reply_to_message
@@ -189,21 +190,68 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
 
+        left = combat.cooldown_left(user)
+        if left:
+            await s.commit()
+            return await respond(update, f"⏳ هنوز {fa_dur(left)} از کولدونت مونده")
+        if user.energy < config.ATTACK_ENERGY_COST:
+            await s.commit()
+            return await respond(update, "⚡ انرژیت کمه رفیق")
+
         target = await users.get_by_tg(s, tg_target.id)
         if not target:
             await s.commit()
             return await respond(update, "🤷 این هنوز وارد محله نشده — اول باید به بات /start بزنه")
+
+        name = esc(users.display_name(target))
+        text = (
+            f"<b>⚔️ حمله به {name}</b>\n\n"
+            f"⭐ لول {fa_num(target.level)}\n"
+            f"💵 وضعیت جیبش: {combat.cash_bucket(target.cash)}\n"
+            f"هزینه حمله ⚡ {fa_num(config.ATTACK_ENERGY_COST)} انرژی\n\n"
+            "مطمئنی داداش؟"
+        )
+        target_id = target.id
+        await s.commit()
+
+    await respond(update, text, kb.tx_attack_kb(target_id, update.effective_user.id))
+
+
+async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """اجرای حمله بعد از تایید — فقط خود مهاجم می‌تونه بزنه"""
+    _, target_id, owner_tg = parts(update)
+
+    if update.effective_user.id != int(owner_tg):
+        await update.callback_query.answer("این دعوا مال تو نیس داداش 😅", show_alert=True)
+        return
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        users.apply_energy_regen(user)
+
+        target = await s.get(User, int(target_id))
+        if not target:
+            await s.commit()
+            return await respond(update, "🤷 طرفت تیک انداخت رفت")
 
         result = await combat.execute_attack(s, user, target)
         target_name = esc(users.display_name(target))
         await s.commit()
 
     if not result["ok"]:
-        if result["reason"] == "cooldown":
-            msg = f"⏳ هنوز {fa_dur(result['left'])} از کولدونت مونده"
-        elif result["reason"] == "energy":
-            msg = "⚡ انرژیت کمه رفیق"
-        else:
-            msg = "❌ نشد"
+        msg = (
+            f"⏳ هنوز {fa_dur(result['left'])} از کولدونت مونده"
+            if result["reason"] == "cooldown" else "⚡ انرژیت کمه رفیق"
+        )
         return await respond(update, msg)
     await respond(update, format_attack_result(result, target_name), kb.attack_result_kb())
+
+
+async def tx_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """لغو فاکتور/تایید متنی — فقط صاحبش"""
+    _, owner_tg = parts(update)
+
+    if update.effective_user.id != int(owner_tg):
+        await update.callback_query.answer("مال تو نیس داداش 😅", show_alert=True)
+        return
+    await respond(update, "<b>😅 بی‌خیال شدیم</b>")

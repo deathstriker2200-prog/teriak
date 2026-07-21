@@ -12,6 +12,7 @@ from types import SimpleNamespace
 random.seed(7)
 
 os.environ["TERIAKY_DB"] = "sqlite+aiosqlite:////tmp/teriaky_test.db"
+os.environ["TERIAKY_ADMIN_IDS"] = "1001, 1003"
 if os.path.exists("/tmp/teriaky_test.db"):
     os.remove("/tmp/teriaky_test.db")
 
@@ -293,6 +294,10 @@ async def main() -> None:
         styled = sum(1 for k in kbs for r in k.inline_keyboard for b in r if b.style)
         check("دکمه‌های رنگی فعالن", styled >= 20, f"{styled}")
 
+    # ═══ ادمین ═══
+    check("پارس ادمین‌ها", 1001 in config.ADMIN_IDS and 1003 in config.ADMIN_IDS and 1002 not in config.ADMIN_IDS,
+          str(sorted(config.ADMIN_IDS)))
+
     # ═══ فرمت نتیجه حمله ═══
     from handlers.common import format_attack_result
     txt = format_attack_result(
@@ -300,7 +305,53 @@ async def main() -> None:
          "bonus": 0.06, "halved": True, "xp": 30, "penalty": 0, "notes": []},
         "سارا",
     )
-    check("فرمت نتیجه حمله", "۵٬۰۰۰ تی‌پوینت" in txt and "بونس سگ +۶٪" in txt and "زره افسانه‌ای" in txt)
+    check("متن برد جدید",
+          "آخ آخ سارا شکار شد" in txt and "تو هم ۵٬۰۰۰ تی‌پوینت جایزه گرفتی" in txt
+          and "بونس سگ +۶٪" in txt and "زره افسانه‌ای" in txt and "۳۰ تجربه گرفتی" in txt)
+
+    txt_lose = format_attack_result(
+        {"ok": True, "win": False, "a_roll": 5, "d_roll": 5, "amount": 0,
+         "bonus": 0, "halved": False, "xp": 8, "penalty": 15, "notes": []},
+        "𝑅𝒶𝓅𝒾𝓉",
+    )
+    check("متن باخت جدید",
+          "ایبابا 𝑅𝒶𝓅𝒾𝓉 حسابت رو رسوند" in txt_lose and "۱۵ انرژی جریمه شدی" in txt_lose
+          and "۸ تجربت به چوخ رفت" in txt_lose)
+
+    # ═══ دکمه‌های قفل قرمز + افزودن به گروه ═══
+    from keyboards import keyboards as kb2
+    async with session_scope() as s:
+        low = User(telegram_id=9001, username="low", first_name="تازه‌کار", level=1)
+        s.add(low)
+        await s.flush()
+        weap_kb = kb2.shop_weap_kb(low, set())
+        locked_styles = [b.style for row in weap_kb.inline_keyboard for b in row if b.callback_data == "noop:lock"]
+        check("آیتم‌های قفل شاپ قرمزن", len(locked_styles) >= 3 and all(st == "danger" for st in locked_styles))
+
+        dog_kb = kb2.shop_dog_kb(low, set(), 0)
+        dog_locked = [b.style for row in dog_kb.inline_keyboard for b in row if b.callback_data == "noop:lock"]
+        check("قفل سگ‌ها هم قرمزه", len(dog_locked) >= 3 and all(st == "danger" for st in dog_locked))
+
+        # سگ‌های من از شاپ حذف شده
+        all_shop_datas = [b.callback_data for k in (kb2.shop_sections_kb(), kb2.shop_food_kb(), dog_kb)
+                          for row in k.inline_keyboard for b in row]
+        check("سگ‌های من تو شاپ نیس", "menu:dogs" not in all_shop_datas)
+
+        kb2.BOT_USERNAME = "teriaky_bot"
+        mm = kb2.main_menu_kb()
+        urls = [b.url for row in mm.inline_keyboard for b in row if b.url]
+        check("دکمه افزودن به گروه", any("startgroup=true" in u for u in urls), str(urls))
+
+        txk = kb2.tx_confirm_kb("weap", "knife", 424242)
+        datas = [b.callback_data for row in txk.inline_keyboard for b in row]
+        check("کیبورد تایید متنی owner داره", datas == ["txcf:weap:knife:424242", "txcl:424242"], str(datas))
+
+        tak = kb2.tx_attack_kb(77, 424242)
+        datas = [b.callback_data for row in tak.inline_keyboard for b in row]
+        check("کیبورد تایید حمله", datas == ["txatt:77:424242", "txcl:424242"], str(datas))
+
+    # ═══ کولدون کنده‌کاری ۳۰ ثانیه ═══
+    check("کنده‌کاری ۳۰ ثانیه‌ایه", config.MINE_COOLDOWN_SECONDS == 30)
 
     # ═══ ایمپورت و رجیستر هندلرها ═══
     import handlers  # noqa

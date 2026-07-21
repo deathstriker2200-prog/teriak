@@ -41,23 +41,24 @@ def format_attack_result(result: dict, target_name: str) -> str:
     mods_line = ("\n" + " | ".join(mods)) if mods else ""
 
     if result["win"]:
-        steal_line = (
-            f"{target_name} لو رفت و {money(result['amount'])} لقمت شد"
-            if result["amount"] else f"جیب {target_name} خالی بود بدبخت 🕳"
+        prize_line = (
+            f"تو هم {money(result['amount'])} جایزه گرفتی"
+            if result["amount"] else "ولی جیبش خالی بود بدبخت 🕳"
         )
         text = (
             "<b>✅ زدی تو خال</b>\n\n"
-            f"{steal_line}\n"
+            f"آخ آخ {target_name} شکار شد\n"
+            f"{prize_line}\n"
             f"{roll_line}{mods_line}\n"
             f"✨ {fa_num(result.get('xp', 0))} تجربه گرفتی"
         )
     else:
         text = (
             "<b>❌ له شدی داداش</b>\n\n"
-            f"{target_name} حسابت رو رسوند\n"
+            f"ایبابا {target_name} حسابت رو رسوند\n"
             f"{roll_line}{mods_line}\n"
-            f"⚡ {fa_num(result.get('penalty', 0))} انرژی سوختی\n"
-            f"✨ {fa_num(result.get('xp', 0))} تجربه تسلیت"
+            f"⚡ {fa_num(result.get('penalty', 0))} انرژی جریمه شدی\n"
+            f"✨ {fa_num(result.get('xp', 0))} تجربت به چوخ رفت"
         )
 
     notes = result.get("notes") or []

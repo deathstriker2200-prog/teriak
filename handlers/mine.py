@@ -16,13 +16,13 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
 
-        cooldown = timedelta(hours=config.MINE_COOLDOWN_HOURS)
+        cooldown = timedelta(seconds=config.MINE_COOLDOWN_SECONDS)
         now = now_utc()
 
         if user.last_mine_at and now - user.last_mine_at < cooldown:
             left = cooldown - (now - user.last_mine_at)
             text = (
-                "<b>⏳ داداش امروز شیفتت تمومه</b>\n\n"
+                "<b>⏳ هول نکن داداش</b>\n\n"
                 f"{fa_dur(left.total_seconds())} دیگه بیا"
             )
         else:
@@ -33,9 +33,9 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             text = (
                 "<b>⛏ کنده‌کاری</b>\n\n"
-                f"یه روز خستونده بود ولی {money(amount)} گیرت اومد\n"
+                f"{money(amount)} گیرت اومد\n"
                 "ارزش تشویقتو داشت\n\n"
-                "💡 تو مزرعه پول بزرگ‌تره — فردا هم سر ساعت بیا"
+                f"💡 تو مزرعه پول بزرگ‌تره — {fa_dur(config.MINE_COOLDOWN_SECONDS)} دیگه دوباره بیا"
             )
             if notes:
                 text += "\n\n" + "\n".join(notes)

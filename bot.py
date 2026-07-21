@@ -19,8 +19,21 @@ logger = logging.getLogger("teriaky")
 
 
 async def on_start(app: Application) -> None:
+    from keyboards import keyboards
+
     await init_db()
-    logger.info("دیتابیس آماده شد ✅")
+
+    me = await app.bot.get_me()
+    keyboards.BOT_USERNAME = me.username or ""
+
+    logger.info("دیتابیس آماده شد ✅ | DB: %s", _safe_db())
+    logger.info("یوزرنیم ربات: @%s | دکمه افزودن به گروه فعاله", keyboards.BOT_USERNAME)
+
+
+def _safe_db() -> str:
+    """مسیر دی‌بی برای لاگ — بدون لو دادن پسورد"""
+    url = config.DATABASE_URL
+    return url if "@" not in url else url.split("@", 1)[1]
 
 
 def main() -> None:

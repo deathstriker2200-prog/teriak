@@ -7,7 +7,27 @@
 import os
 
 BOT_TOKEN = os.getenv("TERIAKY_TOKEN", "")
-DATABASE_URL = os.getenv("TERIAKY_DB", "sqlite+aiosqlite:///teriaky.db")
+
+
+def _default_db() -> str:
+    """
+    اولویت با TERIAKY_DB — اگه ست نشده باشه و ولوم ریلوی (/data) سوار باشه
+    خودش اتوماتیک از ولوم استفاده می‌کنه تا دیتابیس با ری‌دیپلوی نپره
+    """
+    env = os.getenv("TERIAKY_DB")
+    if env:
+        return env
+    if os.path.isdir("/data"):
+        return "sqlite+aiosqlite:////data/teriaky.db"
+    return "sqlite+aiosqlite:///teriaky.db"
+
+
+DATABASE_URL = _default_db()
+
+# لیست ادمین‌ها — تلگرام آیدی‌ها با کاما: TERIAKY_ADMIN_IDS="111,222"
+ADMIN_IDS = {
+    int(x) for x in os.getenv("TERIAKY_ADMIN_IDS", "").replace(" ", "").split(",") if x
+}
 
 # ───────── شروع بازی ─────────
 START_CASH = 500                # تی‌پوینت شروع
@@ -47,8 +67,8 @@ SEEDS = {
     "peyote":    {"name": "پیوته",       "price": 5200, "grow_min": 25, "sell": 20000, "xp": 70, "min_level": 10, "desc": "کاکتوس جادویی صحرا"},
 }
 
-# ───────── کنده‌کاری (درآمد روزانه) ─────────
-MINE_COOLDOWN_HOURS = 24
+# ───────── کنده‌کاری ─────────
+MINE_COOLDOWN_SECONDS = 30      # هر ۳۰ ثانیه یه بار
 MINE_MIN = 10
 MINE_MAX = 150
 MINE_COMMON_MAX = 100

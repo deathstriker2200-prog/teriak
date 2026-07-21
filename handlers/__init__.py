@@ -2,7 +2,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-from handlers import attack, dogs, farm, mine, profile, rank, shop, start, textcmd
+from handlers import admin, attack, dogs, farm, mine, profile, rank, shop, start, textcmd
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -21,6 +21,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("rank", rank.rank_cb))
     app.add_handler(CommandHandler("dogs", dogs.dogs_cb))
     app.add_handler(CommandHandler("mine", mine.mine_cmd))
+    app.add_handler(CommandHandler("admin", admin.admin_cmd))
 
     # ── دستورهای متنی فارسی (PV و گروه) ──
     # ترتیب اضافه شدن مهمه: الگوهای اختصاصی اول
@@ -69,6 +70,11 @@ def register_handlers(app: Application) -> None:
 
     # ── تایید دستورهای متنی (فقط خود کاربر) ──
     app.add_handler(CallbackQueryHandler(textcmd.tx_confirm_cb, pattern=r"^txcf:\w+:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(textcmd.tx_attack_cb, pattern=r"^txatt:\d+:\d+$"))
+    app.add_handler(CallbackQueryHandler(textcmd.tx_cancel_cb, pattern=r"^txcl:\d+$"))
+
+    # ── ادمین ──
+    app.add_handler(CallbackQueryHandler(admin.admin_cb, pattern=r"^adm:\w+:\d+$"))
 
     # ── عمومی ──
     app.add_handler(CallbackQueryHandler(start.cancel_cb, pattern=r"^cl$"))
