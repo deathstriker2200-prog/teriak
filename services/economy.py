@@ -1,0 +1,51 @@
+"""منطق اقتصادی: قیمت زمین | آپگرید | محصول | کنده‌کاری"""
+
+import random
+
+import config
+
+
+# ───────── زمین ─────────
+
+def plot_price(plots_count: int) -> int:
+    """قیمت زمین بعدی — افزایشی برای هر زمین جدید"""
+    return int(config.PLOT_BASE_PRICE * (config.PLOT_PRICE_GROWTH ** plots_count))
+
+
+def upgrade_price(plot_level: int) -> int:
+    """هزینه آپگرید از لول فعلی به لول بعد — تصاعدی"""
+    return int(config.UPGRADE_BASE_PRICE * (config.UPGRADE_PRICE_GROWTH ** (plot_level - 1)))
+
+
+# ───────── محصول ─────────
+
+def xp_need(level: int) -> int:
+    """xp لازم برای رفتن از این لول به لول بعد"""
+    return config.XP_BASE * level
+
+
+def crop_yield(crop_key: str, plot_level: int = 1) -> int:
+    """درآمد برداشت با ضریب لول زمین"""
+    base = config.CROPS[crop_key]["sell"]
+    mult = config.PLOT_YIELD_MULT.get(plot_level, config.PLOT_YIELD_MULT[1])
+    return int(base * mult)
+
+
+def crop_grow_seconds(crop_key: str, plot_level: int = 1) -> int:
+    """مدت آماده شدن با ضریب سرعت لول زمین"""
+    minutes = config.CROPS[crop_key]["grow_min"]
+    mult = config.PLOT_SPEED_MULT.get(plot_level, config.PLOT_SPEED_MULT[1])
+    return max(30, int(minutes * 60 * mult))
+
+
+def is_crop_unlocked(crop_key: str, user_level: int) -> bool:
+    return user_level >= config.CROPS[crop_key]["min_level"]
+
+
+# ───────── کنده‌کاری ─────────
+
+def mine_roll() -> int:
+    """قرعه روزانه — بازه پایین با وزن بیشتر (۱۰ تا ۱۰۰ پرتکرارتر از ۱۰۰ تا ۱۵۰)"""
+    if random.random() < config.MINE_COMMON_WEIGHT:
+        return random.randint(config.MINE_MIN, config.MINE_COMMON_MAX)
+    return random.randint(config.MINE_COMMON_MAX + 1, config.MINE_MAX)
