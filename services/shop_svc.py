@@ -27,7 +27,11 @@ async def purchase(
     خروجی: (موفق, پیام کوتاه)
     """
     if kind == "dog":
-        return await dog_svc.buy_dog(session, user, key, custom_name=dog_name)
+        if dog_name:
+            # اسمشو تو همون دستور داده — خرید مستقیم
+            return await dog_svc.buy_dog(session, user, key, custom_name=dog_name)
+        # بعد از پرداخت اسمشو ازش می‌پرسیم
+        return await dog_svc.hold_dog(session, user, key)
 
     catalog = CATALOGS.get(kind)
     if not catalog:

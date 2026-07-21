@@ -35,6 +35,10 @@ class User(Base):
     feeds_used_today: Mapped[int] = mapped_column(Integer, default=0)
     feed_day: Mapped[str | None] = mapped_column(String(10), nullable=True)  # YYYY-MM-DD
 
+    # اکشن معلق بعدی متن کاربر — «dogname» (اسم سگ بعد خرید) | «teamname» (اسم تیم)
+    pending_action: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    pending_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     plots: Mapped[list["Plot"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -54,6 +58,9 @@ class Plot(Base):
 
     level: Mapped[int] = mapped_column(Integer, default=1)
 
+    # زمان تموم شدن ساخت زمین — NULL یعنی ساخته شده و قابل استفاده‌ست
+    built_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     status: Mapped[str] = mapped_column(String(16), default="empty")  # empty / growing / ready
     crop: Mapped[str | None] = mapped_column(String(32), nullable=True)
     planted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -65,6 +72,10 @@ class Plot(Base):
 
     def current_status(self) -> tuple[str, int]:
         """(وضعیت, ثانیه‌ی مونده) — اگر تایمر گذشته باشه خودکار ready حساب میشه"""
+        if self.built_at:
+            left = int((self.built_at - now_utc()).total_seconds())
+            if left > 0:
+                return "building", left
         if self.status == "growing" and self.ready_at:
             left = int((self.ready_at - now_utc()).total_seconds())
             if left <= 0:
@@ -121,3 +132,54 @@ class Dog(Base):
     @property
     def cfg(self) -> dict:
         return config.DOGS.get(self.dog_key, {})
+
+
+class Team(Base):
+    """تیم — اسم یکتا + خزانه مشترک + آمار کوئست"""
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(48))
+    name_norm: Mapped[str] = mapped_column(String(48), unique=True, index=True)  # یکدست‌شده برای مقایسه
+    bio: Mapped[str] = mapped_column(String(160), default="")
+    bank: Mapped[int] = mapped_column(Integer, default=0)
+    owner_id: Mapped[int] = mapped_column(Integer)  # users.id رهبر
+
+    total_kills: Mapped[int] = mapped_column(Integer, default=0)
+    total_harvests: Mapped[int] = mapped_column(Integer, default=0)
+
+    last_team_mine_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    members: Mapped[list["TeamMember"]] = relationship(back_populates="team", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<Team {self.name} bank={self.bank}>"
+
+
+class TeamMember(Base):
+    """عضویت — هر کاربر فقط تو یه تیم می‌تونه باشه"""
+    __tablename__ = "team_members"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_team_user"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(8), default="member")  # owner / member
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    team: Mapped[Team] = relationship(back_populates="members")
+    user: Mapped[User] = relationship()
+
+
+class TeamDaily(Base):
+    """پیشرفت کوئست‌های روزانه تیم — هر روز UTC یه ردیف تازه"""
+    __tablename__ = "team_daily"
+
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD
+
+    kills: Mapped[int] = mapped_column(Integer, default=0)
+    harvests: Mapped[int] = mapped_column(Integer, default=0)
+    kills_done: Mapped[int] = mapped_column(Integer, default=0)     # 1 = جایزه واریز شده
+    harvests_done: Mapped[int] = mapped_column(Integer, default=0)

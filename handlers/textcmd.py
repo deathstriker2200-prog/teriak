@@ -65,12 +65,14 @@ async def buy_dog_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return await respond(update, f"🤷 سگی با این اسم پیدا نشد\n\nموجودی:\n{names}")
 
     shown = custom_name or dog["name"]
+    name_hint = "" if custom_name else "\nبعد از پرداخت، اسمشو ازت می‌پرسم\n"
     text = (
         f"<b>🐕 خرید {esc(shown)}</b>\n\n"
         f"🐾 نژاد {esc(dog['breed'])}\n"
         f"💪 قدرت حمله {fa_num(dog['attack'])}\n"
         f"🎖 {esc(dog['ability'])}\n"
-        f"💸 قیمت {money(dog['price'])}\n\n"
+        f"💸 قیمت {money(dog['price'])}\n"
+        f"{name_hint}\n"
         "می‌خریش؟"
     )
     await respond(update, text, kb.tx_confirm_kb("dog", key, update.effective_user.id, custom_name))
@@ -142,11 +144,16 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         plots = await farming.get_user_plots(s, user.id)
         empty = next((p for p in plots if p.current_status()[0] == "empty"), None)
+        building = next((p for p in plots if p.current_status()[0] == "building"), None)
 
         if not plots:
             msg = "🌱 زمینی نداری رفیق — اول از مزرعه زمین بخر"
         elif empty is None:
-            msg = "🌱 همه زمین‌هات پره صبر کن یدونه آماده بشه"
+            if building is not None:
+                _, left = building.current_status()
+                msg = f"🔨 زمین جدیدت داره ساخته میشه — {fa_dur(left)} دیگه می‌تونی بکاری"
+            else:
+                msg = "🌱 همه زمین‌هات پره صبر کن یدونه آماده بشه"
         else:
             _, msg = await farming.plant(s, user, empty, key)
         await s.commit()

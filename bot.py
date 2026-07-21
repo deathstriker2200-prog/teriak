@@ -21,6 +21,7 @@ logger = logging.getLogger("teriaky")
 async def on_start(app: Application) -> None:
     from keyboards import keyboards
 
+    config.ensure_sqlite_dir()   # اگه ولوم ریلوی تازه سوار شده پوشه رو بساز
     await init_db()
 
     me = await app.bot.get_me()

@@ -10,7 +10,7 @@ from database import session_scope
 from handlers.common import strip_home
 from keyboards import keyboards as kb
 from models import User
-from services import combat, dogs as dog_svc, economy, farming, users
+from services import combat, dogs as dog_svc, economy, farming, teams as team_svc, users
 from utils import esc, fa_num, money
 
 # ───────── فرمت پروفایل ─────────
@@ -42,6 +42,9 @@ async def _profile_caption(session, user) -> str:
     joined = user.created_at.strftime("%Y/%m/%d") if user.created_at else "—"
     dog_names = " | ".join(d.name for d in user_dogs) if user_dogs else "—"
 
+    team = await team_svc.get_team_of(session, user.id)
+    team_line = f"🏴 تیم «{esc(team.name)}»\n" if team else ""
+
     return (
         f"╭━━━━━━━━━━━━━━╮\n"
         f"👤 {name}\n"
@@ -49,7 +52,8 @@ async def _profile_caption(session, user) -> str:
         f"🆔 {uname} | 🗓 عضو {joined}\n\n"
         f"🌟 لول {fa_num(user.level)} — XP {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}\n"
         f"⚡ انرژی {_bar(user.energy)} {fa_num(user.energy)}/{fa_num(config.MAX_ENERGY)}\n"
-        f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n\n"
+        f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n"
+        f"{team_line}\n"
         f"━━━━━━ 💰 دارایی ━━━━━━\n"
         f"🪙 {money(user.cash)}\n\n"
         f"━━━━━━ 🏗 اموال ━━━━━━\n"

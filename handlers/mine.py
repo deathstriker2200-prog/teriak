@@ -34,8 +34,9 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             text = (
                 "<b>⛏ کنده‌کاری</b>\n\n"
                 f"{money(amount)} گیرت اومد\n"
-                "ارزش تشویقتو داشت\n\n"
-                f"💡 تو مزرعه پول بزرگ‌تره — {fa_dur(config.MINE_COOLDOWN_SECONDS)} دیگه دوباره بیا"
+                f"الان {money(user.cash)} داری\n"
+                "ارزشش رو داشت\n\n"
+                "💡 پول حاصل از کار خلاف بیشتره عزیز، میتونی از پی‌وی مواد بکاری پولش خوبه🤫"
             )
             if notes:
                 text += "\n\n" + "\n".join(notes)

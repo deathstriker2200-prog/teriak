@@ -26,7 +26,9 @@ async def render_farm(update: Update, extra: str | None = None, alert: str | Non
             state, left = p.current_status()
             seed_name = config.SEEDS.get(p.crop or "", {}).get("name", "؟")
             head = f"زمین {fa_num(i)} (لول {fa_num(p.level)})"
-            if state == "empty":
+            if state == "building":
+                lines.append(f"🔨 {head} | داره ساخته میشه — {fa_dur(left)} مونده")
+            elif state == "empty":
                 lines.append(f"▫️ {head} خالیه")
             elif state == "growing":
                 lines.append(f"🌱 {head} | {esc(seed_name)} | {fa_dur(left)} مونده")
@@ -70,15 +72,17 @@ async def buy_plot_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await s.commit()
 
     if count >= config.MAX_PLOTS:
-        return await render_farm(update, alert="🏡 به سقف زمین رسیدی رفیق")
+        return await render_farm(update, alert="🏡 به سقف 5 زمین رسیدی رفیق")
     if level < req_level:
-        return await render_farm(update, alert=f"🔒 زمین بعدی لول {fa_num(req_level)} می‌خواد")
+        return await render_farm(update, alert=f"🔒 زمین شماره {fa_num(count + 1)} لول {fa_num(req_level)} می‌خواد")
 
+    build = economy.plot_build_seconds(count)
     text = (
-        "<b>🛒 خرید زمین جدید</b>\n\n"
+        f"<b>🛒 خرید زمین شماره {fa_num(count + 1)}</b>\n\n"
         f"قیمتش {money(price)}\n"
-        f"الان {money(cash)} داری\n\n"
-        "می‌خری داداش؟"
+        f"الان {money(cash)} داری\n"
+        + (f"🔨 بعد خرید {fa_dur(build)} طول می‌کشه ساخته بشه\n" if build else "")
+        + "\nمی‌خری داداش؟"
     )
     await respond(update, text, kb.confirm_kb("cf:farm:buy"))
 

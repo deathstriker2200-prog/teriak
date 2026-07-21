@@ -17,6 +17,9 @@ shop:buy:<kind>:<key>       → cf:shop:buy:<kind>:<key>
 txcf:<kind>:<key>:<tg_id>   → تایید خرید دستور متنی (فقط خودش)
 dogs:feed:<dog_id>          → انتخاب غذا → dogs:feed:<dog_id>:<food> → cf:feed:<dog_id>:<food>
 att:find                    → cf:att:<target_id>
+menu:team | team:quests | team:mine | team:top | team:leave | team:disband
+tmcf:<leave|disband>:<tg_id> → تایید ترک/انحلال تیم (فقط خودش)
+dog:card:<dog_id>           → کارت آمار سگ (آمار [اسم])
 noop:<context>              → دکمه‌های اطلاعاتی
 """
 
@@ -53,7 +56,8 @@ def main_menu_kb() -> InlineKeyboardMarkup:
         [_btn("🛒 فروشگاه", "menu:shop", PRIMARY),
          _btn("⚔️ حمله", "menu:attack", PRIMARY)],
         [_btn("🐕 سگ‌های من", "menu:dogs", PRIMARY),
-         _btn("📊 رتبه‌بندی", "menu:rank", PRIMARY)],
+         _btn("🏴 تیم من", "menu:team", PRIMARY)],
+        [_btn("📊 رتبه‌بندی", "menu:rank", PRIMARY)],
     ]
     if BOT_USERNAME:
         rows.append([InlineKeyboardButton(
@@ -127,17 +131,20 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
         rows.append([_btn(f"🗺 زمین {fa_num(i)} | لول {fa_num(plot.level)}", f"noop:plot:{plot.id}")])
 
         actions: list[InlineKeyboardButton] = []
-        if state == "empty":
+        if state == "building":
+            actions.append(_btn(f"🔨 ساخت: {fa_dur(left)}", "noop:build"))
+        elif state == "empty":
             actions.append(_btn("🌱 کاشت", f"farm:plant:{plot.id}"))
         elif state == "growing":
             actions.append(_btn(f"⏳ {fa_dur(left)}", "noop:grow"))
         else:
             actions.append(_btn("✅ آماده", "noop:ready"))
 
-        if plot.level < config.PLOT_MAX_LEVEL:
-            actions.append(_btn(f"⬆️ آپگرید | {money_tp(economy.upgrade_price(plot.level))}", f"farm:up:{plot.id}", PRIMARY))
-        else:
-            actions.append(_btn("⭐ مکس لول", "noop:maxplot"))
+        if state != "building":
+            if plot.level < config.PLOT_MAX_LEVEL:
+                actions.append(_btn(f"⬆️ آپگرید | {money_tp(economy.upgrade_price(plot.level))}", f"farm:up:{plot.id}", PRIMARY))
+            else:
+                actions.append(_btn("⭐ مکس لول", "noop:maxplot"))
         rows.append(actions)
 
     if ready_count:
@@ -145,12 +152,19 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
 
     if len(plots) < config.MAX_PLOTS:
         req = economy.plot_required_level(len(plots))
+        build = economy.plot_build_seconds(len(plots))
+        n_next = len(plots) + 1
         if user.level >= req:
-            rows.append([_btn(f"🛒 خرید زمین جدید | {money_tp(next_price)}", "farm:buy", PRIMARY)])
+            label = f"🛒 زمین {fa_num(n_next)} | {money_tp(next_price)}"
+            label += f" | 🔨 {fa_dur(build)}" if build else ""
+            rows.append([_btn(label, "farm:buy", PRIMARY)])
         else:
-            rows.append([_btn(f"🔒 زمین بعدی لول {fa_num(req)} می‌خواد", "noop:lock", DANGER)])
+            rows.append([_btn(
+                f"🔒 زمین {fa_num(n_next)} | {money_tp(next_price)} | لول {fa_num(req)}",
+                "noop:lock", DANGER,
+            )])
     else:
-        rows.append([_btn("🏡 همه زمین‌ها رو داری", "noop:maxplots")])
+        rows.append([_btn("🏡 هر 5 زمین رو داری", "noop:maxplots")])
 
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
@@ -269,11 +283,27 @@ def my_dogs_kb(dogs: list[Dog]) -> InlineKeyboardMarkup:
     rows = []
     for d in dogs:
         crown = "👑 " if d.cfg.get("rare") else ""
-        rows.append([_btn(f"{crown}🐕 {d.name} | لول {fa_num(d.level)}", "noop:doginfo")])
+        rows.append([_btn(f"{crown}🐕 {d.name} | لول {fa_num(d.level)}", f"dog:card:{d.id}")])
         need = dog_xp_need(d.level)
         rows.append([_btn(f"🍖 غذا بده ({fa_num(d.xp)}/{fa_num(need)} XP)", f"dogs:feed:{d.id}", SUCCESS)])
     if len(dogs) < config.MAX_DOGS:
         rows.append([_btn("🛒 خرید سگ جدید", "shop:sec:dog", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
+    """کیبورد کارت آمار یه سگ — از همونجا میشه غذاش داد («آمار اصغر»)"""
+    rows: list[list[InlineKeyboardButton]] = []
+    if dog.level < config.DOG_MAX_LEVEL and feeds_left > 0:
+        for key, f in config.DOG_FOODS.items():
+            rows.append([_btn(
+                f"🍖 {f['name']} | +{fa_num(f['xp'])} XP | {money_tp(f['price'])}",
+                f"cf:feed:{dog.id}:{key}", SUCCESS,
+            )])
+    elif feeds_left <= 0:
+        rows.append([_btn("🍖 سهمیه غذای امروزت تمومه", "noop:feedinfo", DANGER)])
+    rows.append([_btn("🔙 سگ‌های من", "menu:dogs", PRIMARY)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -320,3 +350,36 @@ def rank_kb() -> InlineKeyboardMarkup:
         [_btn("🔃 رفرش", "menu:rank", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
+
+
+# ───────── تیم ─────────
+
+def team_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
+    """کیبورد صفحه «تیم من»"""
+    rows: list[list[InlineKeyboardButton]] = [
+        [_btn("📜 کوئست‌های امروز", "team:quests", PRIMARY),
+         _btn("⛏ کنده‌کاری تیمی", "team:mine", PRIMARY)],
+    ]
+    if is_owner:
+        rows.append([_btn("💥 انحلال تیم", "team:disband", DANGER)])
+    else:
+        rows.append([_btn("🚪 ترک تیم", "team:leave", PRIMARY)])
+    rows.append([_btn("🔃 رفرش", "menu:team", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def team_no_kb() -> InlineKeyboardMarkup:
+    """کیبورد وقتی تیم نداری"""
+    return InlineKeyboardMarkup([
+        [_btn("🏆 برترین تیم‌ها", "team:top", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def team_confirm_kb(action: str, tg_id: int) -> InlineKeyboardMarkup:
+    """تایید اکشن تیمی (ترک/انحلال) — فقط صاحب دستور می‌تونه بزنه"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"tmcf:{action}:{tg_id}", SUCCESS),
+        _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
+    ]])

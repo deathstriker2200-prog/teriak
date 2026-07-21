@@ -31,6 +31,11 @@ _NEW_COLUMNS = {
         ("last_harvest_at", "DATETIME"),
         ("feeds_used_today", "INTEGER NOT NULL DEFAULT 0"),
         ("feed_day", "VARCHAR(10)"),
+        ("pending_action", "VARCHAR(16)"),
+        ("pending_value", "VARCHAR(64)"),
+    ],
+    "plots": [
+        ("built_at", "DATETIME"),
     ],
 }
 
@@ -45,6 +50,18 @@ def _ensure_columns(sync_conn) -> None:
         for name, coltype in cols:
             if name not in existing:
                 sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
+
+
+async def reload_engine(url: str | None = None) -> None:
+    """
+    موتور رو از نو می‌سازه — بعد از ری‌استور بک‌آپ استفاده میشه
+    تا connectionهای قبلی روی فایل جدید سوار بشن
+    """
+    global engine, SessionLocal
+    await engine.dispose()
+    engine = create_async_engine(url or config.DATABASE_URL, echo=False, future=True)
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    await init_db()
 
 
 @asynccontextmanager

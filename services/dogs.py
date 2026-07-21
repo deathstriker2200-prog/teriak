@@ -36,15 +36,11 @@ async def get_user_dogs(session: AsyncSession, user_id: int) -> list[Dog]:
     return list((await session.execute(q)).scalars())
 
 
-async def buy_dog(
-    session: AsyncSession, user: User, dog_key: str, custom_name: str | None = None
-) -> tuple[bool, str]:
-    """منطق خرید سگ — اسم دلخواه اگه داده شده باشه همون اسم ثبت میشه"""
+def _check_buyable(user: User, dogs: list[Dog], dog_key: str) -> tuple[bool, str]:
+    """چک‌های مشترک خرید سگ (قبل از پرداخت)"""
     cfg = config.DOGS.get(dog_key)
     if not cfg:
         return False, "❌ همچین سگی نیس"
-
-    dogs = await get_user_dogs(session, user.id)
     if any(d.dog_key == dog_key for d in dogs):
         return False, f"تو نژاد {cfg['breed']} رو داری که رفیق"
     if len(dogs) >= config.MAX_DOGS:
@@ -53,8 +49,23 @@ async def buy_dog(
         return False, f"🔒 لول {fa_num(cfg['min_level'])} می‌خواد"
     if user.cash < cfg["price"]:
         return False, "❌ تی‌پوینتت کافی نیس رفیق"
+    return True, ""
 
+
+async def buy_dog(
+    session: AsyncSession, user: User, dog_key: str, custom_name: str | None = None
+) -> tuple[bool, str]:
+    """خرید مستقیم سگ با اسم مشخص — وقتی اسمشو تو همون دستور داده"""
+    dogs = await get_user_dogs(session, user.id)
+    ok, alert = _check_buyable(user, dogs, dog_key)
+    if not ok:
+        return False, alert
+
+    cfg = config.DOGS[dog_key]
     name = (custom_name or cfg["name"])[:32]
+    if any(normalize_fa(d.name) == normalize_fa(name) for d in dogs):
+        return False, f"❌ یه سگ دیگه اسمش «{name}» ـه — یه اسم دیگه بردار"
+
     user.cash -= cfg["price"]
     session.add(Dog(
         user_id=user.id,
@@ -63,6 +74,73 @@ async def buy_dog(
         breed=cfg["breed"],
     ))
     return True, f"🐕 {name} شد رفیق جدیدت"
+
+
+# ───────── فلو دو مرحله‌ای: پرداخت → پرسیدن اسم ─────────
+
+async def hold_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[bool, str]:
+    """پرداخت می‌کنه و منتظر اسم می‌مونه — اسم با پیام بعدی کاربر ثبت میشه"""
+    if user.pending_action:
+        return False, "⏳ اول کار قبلیتو تموم کن یا «لغو» بزن"
+
+    dogs = await get_user_dogs(session, user.id)
+    ok, alert = _check_buyable(user, dogs, dog_key)
+    if not ok:
+        return False, alert
+
+    cfg = config.DOGS[dog_key]
+    user.cash -= cfg["price"]
+    user.pending_action = "dogname"
+    user.pending_value = dog_key
+    return True, f"🐕 {cfg['breed']} رو خریدی — حالا اسمشو بفرست"
+
+
+async def finalize_dog(session: AsyncSession, user: User, name: str) -> tuple[bool, str]:
+    """ثبت اسم سگ بعد از پرداخت — سگ با همون اسم ساخته میشه و باهاش صداش می‌زنی"""
+    if user.pending_action != "dogname" or not user.pending_value:
+        return False, "🤷 خرید سگی در جریان نیس"
+
+    dog_key = user.pending_value
+    cfg = config.DOGS.get(dog_key)
+    if not cfg:  # محتمل نیس ولی امنیت خوبه
+        user.pending_action = None
+        user.pending_value = None
+        return False, "❌ مشکلی پیش اومد — پولت برگشت"
+
+    clean = normalize_fa(name)
+    if not clean or len(clean) < 2:
+        return False, "❌ اسم خیلی کوتاهه — یه اسم درست بفرست"
+    display = " ".join(str(name).split())  # نیم‌فاصله‌های کاربر حفظ میشه
+    if len(display) > 24:
+        return False, "❌ اسم حداکثر 24 حرف می‌تونه باشه"
+    if ":" in clean or "<" in clean or ">" in clean:
+        return False, "❌ تو اسم کاراکتر عجیب نذار"
+
+    dogs = await get_user_dogs(session, user.id)
+    if any(normalize_fa(d.name) == clean for d in dogs):
+        return False, f"❌ یه سگ دیگه اسمش «{display}» ـه — یه اسم دیگه بفرست"
+
+    user.pending_action = None
+    user.pending_value = None
+    session.add(Dog(user_id=user.id, dog_key=dog_key, name=display, breed=cfg["breed"]))
+    return True, display
+
+
+async def cancel_pending(session: AsyncSession, user: User) -> str:
+    """لغو کار معلق — پول سگ برمی‌گرده"""
+    action = user.pending_action
+    if action == "dogname" and user.pending_value in config.DOGS:
+        user.cash += config.DOGS[user.pending_value]["price"]
+    elif action == "teamname":
+        pass  # ساخت تیم هنوز پولی کم نکرده
+    else:
+        return "🤷 کاری در جریان نیس که"
+
+    user.pending_action = None
+    user.pending_value = None
+    if action == "dogname":
+        return "😅 خرید سگ لغو شد و پولت برگشت"
+    return "😅 بی‌خیال شدیم"
 
 
 def feeds_left(user: User) -> int:
@@ -108,6 +186,18 @@ async def feed_dog(session: AsyncSession, user: User, dog: Dog, food_key: str) -
 
     msg = f"🍖 {dog.name} {food['name']} رو پس داد و {fa_num(food['xp'])} ایکس‌پی گرفت"
     return True, msg, notes
+
+
+def find_my_dog(dogs: list[Dog], query: str) -> Dog | None:
+    """پیدا کردن سگ کاربر با اسم — برای «آمار اصغر»"""
+    q = normalize_fa(query)
+    if not q:
+        return None
+    for d in dogs:
+        if normalize_fa(d.name) == q:
+            return d
+    partial = [d for d in dogs if q in normalize_fa(d.name)]
+    return partial[0] if len(partial) == 1 else None
 
 
 def find_dog(query: str):

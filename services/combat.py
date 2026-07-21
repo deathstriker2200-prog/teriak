@@ -183,6 +183,12 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
         user.wins += 1
         target.losses += 1
         result["notes"] = user_svc.add_xp(user, config.ATTACK_WIN_XP)
+
+        # قلاب کوئست تیم — هر برد تو دعوا حساب میشه
+        from services import teams as team_svc
+        quest_msg = await team_svc.record_kill(session, user)
+        if quest_msg:
+            result["notes"].append(quest_msg)
         result.update(amount=amount, bonus=bonus, halved=halved)
     else:
         user.losses += 1

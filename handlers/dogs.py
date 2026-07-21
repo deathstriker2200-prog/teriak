@@ -1,4 +1,6 @@
-"""سگ‌های من: نمایش اطلاعات سگ | غذا دادن | لول‌آپ"""
+"""سگ‌های من: نمایش اطلاعات سگ | غذا دادن | لول‌آپ | کارت آمار («آمار اصغر»)"""
+
+import re
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -53,6 +55,79 @@ async def dogs_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await render_my_dogs(update)
 
 
+# ───────── کارت آمار یه سگ — «آمار اصغر» ─────────
+
+def _xp_bar(xp: int, need: int) -> str:
+    filled = round(min(xp, need) / max(need, 1) * 10)
+    return "🟩" * filled + "⬛" * (10 - filled)
+
+
+def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
+    crown = "👑 " if dog.cfg.get("rare") else ""
+    need = dog_svc.dog_xp_need(dog.level)
+    atk = dog_svc.dog_attack(dog)
+    maxed = dog.level >= config.DOG_MAX_LEVEL
+
+    xp_line = "⭐ مکس لوله" if maxed else f"✨ {_xp_bar(dog.xp, need)} {fa_num(dog.xp)}/{fa_num(need)}"
+    left = dog_svc.feeds_left(user)
+
+    text = (
+        f"<b>{crown}🐕 آمار {esc(dog.name)}</b>\n\n"
+        f"🐾 نژاد {esc(dog.breed)}\n"
+        f"⭐ لول {fa_num(dog.level)}\n"
+        f"{xp_line}\n"
+        f"💪 قدرت حمله {fa_num(atk)}\n"
+        f"🎖 {esc(dog.cfg.get('ability', '—'))}\n\n"
+        f"🍖 امروز {fa_num(left)} غذا مونده — از دکمه‌های پایین غذاش بده"
+    )
+    if extra:
+        text += f"\n\n{extra}"
+    return text
+
+
+async def render_dog_card(update: Update, dog: Dog | None, alert: str | None = None, extra: str | None = None) -> None:
+    if dog is None:
+        return await render_my_dogs(update, alert=alert or "❌ همچین سگی نداری")
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        left = dog_svc.feeds_left(user)
+        text = _dog_card_text(user, dog, extra)
+        markup = kb.dog_card_kb(dog, left)
+        await s.commit()
+    await respond(update, text, markup, alert=alert)
+
+
+async def dog_card_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dog_id = int(parts(update)[2])
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        dog = await s.get(Dog, dog_id)
+        if not dog or dog.user_id != user.id:
+            await s.commit()
+            return await render_my_dogs(update, alert="❌ همچین سگی نداری")
+        await s.commit()
+    await render_dog_card(update, dog)
+
+
+async def dog_stats_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«آمار [اسم سگ]» — کارت سگ با دکمه‌های غذا"""
+    m = re.match(r"^آمار[\s‌]+(.+)$", (update.message.text or "").strip())
+    query = m.group(1) if m else ""
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        dogs = await dog_svc.get_user_dogs(s, user.id)
+        await s.commit()
+
+    dog = dog_svc.find_my_dog(dogs, query)
+    if not dog:
+        if not dogs:
+            return await respond(update, "🐕 اصلا سگی نداری که — از شاپ یدونه بخر")
+        names = " | ".join(d.name for d in dogs)
+        return await respond(update, f"🤷 سگی با این اسم پیدا نشد\n\nسگ‌هات: {esc(names)}")
+    await render_dog_card(update, dog)
+
+
 async def feed_picker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     dog_id = int(parts(update)[2])
     async with session_scope() as s:
@@ -91,7 +166,7 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         user, _ = await users.get_or_create(s, update.effective_user)
         dog = await s.get(Dog, int(dog_id))
 
-        if not dog:
+        if not dog or dog.user_id != user.id:
             await s.commit()
             return await render_my_dogs(update, alert="❌ همچین سگی نداری")
 
@@ -101,9 +176,10 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await s.commit()
 
     if not ok:
-        return await render_my_dogs(update, alert=msg)
+        return await render_dog_card(update, dog, alert=msg)
 
+    # غذا از همون کارت سگ داده میشه — برمی‌گردیم همونجا
     extra = f"{msg}\n💵 نقدینگی {money_tp(cash)} | 🍖 {fa_num(left)} غذا مونده"
     if notes:
         extra += "\n" + "\n".join(notes)
-    await render_my_dogs(update, alert="🍖 نوش جون", extra=extra)
+    await render_dog_card(update, dog, alert="🍖 نوش جون", extra=extra)

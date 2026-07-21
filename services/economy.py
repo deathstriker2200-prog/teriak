@@ -14,14 +14,25 @@ def xp_need(level: int) -> int:
 
 # ───────── زمین ─────────
 
+def plot_info(plot_number: int) -> dict:
+    """مشخصات زمین شماره n (۱ تا MAX) — قیمت/زمان ساخت/لول لازم"""
+    n = min(max(plot_number, 1), config.MAX_PLOTS)
+    return config.PLOT_CATALOG[n]
+
+
 def plot_price(plots_count: int) -> int:
-    """قیمت زمین بعدی — افزایشی برای هر زمین جدید"""
-    return int(config.PLOT_BASE_PRICE * (config.PLOT_PRICE_GROWTH ** plots_count))
+    """قیمت زمین بعدی بر اساس تعداد زمین‌های فعلی — هرکی خیلی گرون‌تر"""
+    return plot_info(plots_count + 1)["price"]
 
 
 def plot_required_level(plots_count: int) -> int:
-    """گیت لول برای خرید زمین بعدی — زمین شماره n لول n می‌خواد"""
-    return plots_count + 1
+    """گیت لول برای خرید زمین بعدی"""
+    return plot_info(plots_count + 1)["min_level"]
+
+
+def plot_build_seconds(plots_count: int) -> int:
+    """زمان ساخت زمین بعدی به ثانیه"""
+    return plot_info(plots_count + 1)["build_sec"]
 
 
 def upgrade_price(plot_level: int) -> int:
