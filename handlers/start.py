@@ -1,11 +1,12 @@
-"""شروع | ثبت‌نام خودکار | منو | لغو"""
+"""شروع | ثبت‌نام خودکار | منو | لغو | هلپ"""
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import respond
+from handlers.common import respond, strip_home
 from keyboards import keyboards as kb
 from services import users
 from utils import esc, money
@@ -18,13 +19,33 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         name = esc(users.display_name(user))
         await s.commit()
 
+    # ── /start تو گروه — پیام مخصوص ──
+    if update.effective_chat.type != ChatType.PRIVATE:
+        bot_username = kb.BOT_USERNAME or (await context.bot.get_me()).username
+        text = (
+            "🔥 سلام رفقا تریاکی اومد وسط این گروه 💊🔫\n\n"
+            f"از الان هرکی بهم /start بزنه با {money(config.START_CASH)} وارد محله میشه\n\n"
+            "⚔️ برای حمله ریپلای بزن و بنویس «حمله»\n"
+            "⛏ برای درآمد بنویس «کنده کاری»\n"
+            "🛒 برای خرید بنویس «خرید چاقو» یا «خرید سگ دوبرمن اصغر»\n\n"
+            "بقیه کارای مدیریتی تو پیوی منه — برو اونجا /start بزن 🛒\n\n"
+            "⚠️ من هنوز تو این گروه ادمین نیستم و بدون ادمین بودن نمی‌تونم پیام‌های متنی رو ببینم\n"
+            "لطفا از تنظیمات گروه من رو ادمین کن تا همه چی درست کار کنه 🙏"
+        )
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+            "💊 برو پیوی ربات", url=f"https://t.me/{bot_username}", style="primary",
+        )]])
+        await update.message.reply_html(text, reply_markup=markup)
+        return
+
+    # ── /start تو پیوی ──
     if created:
         text = (
             f"<b>🔥 سلام {name} به تریاکی خوش اومدی</b>\n\n"
             "اینجا یه محله‌ست و تو می‌خوای پادشاهش بشی\n"
             f"با {money(config.START_CASH)} سرمایه شروعت می‌کنی\n\n"
             "🌱 زمین بخری، بذر بخری و...همم چیزای خلاف بکاری\n"
-            "📦 هر ۲ دقیقه می‌تونی برداشت کنی\n"
+            "📦 هر 2 دقیقه می‌تونی برداشت کنی\n"
             "🐕 سگ بگیر که باهات بجنگه\n"
             "🛒 سلاح و زره بگیر که قوی بشی\n"
             "⚔️ تو گروه ریپلای بزن رو هرکی که میخوای و بنویس «حمله» و جیبش رو خالی کن\n\n"
@@ -61,6 +82,43 @@ async def cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         update,
         "<b>😅 بی‌خیال شدیم</b>\n\nهر وقت نظرت عوض شد اینجام",
         kb.main_menu_kb(),
+    )
+
+
+# ───────── هلپ ─────────
+
+_HELP_TEXT = (
+    "<b>📖 راهنمای تریاکی</b>\n\n"
+    "<b>🌱 مزرعه و درآمد</b>\n"
+    "اول زمین بخر بعد بذر بخر و بکار\n"
+    "بذر از شاپ یا با «خرید تریاک» میاد\n"
+    "کاشت با «کاشت تریاک» یا دکمه 🌱 تو مزرعه\n"
+    "هر 2 دقیقه می‌تونی «برداشت محصول» کنی\n"
+    "لولت بالاتر بره زمین بیشتر و بذر بهتر باز میشه\n\n"
+    "<b>⚔️ حمله و دزدی</b>\n"
+    "تو گروه رو پیام طرف ریپلای کن و بنویس «حمله»\n"
+    "بعد ✅ تایید می‌زنی و نتیجه مشخص میشه\n"
+    "شانس بردت = حمله تو (پایه + سلاح + سگ‌ها) به دفاع طرف\n"
+    "تو پیوی هم از منوی ⚔️ هدف رندوم پیدا کن\n"
+    "هر 1 دقیقه یه حمله | بردی بین 10 تا 25٪ جیبشو می‌زنی\n"
+    "زره افسانه‌ای طرف دزدی رو نصف می‌کنه 🛡\n"
+    "گرگ سیاه دزدیتو تا 15٪ زیاد می‌کنه 🐺\n\n"
+    "<b>🐕 سگ‌ها</b>\n"
+    "از بخش سگ‌های شاپ بخر یا بنویس «خرید سگ دوبرمن اصغر»\n"
+    "اسمشم می‌تونی خودت بذاری: «خرید سگ دوبرمن رکس»\n"
+    "روزی 5 بار از «سگ‌های من» غذاش بده تا لول‌آپ کنه\n\n"
+    "<b>🛒 فروشگاه و بقیه</b>\n"
+    "شاپ 4+1 بخشه: سلاح | زره | بذر | سگ | غذا\n"
+    "دکمه قرمز 🔒 یعنی لولت کمه هنوز\n"
+    "«کنده کاری» هر 30 ثانیه 10 تا 150 تی‌پوینت\n"
+    "«پروفایل» عکس و مشخصات کاملت رو نشون میده"
+)
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_html(
+        _HELP_TEXT,
+        reply_markup=strip_home(update, kb.home_kb()),
     )
 
 

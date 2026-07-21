@@ -1,25 +1,47 @@
 """ابزار مشترک هندلرها"""
 
-from telegram import Update
-from telegram.constants import ParseMode
+from telegram import InlineKeyboardMarkup, Update
+from telegram.constants import ChatType, ParseMode
 from telegram.error import BadRequest
 
 from utils import fa_num, money
 
 
+def strip_home(update: Update, markup):
+    """دکمه «🏠 منوی اصلی» رو تو گروه‌ها برمی‌داره"""
+    if markup is None or update.effective_chat is None:
+        return markup
+    if update.effective_chat.type == ChatType.PRIVATE:
+        return markup
+    rows = [[b for b in row if b.callback_data != "menu:home"] for row in markup.inline_keyboard]
+    rows = [r for r in rows if r]
+    if not rows:
+        return None
+    return InlineKeyboardMarkup(rows)
+
+
 async def respond(update: Update, text: str, markup=None, alert: str | None = None) -> None:
     """
     اگر پیام از کیبورد اومده همون رو ادیت می‌کنه وگرنه ریپلای میده
-    alert هم اگر پر باشه به صورت پاپ‌آپ نشون داده میشه
+    اگر پیام عکسی باشه (مثل پروفایل) پاکش می‌کنه و دوباره می‌فرسته
+    دکمه منوی اصلی هم تو گروه حذف میشه
     """
+    markup = strip_home(update, markup)
     query = update.callback_query
     if query:
         await query.answer(alert, show_alert=bool(alert))
-        try:
-            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
-        except BadRequest as e:
-            if "not modified" not in str(e).lower():
-                raise
+        if getattr(query.message, "photo", None):
+            try:
+                await query.message.delete()
+            except BadRequest:
+                pass
+            await query.message.reply_html(text, reply_markup=markup)
+        else:
+            try:
+                await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+            except BadRequest as e:
+                if "not modified" not in str(e).lower():
+                    raise
     else:
         await update.effective_message.reply_html(text, reply_markup=markup)
 

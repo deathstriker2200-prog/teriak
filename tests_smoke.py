@@ -21,6 +21,7 @@ from database import init_db, session_scope  # noqa: E402
 from models import Dog, Plot, User  # noqa: E402
 from services import combat, dogs as dog_svc, economy, farming, shop_svc, users  # noqa: E402
 from sqlalchemy import select  # noqa: E402
+from handlers.common import strip_home  # noqa: E402
 from utils import fa_dur, fa_num, find_by_name, money, money_tp, normalize_fa, now_utc  # noqa: E402
 
 PASS = 0
@@ -130,7 +131,7 @@ async def main() -> None:
         await farming.plant(s, u1, plot, "teriak")
         plot.ready_at = now_utc() - timedelta(seconds=1)
         ok, msg, _ = await farming.harvest_all(s, u1)
-        check("کولدون ۲ دقیقه برداشت جلوگیری می‌کنه", not ok and "۲ دقیقه" in msg, msg)
+        check("کولدون ۲ دقیقه برداشت جلوگیری می‌کنه", not ok and "2 دقیقه" in msg, msg)
 
         u1.last_harvest_at = now_utc() - timedelta(seconds=config.HARVEST_COOLDOWN_SECONDS + 5)
         ok, alert, extra = await farming.harvest_all(s, u1)
@@ -306,8 +307,8 @@ async def main() -> None:
         "سارا",
     )
     check("متن برد جدید",
-          "آخ آخ سارا شکار شد" in txt and "تو هم ۵٬۰۰۰ تی‌پوینت جایزه گرفتی" in txt
-          and "بونس سگ +۶٪" in txt and "زره افسانه‌ای" in txt and "۳۰ تجربه گرفتی" in txt)
+          "آخ آخ سارا شکار شد" in txt and "تو هم 5,000 تی‌پوینت جایزه گرفتی" in txt
+          and "بونس سگ +6٪" in txt and "زره افسانه‌ای" in txt and "30 تجربه گرفتی" in txt)
 
     txt_lose = format_attack_result(
         {"ok": True, "win": False, "a_roll": 5, "d_roll": 5, "amount": 0,
@@ -315,8 +316,8 @@ async def main() -> None:
         "𝑅𝒶𝓅𝒾𝓉",
     )
     check("متن باخت جدید",
-          "ایبابا 𝑅𝒶𝓅𝒾𝓉 حسابت رو رسوند" in txt_lose and "۱۵ انرژی جریمه شدی" in txt_lose
-          and "۸ تجربت به چوخ رفت" in txt_lose)
+          "ایبابا 𝑅𝒶𝓅𝒾𝓉 حسابت رو رسوند" in txt_lose and "15 انرژی جریمه شدی" in txt_lose
+          and "8 تجربت به چوخ رفت" in txt_lose)
 
     # ═══ دکمه‌های قفل قرمز + افزودن به گروه ═══
     from keyboards import keyboards as kb2
@@ -353,6 +354,86 @@ async def main() -> None:
     # ═══ کولدون کنده‌کاری ۳۰ ثانیه ═══
     check("کنده‌کاری ۳۰ ثانیه‌ایه", config.MINE_COOLDOWN_SECONDS == 30)
 
+    # ═══ اسم دلخواه سگ ═══
+    k, d, custom = dog_svc.parse_dog_query("دوبرمن اصغر")
+    check("پارس اسم پیش‌فرض سگ", k == "doberman" and custom is None)
+    k, d, custom = dog_svc.parse_dog_query("دوبرمن رکس")
+    check("پارس نژاد + اسم دلخواه", k == "doberman" and custom == "رکس", str(custom))
+    k, d, custom = dog_svc.parse_dog_query("ژرمن شپرد هاجر")
+    check("پارس نژاد دوکلمه‌ای + اسم", k == "shepherd" and custom == "هاجر", str(custom))
+    k, d, custom = dog_svc.parse_dog_query("کانگال")
+    check("پارس فقط نژاد", k == "kangal" and custom is None)
+
+    tx_name_kb = kb2.tx_confirm_kb("dog", "doberman", 424242, "رکس")
+    datas = [b.callback_data for row in tx_name_kb.inline_keyboard for b in row]
+    check("اسم سگ تو callback میره", datas[0] == "txcf:dog:doberman:424242:رکس", str(datas))
+    check("طول callback اوکیه", all(len(d.encode()) <= 64 for d in datas))
+
+    # ═══ strip_home تو گروه ═══
+    class _Chat(SimpleNamespace):
+        pass
+    from telegram import InlineKeyboardMarkup
+    fake_upd = SimpleNamespace(effective_chat=_Chat(type="group"))
+    markup = InlineKeyboardMarkup([
+        [kb2._btn("الف", "x"), kb2._btn("ب", "y")],
+        [kb2._btn("🏠 منوی اصلی", "menu:home")],
+    ])
+    stripped = strip_home(fake_upd, markup)
+    check("منوی اصلی تو گروه برمی‌ره", stripped is not None and all(
+        b.callback_data != "menu:home" for row in stripped.inline_keyboard for b in row))
+    fake_upd_pv = SimpleNamespace(effective_chat=_Chat(type="private"))
+    check("تو پیوی منو می‌مونه", strip_home(fake_upd_pv, markup) is markup)
+
+    # ═══ رگرسیون باگ تایید خرید (فلو واقعی هندلرها) ═══
+    from handlers import shop as shop_h, textcmd as textcmd_h
+
+    class _Q(SimpleNamespace):
+        async def answer(self, *a, **k):
+            self.calls.append(("answer", a, k))
+        async def edit_message_text(self, text, **k):
+            self.calls.append(("edit", text, k))
+
+    def _fake_update(data, uid=6001):
+        q = _Q(data=data, message=SimpleNamespace(photo=None), calls=[])
+        return SimpleNamespace(
+            callback_query=q,
+            effective_user=SimpleNamespace(id=uid, username="flow", first_name="فلو"),
+            effective_chat=_Chat(type="private"),
+        )
+
+    # خرید اینلاین سلاح: فاکتور → تایید → باید جنس خورده بشه (قبلا اینجا کرش می‌کرد)
+    async with session_scope() as s:
+        flow, _ = await users.get_or_create(s, _fake_update("x").effective_user)
+        flow.cash = 200000
+        flow.level = 15
+        await s.commit()
+
+    upd = _fake_update("shop:buy:weap:pipe")
+    await shop_h.buy_confirm(upd, None)
+    check("فاکتور خرید اینلاین ساخته شد", any(c[0] == "edit" for c in upd.callback_query.calls))
+
+    upd = _fake_update("cf:shop:buy:weap:pipe")
+    await shop_h.buy_execute(upd, None)
+    async with session_scope() as s:
+        flow = await users.get_by_tg(s, 6001)
+        owns = await users.get_item_keys(s, flow.id)
+    check("تایید خرید اینلاین کار می‌کنه (رگرسیون)", "pipe" in owns, str(owns))
+
+    # خرید متنی سگ با اسم دلخواه
+    upd = _fake_update("txcf:dog:pitbull:6001:رکسی")
+    await textcmd_h.tx_confirm_cb(upd, None)
+    async with session_scope() as s:
+        flow = await users.get_by_tg(s, 6001)
+        flow_dogs = await dog_svc.get_user_dogs(s, flow.id)
+    check("سگ با اسم دلخواه خریده شد",
+          len(flow_dogs) == 1 and flow_dogs[0].name == "رکسی" and flow_dogs[0].breed == "پیتبول",
+          str([d.name for d in flow_dogs]))
+
+    # غریبه نمی‌تونه فاکتور کسی رو تایید کنه
+    upd = _fake_update("txcf:weap:knife:6001", uid=9999)
+    await textcmd_h.tx_confirm_cb(upd, None)
+    check("تایید فاکتور غریبه بلاکه", any(c[0] == "answer" for c in upd.callback_query.calls))
+
     # ═══ ایمپورت و رجیستر هندلرها ═══
     import handlers  # noqa
     from telegram.ext import Application
@@ -372,7 +453,8 @@ async def main() -> None:
     check("پترن خرید سگ دوبرمن اصغر", pats["buydog"].match("خرید سگ دوبرمن اصغر").group(1) == "دوبرمن اصغر")
     check("پترن کاشت", pats["plant"].match("کاشت تریاک"))
 
-    check("واحد پول", money(1000) == "۱٬۰۰۰ تی‌پوینت" and money_tp(1000) == "۱٬۰۰۰ TP")
+    check("واحد پول لاتین", money(1000) == "1,000 تی‌پوینت" and money_tp(1000) == "1,000 TP")
+    check("عدد لاتین", fa_num(12345) == "12,345" and fa_dur(169) == "2 دقیقه و 49 ثانیه")
 
     print(f"\n🎉 همه تست‌ها سبز شدن — {PASS} مورد")
 

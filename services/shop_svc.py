@@ -19,13 +19,15 @@ CATALOGS = {
 KIND_EMOJI = {"weap": "🗡", "arm": "🛡", "seed": "🌱", "dog": "🐕"}
 
 
-async def purchase(session: AsyncSession, user: User, kind: str, key: str) -> tuple[bool, str]:
+async def purchase(
+    session: AsyncSession, user: User, kind: str, key: str, dog_name: str | None = None
+) -> tuple[bool, str]:
     """
     خرید از هر بخش فروشگاه
     خروجی: (موفق, پیام کوتاه)
     """
     if kind == "dog":
-        return await dog_svc.buy_dog(session, user, key)
+        return await dog_svc.buy_dog(session, user, key, custom_name=dog_name)
 
     catalog = CATALOGS.get(kind)
     if not catalog:

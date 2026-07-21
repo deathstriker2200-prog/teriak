@@ -36,15 +36,17 @@ async def get_user_dogs(session: AsyncSession, user_id: int) -> list[Dog]:
     return list((await session.execute(q)).scalars())
 
 
-async def buy_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[bool, str]:
-    """منطق خرید سگ — خروجی: (موفق, پیام)"""
+async def buy_dog(
+    session: AsyncSession, user: User, dog_key: str, custom_name: str | None = None
+) -> tuple[bool, str]:
+    """منطق خرید سگ — اسم دلخواه اگه داده شده باشه همون اسم ثبت میشه"""
     cfg = config.DOGS.get(dog_key)
     if not cfg:
         return False, "❌ همچین سگی نیس"
 
     dogs = await get_user_dogs(session, user.id)
     if any(d.dog_key == dog_key for d in dogs):
-        return False, f"تو {cfg['name']} رو داری که رفیق"
+        return False, f"تو نژاد {cfg['breed']} رو داری که رفیق"
     if len(dogs) >= config.MAX_DOGS:
         return False, f"🐕 بیشتر از {fa_num(config.MAX_DOGS)} سگ نمی‌تونی داشته باشی"
     if user.level < cfg["min_level"]:
@@ -52,14 +54,15 @@ async def buy_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[bool
     if user.cash < cfg["price"]:
         return False, "❌ تی‌پوینتت کافی نیس رفیق"
 
+    name = (custom_name or cfg["name"])[:32]
     user.cash -= cfg["price"]
     session.add(Dog(
         user_id=user.id,
         dog_key=dog_key,
-        name=cfg["name"],
+        name=name,
         breed=cfg["breed"],
     ))
-    return True, f"🐕 {cfg['name']} شد رفیق جدیدت"
+    return True, f"🐕 {name} شد رفیق جدیدت"
 
 
 def feeds_left(user: User) -> int:
@@ -117,3 +120,32 @@ def find_dog(query: str):
         if q and (q in normalize_fa(d["name"]) or q == normalize_fa(d["breed"])):
             return key, d
     return None, None
+
+
+def parse_dog_query(query: str):
+    """
+    پارس «نژاد [اسم دلخواه]» برای خرید متنی
+    خروجی: (key, cfg, custom_name یا None)
+    مثال: «دوبرمن اصغر» → مچ دقیق اسم | «دوبرمن رکس» → نژاد دوبرمن با اسم رکس
+    """
+    q = normalize_fa(query)
+    if not q:
+        return None, None, None
+
+    # مچ دقیق اسم پیش‌فرض
+    for key, d in config.DOGS.items():
+        if normalize_fa(d["name"]) == q:
+            return key, d, None
+
+    # نژاد + اسم دلخواه — نژادهای چندکلمه‌ای اول چک میشن
+    for key, d in sorted(config.DOGS.items(), key=lambda kv: -len(kv[1]["breed"])):
+        breed = normalize_fa(d["breed"])
+        if q == breed:
+            return key, d, None
+        if q.startswith(breed + " "):
+            custom = q[len(breed) + 1:].strip()
+            return key, d, custom or None
+
+    # مچ جزئی روی اسم
+    key, cfg = find_dog(q)
+    return key, cfg, None

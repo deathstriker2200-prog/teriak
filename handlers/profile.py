@@ -1,24 +1,30 @@
-"""پروفایل کاربر — نسخه متنی برای منو و نسخه کامل با عکس تلگرام برای دستور"""
+"""پروفایل — عکس تلگرام + کپشن فانتزی — دستور و دکمه هر دو همون متن"""
 
+from sqlalchemy import func, select
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import respond
+from handlers.common import strip_home
 from keyboards import keyboards as kb
+from models import User
 from services import combat, dogs as dog_svc, economy, farming, users
-from utils import esc, fa_num, money, money_tp
+from utils import esc, fa_num, money
+
+# ───────── فرمت پروفایل ─────────
+
+def _bar(energy: int) -> str:
+    filled = round(energy / config.MAX_ENERGY * 10)
+    return "🟩" * filled + "⬛" * (10 - filled)
 
 
-async def _profile_text(session, user) -> str:
+async def _profile_caption(session, user) -> str:
     item_keys = await users.get_item_keys(session, user.id)
     user_dogs = await dog_svc.get_user_dogs(session, user.id)
     atk, dfn = combat.combat_stats(user, item_keys, user_dogs)
     plots = await farming.get_user_plots(session, user.id)
-
-    name = esc(users.display_name(user))
-    username = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
 
     growing = sum(1 for p in plots if p.current_status()[0] == "growing")
     ready = sum(1 for p in plots if p.current_status()[0] == "ready")
@@ -26,90 +32,96 @@ async def _profile_text(session, user) -> str:
     weapon = combat.best_weapon_name(item_keys) or "دست خالی"
     armor = combat.best_armor_name(item_keys) or "بدون زره"
 
-    return (
-        "<b>🏠 پروفایل</b>\n\n"
-        f"👤 {name}\n"
-        f"🆔 {username}\n"
-        f"⭐ لول {fa_num(user.level)}\n"
-        f"✨ تجربه {fa_num(user.xp)} از {fa_num(economy.xp_need(user.level))}\n"
-        f"🪙 {money(user.cash)}\n"
-        f"⚡ انرژی {fa_num(user.energy)} از {fa_num(config.MAX_ENERGY)}\n"
-        f"🌱 زمین‌ها {fa_num(len(plots))} تا | 🌾 در حال رشد {fa_num(growing)} | ✅ آماده {fa_num(ready)}\n\n"
-        f"💪 قدرت حمله {fa_num(atk)}\n"
-        f"🛡 دفاع {fa_num(dfn)}\n"
-        f"🔪 {esc(weapon)} | 🛡 {esc(armor)}\n"
-        f"🐕 سگ‌ها {fa_num(len(user_dogs))} تا\n"
-        f"⚔️ برد {fa_num(user.wins)} | ❌ باخت {fa_num(user.losses)}"
-    )
-
-
-async def _caption_text(session, user) -> str:
-    """نسخه فشرده برای کپشن عکس — زیر ۱۰۲۴ کاراکتر"""
-    item_keys = await users.get_item_keys(session, user.id)
-    user_dogs = await dog_svc.get_user_dogs(session, user.id)
-    atk, dfn = combat.combat_stats(user, item_keys, user_dogs)
-    plots = await farming.get_user_plots(session, user.id)
+    rank = (await session.execute(
+        select(func.count(User.id)).where(User.cash > user.cash)
+    )).scalar_one() + 1
+    total = (await session.execute(select(func.count(User.id)))).scalar_one()
 
     name = esc(users.display_name(user))
-    weapon = combat.best_weapon_name(item_keys) or "—"
-    armor = combat.best_armor_name(item_keys) or "—"
-    ready = sum(1 for p in plots if p.current_status()[0] == "ready")
-
-    dogs_line = " | ".join(
-        f"{d.name} (لول {fa_num(d.level)})" for d in user_dogs
-    ) or "—"
+    uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
+    joined = user.created_at.strftime("%Y/%m/%d") if user.created_at else "—"
+    dog_names = " | ".join(d.name for d in user_dogs) if user_dogs else "—"
 
     return (
-        f"<b>🏠 {name}</b>\n\n"
-        f"⭐ لول {fa_num(user.level)} | ✨ {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}\n"
-        f"🪙 {money(user.cash)}\n"
-        f"💪 حمله {fa_num(atk)} | 🛡 دفاع {fa_num(dfn)}\n"
-        f"🌱 زمین‌ها {fa_num(len(plots))} | ✅ آماده {fa_num(ready)}\n"
-        f"🔪 {esc(weapon)} | 🛡 {esc(armor)}\n"
-        f"🐕 {dogs_line}\n"
-        f"⚔️ {fa_num(user.wins)} برد | {fa_num(user.losses)} باخت"
+        f"╭━━━━━━━━━━━━━━╮\n"
+        f"👤 {name}\n"
+        f"╰━━━━━━━━━━━━━━╯\n"
+        f"🆔 {uname} | 🗓 عضو {joined}\n\n"
+        f"🌟 لول {fa_num(user.level)} — XP {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}\n"
+        f"⚡ انرژی {_bar(user.energy)} {fa_num(user.energy)}/{fa_num(config.MAX_ENERGY)}\n"
+        f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n\n"
+        f"━━━━━━ 💰 دارایی ━━━━━━\n"
+        f"🪙 {money(user.cash)}\n\n"
+        f"━━━━━━ 🏗 اموال ━━━━━━\n"
+        f"🌱 زمین‌ها {fa_num(len(plots))} | 🌾 رشد {fa_num(growing)} | ✅ آماده {fa_num(ready)}\n\n"
+        f"🔫 {esc(weapon)}\n"
+        f"🛡 {esc(armor)}\n"
+        f"🐕 سگ‌ها {fa_num(len(user_dogs))} تا: {esc(dog_names)}\n\n"
+        f"━━━━━━ ⚔️ آمار جنگی ━━━━━━\n"
+        f"💪 قدرت حمله {fa_num(atk)}\n"
+        f"🛡 دفاع {fa_num(dfn)}\n"
+        f"✅ برد {fa_num(user.wins)} | ❌ باخت {fa_num(user.losses)}"
     )
 
 
-# ───────── نمایش از منوی اینلاین (متنی) ─────────
+async def _send_profile(bot, chat_id: int, tg_id: int, caption: str, markup=None) -> None:
+    """ارسال پروفایل با عکس تلگرام کاربر — اگه عکس نداشت متن ساده"""
+    file_id = None
+    try:
+        photos = await bot.get_user_profile_photos(tg_id, limit=1)
+        if photos and photos.total_count:
+            file_id = photos.photos[0][-1].file_id  # بزرگ‌ترین سایز
+    except Exception:
+        file_id = None  # سلب دسترسی — میریم رو متن ساده
 
-async def profile_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        users.apply_energy_regen(user)
-        text = await _profile_text(s, user)
-        await s.commit()
-    await respond(update, text, kb.profile_kb())
+    if file_id:
+        await bot.send_photo(
+            chat_id=chat_id, photo=file_id,
+            caption=caption, parse_mode="HTML", reply_markup=markup,
+        )
+    else:
+        await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML", reply_markup=markup)
 
 
-# ───────── دستور «پروفایل» و /profile — با عکس پروفایل تلگرام ─────────
+# ───────── دستور «پروفایل» / /profile — خالص بدون هیچ متن یا دکمه زیرش ─────────
 
 async def profile_photo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
-        caption = await _caption_text(s, user)
+        caption = await _profile_caption(s, user)
         tg_id = user.telegram_id
         await s.commit()
 
-    file_id = None
+    await _send_profile(context.bot, update.effective_chat.id, tg_id, caption, markup=None)
+
+
+# ───────── دکمه پروفایل تو منو — عکس + رفرش ─────────
+
+async def profile_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        users.apply_energy_regen(user)
+        caption = await _profile_caption(s, user)
+        tg_id = user.telegram_id
+        chat_id = query.message.chat_id if query.message else update.effective_chat.id
+        await s.commit()
+
+    # قاب ادیت نمیشه به عکس — پاک می‌کنیم و تازه می‌فرستیم
     try:
-        photos = await context.bot.get_user_profile_photos(tg_id, limit=1)
-        if photos and photos.total_count:
-            file_id = photos.photos[0][-1].file_id  # بزرگ‌ترین سایز
-    except Exception:
-        file_id = None  # سلب دسترسی یا خطا — میریم رو حالت متنی
+        if query.message:
+            await query.message.delete()
+    except BadRequest:
+        pass
 
-    if file_id:
-        await update.effective_message.reply_photo(
-            photo=file_id,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=kb.main_menu_kb(),
-        )
-    else:
-        await update.effective_message.reply_html(caption, reply_markup=kb.main_menu_kb())
+    await _send_profile(
+        context.bot, chat_id, tg_id, caption,
+        markup=strip_home(update, kb.profile_kb()),
+    )
 
 
-# /profile همین نسخه عکس‌دار رو اجرا می‌کنه
+# /profile همون نسخه عکس‌دار — بدون دکمه و متن اضافی زیرش
 profile_cmd = profile_photo_cmd

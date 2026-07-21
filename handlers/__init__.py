@@ -22,6 +22,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("dogs", dogs.dogs_cb))
     app.add_handler(CommandHandler("mine", mine.mine_cmd))
     app.add_handler(CommandHandler("admin", admin.admin_cmd))
+    app.add_handler(CommandHandler("help", start.help_cmd))
 
     # ── دستورهای متنی فارسی (PV و گروه) ──
     # ترتیب اضافه شدن مهمه: الگوهای اختصاصی اول
@@ -34,7 +35,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^خرید{S}+(.+)$"), textcmd.buy_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^کاشت{S}+(.+)$"), textcmd.plant_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^سگ{S}*های{S}*من!?$"), textcmd.dogs_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^مزرعه!?$"), textcmd.farm_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^مزرعه!?$|^زمین{S}*های{S}*من!?$|^زمین{S}*هام!?$|^زمین{S}*ها!?$"), textcmd.farm_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^راهنما!?$|^[hH]elp$"), start.help_cmd))
 
     # ── منوی اصلی ──
     app.add_handler(CallbackQueryHandler(start.menu_cb, pattern=r"^menu:home$"))
@@ -68,8 +70,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(attack.find_cb, pattern=r"^att:find$"))
     app.add_handler(CallbackQueryHandler(attack.attack_execute, pattern=r"^cf:att:\d+$"))
 
-    # ── تایید دستورهای متنی (فقط خود کاربر) ──
-    app.add_handler(CallbackQueryHandler(textcmd.tx_confirm_cb, pattern=r"^txcf:\w+:\w+:\d+$"))
+    # ── تایید دستورهای متنی (فقط خود کاربر — اسم سگ اختیاریه) ──
+    app.add_handler(CallbackQueryHandler(textcmd.tx_confirm_cb, pattern=r"^txcf:\w+:\w+:\d+(?::.+)?$"))
     app.add_handler(CallbackQueryHandler(textcmd.tx_attack_cb, pattern=r"^txatt:\d+:\d+$"))
     app.add_handler(CallbackQueryHandler(textcmd.tx_cancel_cb, pattern=r"^txcl:\d+$"))
 

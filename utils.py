@@ -1,9 +1,7 @@
-"""ابزارهای کمکی: زمان | اعداد فارسی | فرمت مدت | escape"""
+"""ابزارهای کمکی: زمان | اعداد (لاتین) | فرمت مدت | escape"""
 
 from datetime import datetime, timezone
 from html import escape as _esc
-
-_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
 def now_utc() -> datetime:
@@ -12,13 +10,13 @@ def now_utc() -> datetime:
 
 
 def fa(text) -> str:
-    """تبدیل ارقام انگلیسی به فارسی"""
-    return str(text).translate(_FA_DIGITS)
+    """متن آماده نمایش — اعداد لاتین می‌مونن"""
+    return str(text)
 
 
 def fa_num(n) -> str:
-    """عدد با جداکننده هزارگان و ارقام فارسی مثل ۱۲٬۵۰۰"""
-    return f"{int(round(n)):,}".replace(",", "٬").translate(_FA_DIGITS)
+    """عدد با جداکننده هزارگان و ارقام لاتین مثل 12,500"""
+    return f"{int(round(n)):,}"
 
 
 def fa_dur(seconds: int | float) -> str:

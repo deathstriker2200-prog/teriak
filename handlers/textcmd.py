@@ -59,20 +59,21 @@ async def buy_dog_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if dog_query.startswith("سگ "):
         dog_query = dog_query[3:]
 
-    key, dog = dog_svc.find_dog(dog_query)
+    key, dog, custom_name = dog_svc.parse_dog_query(dog_query)
     if not key:
         names = " | ".join(d["name"] for d in config.DOGS.values())
         return await respond(update, f"🤷 سگی با این اسم پیدا نشد\n\nموجودی:\n{names}")
 
+    shown = custom_name or dog["name"]
     text = (
-        f"<b>🐕 خرید {esc(dog['name'])}</b>\n\n"
+        f"<b>🐕 خرید {esc(shown)}</b>\n\n"
         f"🐾 نژاد {esc(dog['breed'])}\n"
         f"💪 قدرت حمله {fa_num(dog['attack'])}\n"
         f"🎖 {esc(dog['ability'])}\n"
         f"💸 قیمت {money(dog['price'])}\n\n"
         "می‌خریش؟"
     )
-    await respond(update, text, kb.tx_confirm_kb("dog", key, update.effective_user.id))
+    await respond(update, text, kb.tx_confirm_kb("dog", key, update.effective_user.id, custom_name))
 
 
 async def buy_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -109,7 +110,9 @@ async def buy_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """اجرای تایید خرید دستور متنی — فقط خودِ صاحب دستور می‌تونه بزنه"""
-    _, kind, key, owner_id = parts(update)
+    p = parts(update)
+    kind, key, owner_id = p[1], p[2], p[3]
+    dog_name = p[4] if len(p) > 4 else None  # اسم دلخواه سگ
 
     if update.effective_user.id != int(owner_id):
         await update.callback_query.answer("این فاکتور مال تو نیس داداش 😅", show_alert=True)
@@ -117,7 +120,7 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        _, alert = await shop_svc.purchase(s, user, kind, key)
+        _, alert = await shop_svc.purchase(s, user, kind, key, dog_name=dog_name)
         cash = user.cash
         await s.commit()
 

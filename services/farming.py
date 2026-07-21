@@ -107,7 +107,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     """
     left = harvest_cooldown_left(user)
     if left:
-        return False, f"⏳ هر ۲ دقیقه یه بار میشه برداشت کرد | {fa_dur(left)} مونده", None
+        return False, f"⏳ هر 2 دقیقه یه بار میشه برداشت کرد | {fa_dur(left)} مونده", None
 
     plots = await get_user_plots(session, user.id)
     ready = [p for p in plots if p.current_status()[0] == "ready"]

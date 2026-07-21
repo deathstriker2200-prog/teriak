@@ -32,13 +32,14 @@ async def _section_text(session, user, kind: str) -> str:
             "<b>🔪 بخش سلاح‌ها</b>\n\n"
             "هر سلاح یه Attack مشخص داره\n"
             "فقط بهترین سلاحت رو استت حساب میشه\n\n"
-            "💡 روی جنس بزن یا بنویس «خرید چاقو»"
+            "💡 روی جنس بزن یا بنویس «خرید [اسم سلاح]» مثلا «خرید چاقو»"
         )
     if kind == "arm":
         return (
             "<b>🛡 بخش زره‌ها</b>\n\n"
             "زره خسارت وارده رو کم می‌کنه\n"
             "فقط بهترین زرهت رو استت حساب میشه\n\n"
+            "💡 خرید با «خرید [اسم زره]» مثلا «خرید جلیقه سنگین»\n\n"
             f"👑 {config.ARMORS['legend']['name']}:\n"
             f"<i>{esc(config.ARMORS['legend']['desc'])}</i>"
         )
@@ -60,8 +61,9 @@ async def _section_text(session, user, kind: str) -> str:
             "<b>🐕 بخش سگ‌ها</b>\n\n"
             "سگ‌ها به قدرت حمله تو اضافه میشن\n"
             f"حداکثر {fa_num(config.MAX_DOGS)} سگ می‌تونی داشته باشی\n\n"
-            "👑 گرگ سیاه شبح کمیاب‌ترین و بهترین سگه\n"
-            "💡 خرید با «خرید سگ دوبرمن اصغر» هم میشه"
+            "👑 گرگ سیاه شبح کمیاب‌ترین و بهترین سگه\n\n"
+            "💡 خرید با «خرید سگ دوبرمن اصغر»\n"
+            "💡 یا اسمت رو خودت بذار: «خرید سگ [نژاد] [اسم سگ‌ت]»"
         )
     if kind == "food":
         return (
@@ -76,16 +78,8 @@ async def _section_text(session, user, kind: str) -> str:
 
 # ───────── نمایش ─────────
 
-async def shop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        text = _sections_text(user.cash)
-        await s.commit()
-    await respond(update, text, kb.shop_sections_kb())
-
-
-async def section_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: str | None = None) -> None:
-    kind = parts(update)[2]
+async def render_section(update: Update, kind: str, alert: str | None = None) -> None:
+    """رندر یه بخش شاپ — بدون تکیه بر callback_data"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         text = await _section_text(s, user, kind)
@@ -103,10 +97,22 @@ async def section_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: 
             markup = kb.shop_food_kb()
         else:
             await s.commit()
-            return await shop_cb(update, context)
+            return await shop_cb(update, None)
         await s.commit()
 
     await respond(update, text, markup, alert=alert)
+
+
+async def shop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        text = _sections_text(user.cash)
+        await s.commit()
+    await respond(update, text, kb.shop_sections_kb())
+
+
+async def section_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: str | None = None) -> None:
+    await render_section(update, parts(update)[2], alert=alert)
 
 
 # ───────── خرید (اینلاین) ─────────
@@ -157,5 +163,5 @@ async def buy_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         user, _ = await users.get_or_create(s, update.effective_user)
         _, alert = await shop_svc.purchase(s, user, kind, key)
         await s.commit()
-    update.callback_query.data = f"shop:sec:{kind}"
-    await section_cb(update, context, alert=alert)
+    # توجه: CallbackQuery تلگرام قابل تغییر نیس — به جای دست‌کاری data بخش رو مستقیم رندر می‌کنیم
+    await render_section(update, kind, alert=alert)

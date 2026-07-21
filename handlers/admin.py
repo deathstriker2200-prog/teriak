@@ -29,7 +29,7 @@ def _panel_text(user, extra: str | None = None) -> str:
 
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_admin(update):
-        return await respond(update, "❌ تو ادمین نیستی داداش")
+        return  # ادمین به پلیرهای عادی واکنش نشون نمیده
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -41,7 +41,7 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_admin(update):
-        await update.callback_query.answer("❌ تو ادمین نیستی داداش", show_alert=True)
+        await update.callback_query.answer()
         return
 
     _, kind, amount = parts(update)

@@ -36,7 +36,8 @@ DANGER = "danger"
 BOT_USERNAME = ""
 
 
-def _btn(text: str, data: str, style: str | None = None) -> InlineKeyboardButton:
+def _btn(text: str, data: str, style: str | None = PRIMARY) -> InlineKeyboardButton:
+    """پیش‌فرض همه دکمه‌ها آبیه مگر اینکه سبز یا قرمز گفته شده باشه"""
     kwargs = {"callback_data": data}
     if style:
         kwargs["style"] = style
@@ -58,6 +59,7 @@ def main_menu_kb() -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(
             "➕ افزودن به گروه",
             url=f"https://t.me/{BOT_USERNAME}?startgroup=true",
+            style=PRIMARY,
         )])
     return InlineKeyboardMarkup(rows)
 
@@ -74,10 +76,15 @@ def confirm_kb(confirm_data: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def tx_confirm_kb(kind: str, key: str, tg_id: int) -> InlineKeyboardMarkup:
+def tx_confirm_kb(kind: str, key: str, tg_id: int, dog_name: str | None = None) -> InlineKeyboardMarkup:
     """تایید خرید دستور متنی — id کاربر داخل دیتا ست میشه که غریبه نتونه بزنه"""
+    data = f"txcf:{kind}:{key}:{tg_id}"
+    if dog_name:
+        safe = dog_name.replace(":", " ").strip()[:12]  # سقف بایت callback_data
+        if safe:
+            data += f":{safe}"
     return InlineKeyboardMarkup([[
-        _btn("✅ تایید", f"txcf:{kind}:{key}:{tg_id}", SUCCESS),
+        _btn("✅ تایید", data, SUCCESS),
         _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
     ]])
 
