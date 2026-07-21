@@ -78,7 +78,7 @@ def add_xp(user: User, amount: int) -> list[str]:
         user.cash += reward
 
         note = f"🆙 لولت رفت رو {fa_num(user.level)} و {money(reward)} جایزه گرفتی"
-        new_crops = [c["name"] for c in config.CROPS.values() if c["min_level"] == user.level]
+        new_crops = [c["name"] for c in config.SEEDS.values() if c["min_level"] == user.level]
         if new_crops:
             note += "\n🔓 محصول جدید باز شد: " + " | ".join(new_crops)
         notes.append(note)

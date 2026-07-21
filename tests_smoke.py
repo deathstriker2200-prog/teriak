@@ -1,5 +1,5 @@
 """
-اسموک‌تست آفلاین تریاکی — بدون اتصال به تلگرام
+اسموک‌تست آفلاین تریاکی — فاز ۲ — بدون اتصال به تلگرام
 اجرا:  python tests_smoke.py
 """
 
@@ -11,16 +11,16 @@ from types import SimpleNamespace
 
 random.seed(7)
 
-# قبل از ایمپورت ماژول‌های پروژه، دیتابیس تست رو تنظیم می‌کنیم
 os.environ["TERIAKY_DB"] = "sqlite+aiosqlite:////tmp/teriaky_test.db"
 if os.path.exists("/tmp/teriaky_test.db"):
     os.remove("/tmp/teriaky_test.db")
 
 import config  # noqa: E402
 from database import init_db, session_scope  # noqa: E402
-from models import InventoryItem, Plot, User  # noqa: E402
-from services import combat, economy, users  # noqa: E402
-from utils import fa_dur, fa_num, money, money_tp, now_utc  # noqa: E402
+from models import Dog, Plot, User  # noqa: E402
+from services import combat, dogs as dog_svc, economy, farming, shop_svc, users  # noqa: E402
+from sqlalchemy import select  # noqa: E402
+from utils import fa_dur, fa_num, find_by_name, money, money_tp, normalize_fa, now_utc  # noqa: E402
 
 PASS = 0
 
@@ -39,150 +39,249 @@ def tg(uid, username=None, first_name=None):
 async def main() -> None:
     await init_db()
 
-    # ── فرمول‌های اقتصادی ──
+    # ═══ کاتالوگ‌ها ═══
+    seed_lvls = [s["min_level"] for s in config.SEEDS.values()]
+    check("ترتیب لول بذرها صعودیه", seed_lvls == sorted(seed_lvls), str(seed_lvls))
+
+    legends = [k for k, a in config.ARMORS.items() if a.get("legendary")]
+    check("فقط یه زره افسانه‌ای هست", legends == ["legend"])
+    check("توضیح زره افسانه‌ای دقیق ست شده", "نصف مقدار سکه‌ای که دشمن از شما دریافت می‌کند از بین برود" in config.ARMORS["legend"]["desc"])
+
+    rares = [k for k, d in config.DOGS.items() if d.get("rare")]
+    check("فقط یه سگ کمیاب هست", len(rares) == 1, str(rares))
+
+    check("قیمت و قدرت همه سلاح‌ها مثبته", all(w["price"] > 0 and w["attack"] > 0 for w in config.WEAPONS.values()))
+    check("همه آیتم‌ها desc و min_level دارن",
+          all(i.get("desc") and "min_level" in i for i in list(config.WEAPONS.values()) + list(config.ARMORS.values()) + list(config.SEEDS.values()) + list(config.DOGS.values())))
+
+    # ═══ منحنی تجربه ═══
+    needs = [economy.xp_need(l) for l in range(1, 21)]
+    check("منحنی xp صعودیه", needs == sorted(needs), str(needs[:6]))
+    diffs = [b - a for a, b in zip(needs, needs[1:])]
+    check("سختی تدریجی زیاد میشه (محدب)", diffs == sorted(diffs), str(diffs[:6]))
+    check("لول‌های اول سریعه", economy.xp_need(1) <= 60 and economy.xp_need(2) <= 180, f"1={economy.xp_need(1)} 2={economy.xp_need(2)}")
+
+    # ═══ اقتصاد ═══
     prices = [economy.plot_price(i) for i in range(config.MAX_PLOTS)]
     check("قیمت زمین افزایشیه", all(a < b for a, b in zip(prices, prices[1:])), str(prices))
-    check("اولین زمین ۱۰۰۰ تی‌پوینته", prices[0] == config.PLOT_BASE_PRICE)
+    check("گیت لول زمین", economy.plot_required_level(0) == 1 and economy.plot_required_level(7) == 8)
 
-    ups = [economy.upgrade_price(l) for l in (1, 2)]
-    check("هزینه آپگرید تصاعدیه", ups[0] < ups[1], str(ups))
+    y1 = economy.crop_yield("teriak", 1, 1)
+    y2 = economy.crop_yield("teriak", 2, 1)
+    y3 = economy.crop_yield("teriak", 1, 11)
+    check("برداشت با لول زمین بیشتره", y2 > y1, f"{y1}→{y2}")
+    check("برداشت با لول کاربر بیشتره (۲٪ هر لول)", y3 > y1, f"{y1}→{y3}")
 
-    unlock_levels = [c["min_level"] for c in config.CROPS.values()]
-    check("ترتیب باز شدن محصولات صعودیه", unlock_levels == sorted(unlock_levels), str(unlock_levels))
-    check("تریاک از لول ۱ بازه", economy.is_crop_unlocked("teriak", 1))
-    check("پیوته لول ۱۰ می‌خواد", not economy.is_crop_unlocked("peyote", 9) and economy.is_crop_unlocked("peyote", 10))
-    check("سود مزرعه خیلی بالاتر از کنده‌کاریه", economy.crop_yield("teriak", 1) - config.CROPS["teriak"]["cost"] > config.MINE_MAX)
-
-    # ── قرعه کنده‌کاری ──
     rolls = [economy.mine_roll() for _ in range(20000)]
     low = sum(1 for r in rolls if r <= config.MINE_COMMON_MAX) / len(rolls)
-    check("محدوده جایزه ۱۰ تا ۱۵۰", min(rolls) >= 10 and max(rolls) <= 150, f"min={min(rolls)} max={max(rolls)}")
-    check("بازه ۱۰ تا ۱۰۰ پرشانسه (~۷۵٪)", 0.68 < low < 0.82, f"share={low:.2f}")
+    check("کنده‌کاری تو بازه ۱۰ تا ۱۵۰", min(rolls) >= 10 and max(rolls) <= 150)
+    check("بازه پایین کنده‌کاری پرشانسه", 0.68 < low < 0.82, f"{low:.2f}")
 
-    # ── فلو کاربر ──
+    # ═══ مچ اسم فارسی ═══
+    check("نرمال سازی فارسی", normalize_fa("دوبرمن  اصغر!") == "دوبرمن اصغر")
+    k, _ = find_by_name(config.WEAPONS, "چاقو")
+    check("«خرید چاقو» سلاح رو پیدا می‌کنه", k == "knife")
+    kind, key, _ = shop_svc.find_shop_item("تریاک")
+    check("«خرید تریاک» بذر رو پیدا می‌کنه", kind == "seed" and key == "teriak")
+    dk, _ = dog_svc.find_dog("دوبرمن اصغر")
+    check("«خرید سگ دوبرمن اصغر» سگ رو پیدا می‌کنه", dk == "doberman")
+    dk2, _ = dog_svc.find_dog("گرگ")
+    check("مچ جزئی نژاد سگ", dk2 == "blackwolf")
+
+    # ═══ فلو کاربر ═══
     async with session_scope() as s:
-        u1, c1 = await users.get_or_create(s, tg(1001, "ali", "علی"))
-        u2, c2 = await users.get_or_create(s, tg(1002, "sara", "سارا"))
+        u1, _ = await users.get_or_create(s, tg(1001, "ali", "علی"))
+        u2, _ = await users.get_or_create(s, tg(1002, "sara", "سارا"))
         u3, _ = await users.get_or_create(s, tg(1003, "boss", "باس"))
-        u3.level = 20  # خیلی دور از سطح بقیه
-        check("ثبت‌نام خودکار کار می‌کنه", c1 and c2)
+        u3.level = 20
 
-        u1_dup, created_dup = await users.get_or_create(s, tg(1001, "ali2", "علی جدید"))
-        check("ثبت‌نام تکراری نشه", not created_dup and u1_dup.id == u1.id and u1_dup.username == "ali2")
+        # ── خرید زمین و بذر و کاشت ──
+        u1.cash = 100000  # شارژ حساب برای تست‌ها
+        ok, msg = await farming.buy_plot(s, u1)
+        check("خرید زمین اول", ok and bool(msg))
+        plots = await farming.get_user_plots(s, u1.id)
+        plot = plots[0]
 
-        check("پول شروع درسته", u1.cash == config.START_CASH)
+        u1.cash = 1000
+        ok, msg = await shop_svc.purchase(s, u1, "seed", "teriak")
+        check("خرید بذر تریاک", ok and u1.cash == 1000 - config.SEEDS["teriak"]["price"])
+        stock = await farming.get_stock(s, u1.id)
+        check("انبار بذر آپدیت شد", stock.get("teriak") == 1)
 
-        # خرید زمین
-        price = economy.plot_price(0)
-        u1.cash += price
-        u1.cash -= price
-        s.add(Plot(user_id=u1.id))
-        await s.flush()
-        plot = (await s.execute(
-            __import__("sqlalchemy").select(Plot).where(Plot.user_id == u1.id)
-        )).scalar_one()
-        check("زمین خریداری شد", plot.status == "empty" and plot.level == 1)
+        ok, msg = await farming.plant(s, u1, plot, "teriak")
+        check("کاشت با بذر", ok, msg)
+        stock = await farming.get_stock(s, u1.id)
+        check("بذر مصرف شد", stock.get("teriak") == 0)
 
-        # کاشت تریاک
-        cost = config.CROPS["teriak"]["cost"]
-        cash_before = u1.cash
-        plot.status = "growing"
-        plot.crop = "teriak"
-        plot.planted_at = now_utc()
-        plot.ready_at = now_utc() + timedelta(seconds=economy.crop_grow_seconds("teriak", 1))
-        u1.cash -= cost
-        state, left = plot.current_status()
-        check("کاشت: وضعیت growing", state == "growing" and left > 0)
-        check("کاشت: پول کم شد", u1.cash == cash_before - cost)
+        ok, msg = await farming.plant(s, u1, plot, "teriak")
+        check("کاشت دوباره بدون بذر رد میشه", not ok)
 
-        # برداشت بعد از تمام شدن تایمر
+        # ── برداشت و کولدون ۲ دقیقه ──
         plot.ready_at = now_utc() - timedelta(seconds=1)
-        state, _ = plot.current_status()
-        check("برداشت: وضعیت ready", state == "ready")
-        gain = economy.crop_yield("teriak", 1)
-        u1.cash += gain
-        plot.status, plot.crop, plot.planted_at, plot.ready_at = "empty", None, None, None
-        check("برداشت: سود واریز شد", u1.cash == cash_before - cost + gain, f"gain={gain}")
+        cash_before = u1.cash
+        ok, alert, extra = await farming.harvest_all(s, u1)
+        gain_expected = economy.crop_yield("teriak", 1, u1.level)
+        check("برداشت موفق", ok and u1.cash == cash_before + gain_expected, f"gain={gain_expected}")
+        check("پیام برداشت ساخته شد", bool(extra))
 
-        # لول‌آپ
-        lvl_before = u1.level
-        notes = users.add_xp(u1, config.XP_BASE * lvl_before)
-        check("لول‌آپ با xp کافی", u1.level == lvl_before + 1 and notes)
-        check("جایزه نقدی لول‌آپ", u1.cash > cash_before)
+        # بذر جدید و کاشت مجدد برای تست کولدون
+        await farming.add_seed_stock(s, u1.id, "teriak", 1)
+        await farming.plant(s, u1, plot, "teriak")
+        plot.ready_at = now_utc() - timedelta(seconds=1)
+        ok, msg, _ = await farming.harvest_all(s, u1)
+        check("کولدون ۲ دقیقه برداشت جلوگیری می‌کنه", not ok and "۲ دقیقه" in msg, msg)
 
-        # فروشگاه
-        s.add(InventoryItem(user_id=u1.id, item_key="knife"))
-        s.add(InventoryItem(user_id=u1.id, item_key="jacket"))
-        await s.flush()
+        u1.last_harvest_at = now_utc() - timedelta(seconds=config.HARVEST_COOLDOWN_SECONDS + 5)
+        ok, alert, extra = await farming.harvest_all(s, u1)
+        check("بعد از کولدون برداشت میشه", ok)
+
+        # ── گیت لول فروشگاه ──
+        ok, msg = await shop_svc.purchase(s, u1, "weap", "plasma")
+        check("سلاح قفل‌روی‌لول رد میشه", not ok and "لول" in msg)
+        u1.cash = 500000
+        ok, msg = await shop_svc.purchase(s, u1, "weap", "deagle")
+        u1.level = 5
+        check("سلاح بالاتر از لول قفله", not ok)
+        u1.level = 15
+        ok, msg = await shop_svc.purchase(s, u1, "weap", "deagle")
+        check("با لول کافی خریده", ok)
+        ok, msg = await shop_svc.purchase(s, u1, "weap", "deagle")
+        check("خرید تکراری سلاح رد میشه", not ok)
+
+        ok, msg = await shop_svc.purchase(s, u1, "arm", "legend")
+        check("زره افسانه‌ای خریده", ok)
+
+        # ── سگ‌ها ──
+        ok, msg = await shop_svc.purchase(s, u1, "dog", "doberman")
+        check("خرید سگ دوبرمن اصغر", ok, msg)
+        ok, msg = await shop_svc.purchase(s, u1, "dog", "blackwolf")
+        check("خرید گرگ سیاه کمیاب", ok)
+        ok, msg = await shop_svc.purchase(s, u1, "dog", "doberman")
+        check("خرید سگ تکراری رد میشه", not ok)
+
+        dogs = await dog_svc.get_user_dogs(s, u1.id)
+        wolf = next(d for d in dogs if d.dog_key == "blackwolf")
+        dob = next(d for d in dogs if d.dog_key == "doberman")
+        check("سگ لول ۱ شروع می‌کنه", wolf.level == 1 and wolf.xp == 0)
+        check("قدرت پایه سگ درسته", dog_svc.dog_attack(dob) == config.DOGS["doberman"]["attack"])
+
+        # ── غذا دادن ──
+        u1.cash = 100000
+        check("۵ غذا در روز داره", dog_svc.feeds_left(u1) == config.DOG_FEED_PER_DAY)
+
+        notes_all = []
+        for _ in range(5):
+            ok, msg, notes = await dog_svc.feed_dog(s, u1, wolf, "gold")
+            assert ok, msg
+            notes_all.extend(notes)
+        check("۵ بار غذا اوکیه", True)
+        check("ششمی رد میشه (سقف روزانه)", dog_svc.feeds_left(u1) == 0)
+        ok, msg, _ = await dog_svc.feed_dog(s, u1, wolf, "gold")
+        check("غذای ششم خطا میده", not ok)
+
+        xp_expect = 5 * config.DOG_FOODS["gold"]["xp"]
+        check("xp سگ از غذا رفت بالا و لول‌آپ خورد", wolf.level > 1 and notes_all, f"lvl={wolf.level} xp={wolf.xp} ({xp_expect} داده بودیم)")
+
+        atk_before = dog_svc.dog_attack(wolf)
+        check("قدرت سگ با لول بیشتر میشه", atk_before > config.DOGS["blackwolf"]["attack"])
+
+        # ریست روزانه غذا
+        u1.feed_day = "2000-01-01"
+        check("فردا سهم غذا ریست میشه", dog_svc.feeds_left(u1) == config.DOG_FEED_PER_DAY)
+
+        # ── استت نبرد با سگ و بونس لول آیتم ──
         keys = await users.get_item_keys(s, u1.id)
-        atk, dfn = combat.combat_stats(u1, keys)
+        u2.level = 5
+        atk, dfn = combat.combat_stats(u1, keys, dogs)
         base_atk = config.ATK_BASE + config.ATK_PER_LEVEL * u1.level
-        base_def = config.DEF_BASE + config.DEF_PER_LEVEL * u1.level
-        check("سلاح روی حمله اثر داره", atk == base_atk + config.SHOP_ITEMS["knife"]["attack"])
-        check("زره روی دفاع اثر داره", dfn == base_def + config.SHOP_ITEMS["jacket"]["defense"])
+        weap_eff = int(config.WEAPONS["deagle"]["attack"] * (1 + config.LEVEL_ITEM_BONUS * (u1.level - 1)))
+        expected = base_atk + weap_eff + dog_svc.dog_attack(dob) + dog_svc.dog_attack(wolf)
+        check("حمله = پایه + سلاح + سگ‌ها", atk == expected, f"{atk} vs {expected}")
 
-        # ریجن انرژی
-        u1.energy = 50
-        u1.energy_updated_at = now_utc() - timedelta(minutes=config.ENERGY_REGEN_MINUTES * 10)
-        users.apply_energy_regen(u1)
-        check("ریجن انرژی", u1.energy == 50 + 10, f"energy={u1.energy}")
-        u1.energy_updated_at = now_utc() - timedelta(hours=50)
-        users.apply_energy_regen(u1)
-        check("سقف انرژی رعایت میشه", u1.energy == config.MAX_ENERGY)
+        # ── بونس سرقت گرگ و نصف زره ──
+        wolf.level = config.DOG_MAX_LEVEL
+        bonus = dog_svc.rare_steal_bonus(dogs)
+        check("بونس گرگ در لول مکس ۱۵٪ه", abs(bonus - config.RARE_DOG_STEAL_MAX) < 1e-9, f"{bonus:.2%}")
+        wolf.level = 2
+        check("بونس گرگ با لول کمتره", abs(dog_svc.rare_steal_bonus(dogs) - 0.15 * 2 / config.DOG_MAX_LEVEL) < 1e-9)
 
-        # ── حمله ──
-        u1.level = u2.level = 5
-        t = await combat.find_target(s, u1)
-        check("هدف فقط هم‌لوله", t is not None and t.id == u2.id, f"target={t}")
+        random.seed(1)
+        amount, b, halved = combat.steal_amount(10000, [], False)
+        check("سرقت بدون مادیفایر", 1000 <= amount <= 2500 and not halved and b == 0, str(amount))
+        random.seed(1)
+        amount_base, _, _ = combat.steal_amount(10000, [], False)
+        random.seed(1)
+        amount_leg, _, halved_leg = combat.steal_amount(10000, [], True)
+        check("زره افسانه‌ای نصف می‌کنه", halved_leg and abs(amount_leg * 2 - amount_base) <= 1, f"{amount_leg} vs {amount_base}")
 
-        u1.energy = config.MAX_ENERGY
-        u2.cash = 2000
-        user_wins = target_losses = 0
-        for _ in range(200):
+        # ── حمله کامل (سرویس) ──
+        from models import InventoryItem
+        s.add(InventoryItem(user_id=u2.id, item_key="legend"))
+        await s.flush()
+
+        results = {"win": 0, "lose": 0, "halved_count": 0, "bonus_count": 0}
+        for _ in range(300):
             u1.energy = config.MAX_ENERGY
-            u2.cash = 2000
-            u1.energy -= config.ATTACK_ENERGY_COST
-            atk2, _ = combat.combat_stats(u1, keys)
-            _, dfn2 = combat.combat_stats(u2, [])
-            win, a, d = combat.battle_roll(atk2, dfn2)
-            check_ok = (0.85 * atk2 - 1 <= a <= 1.15 * atk2 + 1) and (0.85 * dfn2 - 1 <= d <= 1.15 * dfn2 + 1)
-            if not check_ok:
-                raise AssertionError("رول خارج از بازه")
-            if win:
-                amt = combat.steal_amount(u2.cash)
-                assert config.STEAL_MIN_PCT * 2000 - 1 <= amt <= config.STEAL_MAX_PCT * 2000 + 1, f"steal={amt}"
-                user_wins += 1
+            u1.last_attack_at = None
+            u2.cash = 50000
+            res = await combat.execute_attack(s, u1, u2)
+            assert res["ok"]
+            if res["win"]:
+                results["win"] += 1
+                if res["halved"]:
+                    results["halved_count"] += 1
+                if res["bonus"]:
+                    results["bonus_count"] += 1
             else:
-                target_losses += 1
-        check("نتیجه نبرد هر دو طرف دیده میشه", user_wins > 0 and target_losses > 0, f"win={user_wins} lose={target_losses}")
+                results["lose"] += 1
+        check("تو فلو کامل هم برد هم باخت دیده میشه", results["win"] > 0 and results["lose"] > 0, str(results))
+        check("زره افسانه‌ای قربانی همیشه نصف می‌کنه", results["halved_count"] == results["win"],
+              f"halved={results['halved_count']} win={results['win']}")
+        check("بونس گرگ تو هر برد اعماله", results["bonus_count"] == results["win"])
 
-        u1.last_attack_at = now_utc()
-        cd = combat.cooldown_left(u1)
-        check("کولدون فعاله", 0 < cd <= config.ATTACK_COOLDOWN_MINUTES * 60, f"cd={cd}")
-        u1.last_attack_at = now_utc() - timedelta(minutes=config.ATTACK_COOLDOWN_MINUTES + 1)
-        check("کولدون بعدش صفره", combat.cooldown_left(u1) == 0)
+        # کولدون ۱ دقیقه
+        u1.energy = config.MAX_ENERGY
+        u1.last_attack_at = None
+        res = await combat.execute_attack(s, u1, u2)
+        res2 = await combat.execute_attack(s, u1, u2)
+        check("کولدون ۱ دقیقه فعاله", not res2["ok"] and res2["reason"] == "cooldown" and res2["left"] <= 60, str(res2.get("left")))
+        u1.last_attack_at = now_utc() - timedelta(seconds=61)
+        res3 = await combat.execute_attack(s, u1, u2)
+        check("بعد ۱ دقیقه آزاده", res3["ok"])
+
+        # هدف رندوم فقط هم‌لول
+        t = await combat.find_target(s, u1)  # u1 لول ۱۴ u2 لول ۵ u3 لول ۲۰
+        check("جستجوی رندوم هیچ‌کدوم رو بیرون بازه نمیاره", t is None or abs(t.level - u1.level) <= 2, f"{t}")
+
+        # ── لول‌آپ بازیکن روی منحنی جدید ──
+        lvl_before = u1.level
+        notes = users.add_xp(u1, economy.xp_need(u1.level))
+        check("لول‌آپ با منحنی Idle", u1.level == lvl_before + 1 and notes)
 
         await s.commit()
 
-    # ── کیبوردها ──
+    # ═══ کیبوردها ═══
     from keyboards import keyboards as kb
     from telegram import InlineKeyboardMarkup
 
     async with session_scope() as s:
         u1 = await users.get_by_tg(s, 1001)
-        plots = list((await s.execute(__import__("sqlalchemy").select(Plot).where(Plot.user_id == u1.id))).scalars())
+        plots = await farming.get_user_plots(s, u1.id)
+        stock = await farming.get_stock(s, u1.id)
         keys = await users.get_item_keys(s, u1.id)
+        dogs = await dog_svc.get_user_dogs(s, u1.id)
+
         kbs = [
-            kb.main_menu_kb(),
-            kb.confirm_kb("cf:test"),
-            kb.profile_kb(),
-            kb.farm_kb(u1, plots, economy.plot_price(len(plots))),
-            kb.crops_kb(u1, plots[0]),
-            kb.shop_kb(u1, set(keys)),
-            kb.attack_home_kb(),
-            kb.attack_target_kb(u1.id),
-            kb.rank_kb(),
-            kb.home_kb(),
+            kb.main_menu_kb(), kb.confirm_kb("cf:x"), kb.home_kb(), kb.profile_kb(),
+            kb.farm_kb(u1, plots, economy.plot_price(len(plots)), 1),
+            kb.seeds_kb(u1, plots[0], stock),
+            kb.shop_sections_kb(),
+            kb.shop_weap_kb(u1, set(keys)), kb.shop_arm_kb(u1, set(keys)),
+            kb.shop_seed_kb(u1, stock), kb.shop_dog_kb(u1, {d.dog_key for d in dogs}, len(dogs)),
+            kb.shop_food_kb(),
+            kb.my_dogs_kb(dogs), kb.feed_foods_kb(dogs[0].id),
+            kb.attack_home_kb(), kb.attack_target_kb(1), kb.attack_result_kb(), kb.rank_kb(),
+            kb.tx_confirm_kb("weap", "knife", 123),
         ]
         for k in kbs:
             assert isinstance(k, InlineKeyboardMarkup)
@@ -190,24 +289,39 @@ async def main() -> None:
                 for b in row:
                     assert b.callback_data is None or len(b.callback_data.encode()) <= 64, b.callback_data
                     assert b.style in (None, "primary", "success", "danger"), b.style
-        check("۱۰ کیبورد ساخته و ولیدیت شدن", True)
+        check(f"{len(kbs)} کیبورد ولیدیت شدن", True)
+        styled = sum(1 for k in kbs for r in k.inline_keyboard for b in r if b.style)
+        check("دکمه‌های رنگی فعالن", styled >= 20, f"{styled}")
 
-        styled = sum(1 for k in kbs for row in k.inline_keyboard for b in row if b.style)
-        check("دکمه‌های رنگی استفاده شدن", styled >= 15, f"styled={styled}")
+    # ═══ فرمت نتیجه حمله ═══
+    from handlers.common import format_attack_result
+    txt = format_attack_result(
+        {"ok": True, "win": True, "a_roll": 30, "d_roll": 20, "amount": 5000,
+         "bonus": 0.06, "halved": True, "xp": 30, "penalty": 0, "notes": []},
+        "سارا",
+    )
+    check("فرمت نتیجه حمله", "۵٬۰۰۰ تی‌پوینت" in txt and "بونس سگ +۶٪" in txt and "زره افسانه‌ای" in txt)
 
-    # ── ایمپورت هندلرها و سیم‌کشی روی اپلیکیشن واقعی (بدون شبکه) ──
+    # ═══ ایمپورت و رجیستر هندلرها ═══
     import handlers  # noqa
     from telegram.ext import Application
     app = Application.builder().token("123:test").build()
     handlers.register_handlers(app)
     total = sum(len(h) for h in app.handlers.values())
-    check("همه هندلرها رجیستر شدن", total >= 25, f"handlers={total}")
+    check("همه هندلرها رجیستر شدن", total >= 40, f"{total}")
 
-    # فرمت‌ها
-    check("فرمت عدد فارسی", fa_num(12345) == "۱۲٬۳۴۵", fa_num(12345))
-    check("فرمت مدت", fa_dur(169) == "۲ دقیقه و ۴۹ ثانیه", fa_dur(169))
-    check("واحد پول کامل", money(12345) == "۱۲٬۳۴۵ تی‌پوینت", money(12345))
-    check("واحد پول خلاصه", money_tp(12345) == "۱۲٬۳۴۵ TP", money_tp(12345))
+    # regex دستورهای متنی
+    import re
+    pats = {
+        "buy": re.compile(r"^خرید[\s‌]+(.+)$"),
+        "buydog": re.compile(r"^خرید[\s‌]+سگ[\s‌]+(.+)$"),
+        "plant": re.compile(r"^کاشت[\s‌]+(.+)$"),
+    }
+    check("پترن خرید چاقو", pats["buy"].match("خرید چاقو").group(1) == "چاقو")
+    check("پترن خرید سگ دوبرمن اصغر", pats["buydog"].match("خرید سگ دوبرمن اصغر").group(1) == "دوبرمن اصغر")
+    check("پترن کاشت", pats["plant"].match("کاشت تریاک"))
+
+    check("واحد پول", money(1000) == "۱٬۰۰۰ تی‌پوینت" and money_tp(1000) == "۱٬۰۰۰ TP")
 
     print(f"\n🎉 همه تست‌ها سبز شدن — {PASS} مورد")
 

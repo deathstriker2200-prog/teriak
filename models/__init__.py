@@ -1,3 +1,3 @@
-from models.models import InventoryItem, Plot, User
+from models.models import Dog, InventoryItem, Plot, SeedStock, User
 
-__all__ = ["User", "Plot", "InventoryItem"]
+__all__ = ["User", "Plot", "InventoryItem", "SeedStock", "Dog"]

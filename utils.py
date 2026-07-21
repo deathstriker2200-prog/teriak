@@ -55,3 +55,36 @@ def money(n) -> str:
 def money_tp(n) -> str:
     """مبلغ خلاصه برای دکمه‌ها و لیست‌ها — مثل «۱۲٬۵۰۰ TP»"""
     return f"{fa_num(n)} {UNIT_SHORT}"
+
+
+# ───────── پردازش اسم فارسی (برای دستورهای متنی مثل «خرید چاقو») ─────────
+
+def normalize_fa(text: str) -> str:
+    """یکدست‌سازی متن فارسی برای مقایسه اسم‌ها"""
+    t = (text or "")
+    t = t.replace("ي", "ی").replace("ك", "ک")
+    t = t.replace("‌", " ").replace("_", " ")
+    t = t.replace("!", "").replace("؟", "")
+    return " ".join(t.split())
+
+
+def find_by_name(catalog: dict, query: str):
+    """
+    پیدا کردن آیتم از روی اسم — اول مچ دقیق بعد مچ جزئی
+    خروجی: (key, item) یا (None, None)
+    """
+    q = normalize_fa(query)
+    if not q:
+        return None, None
+
+    for key, item in catalog.items():
+        if normalize_fa(item["name"]) == q:
+            return key, item
+
+    partial = [
+        (key, item) for key, item in catalog.items()
+        if q in normalize_fa(item["name"]) or normalize_fa(item["name"]).startswith(q)
+    ]
+    if len(partial) == 1:
+        return partial[0]
+    return None, None

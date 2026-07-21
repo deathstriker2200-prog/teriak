@@ -4,6 +4,8 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
+from utils import fa_num, money
+
 
 async def respond(update: Update, text: str, markup=None, alert: str | None = None) -> None:
     """
@@ -25,3 +27,40 @@ async def respond(update: Update, text: str, markup=None, alert: str | None = No
 def parts(update: Update) -> list[str]:
     """تیکه‌های callback_data به ازای : """
     return update.callback_query.data.split(":")
+
+
+def format_attack_result(result: dict, target_name: str) -> str:
+    """متن نتیجه حمله — مشترک بین حمله منویی و حمله ریپلای تو گروه"""
+    roll_line = f"🎲 تو {fa_num(result['a_roll'])} | اون {fa_num(result['d_roll'])}"
+
+    mods: list[str] = []
+    if result.get("bonus"):
+        mods.append(f"🐺 بونس سگ +{fa_num(int(result['bonus'] * 100))}٪")
+    if result.get("halved"):
+        mods.append("🛡 زره افسانه‌ایش نصفش کرد")
+    mods_line = ("\n" + " | ".join(mods)) if mods else ""
+
+    if result["win"]:
+        steal_line = (
+            f"{target_name} لو رفت و {money(result['amount'])} لقمت شد"
+            if result["amount"] else f"جیب {target_name} خالی بود بدبخت 🕳"
+        )
+        text = (
+            "<b>✅ زدی تو خال</b>\n\n"
+            f"{steal_line}\n"
+            f"{roll_line}{mods_line}\n"
+            f"✨ {fa_num(result.get('xp', 0))} تجربه گرفتی"
+        )
+    else:
+        text = (
+            "<b>❌ له شدی داداش</b>\n\n"
+            f"{target_name} حسابت رو رسوند\n"
+            f"{roll_line}{mods_line}\n"
+            f"⚡ {fa_num(result.get('penalty', 0))} انرژی سوختی\n"
+            f"✨ {fa_num(result.get('xp', 0))} تجربه تسلیت"
+        )
+
+    notes = result.get("notes") or []
+    if notes:
+        text += "\n\n" + "\n".join(notes)
+    return text
