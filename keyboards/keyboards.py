@@ -113,6 +113,57 @@ def admin_kb() -> InlineKeyboardMarkup:
     ])
 
 
+def admin_users_kb(users: list) -> InlineKeyboardMarkup:
+    """لیست نتایج جستجوی /user — هرکدوم یه دکمه"""
+    rows = []
+    for u in users:
+        name = u.first_name or u.username or f"کاربر {u.telegram_id}"
+        rows.append([_btn(f"👤 {name} | {u.telegram_id}", f"adm:u:{u.telegram_id}", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def admin_user_kb(tg_id: int) -> InlineKeyboardMarkup:
+    """دکمه‌های کارت کاربر تو پنل ادمین (gtp/gxp = دادن به اون کاربر)"""
+    return InlineKeyboardMarkup([
+        [_btn("💰 پول بده", f"adm:gtp:{tg_id}", SUCCESS)],
+        [_btn("✨ XP بده", f"adm:gxp:{tg_id}", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+# ───────── آموزشات (هلپ دکمه‌دار) 📖 ─────────
+# key → عنوان دکمه — متن کامل هر بخش تو handlers/start.py (HELP_SECTIONS)
+HELP_MENU = [
+    ("farm",   "🌱 کاشت و برداشت"),
+    ("shop",   "🛒 شاپ"),
+    ("attack", "⚔️ حمله"),
+    ("dogs",   "🐕 سگ‌ها"),
+    ("team",   "🏴 تیم"),
+    ("bank",   "🏦 بانک"),
+    ("mine",   "⛏ کنده‌کاری"),
+    ("world",  "🌍 جستجو و رویدادها"),
+    ("eco",    "⭐ لول و اقتصاد"),
+]
+
+
+def help_menu_kb() -> InlineKeyboardMarkup:
+    """منوی بخش‌های آموزشات — هر بخش یه دکمه"""
+    rows: list[list[InlineKeyboardButton]] = []
+    for i in range(0, len(HELP_MENU), 2):
+        chunk = HELP_MENU[i:i + 2]
+        rows.append([_btn(title, f"help:sec:{key}", PRIMARY) for key, title in chunk])
+    return InlineKeyboardMarkup(rows)
+
+
+def help_back_kb() -> InlineKeyboardMarkup:
+    """🔙 آموزشات — برگشت به منوی اصلی هلپ"""
+    return InlineKeyboardMarkup([
+        [_btn("🔙 آموزشات", "help:menu", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
 # ───────── پروفایل ─────────
 
 def profile_kb() -> InlineKeyboardMarkup:

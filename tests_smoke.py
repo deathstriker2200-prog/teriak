@@ -1218,7 +1218,7 @@ async def main() -> None:
         check("بازار منقضی ری‌رول شد", rolled)
         pcts, left = await world_svc.market_pcts(s)
         check("همه بذرهای عادی تو بازارن", set(pcts) == set(world_svc.normal_seed_keys()), str(pcts))
-        check("درصدهای بازار تو بازه −40 تا +120",
+        check("درصدهای بازار تو بازه کانفیگ (−30 تا +50)",
               all(config.MARKET_MIN_PCT <= p <= config.MARKET_MAX_PCT for p in pcts.values()))
         check("افسانه‌ای‌ها تو بازار نیستن", "jahannam" not in pcts and "eblis" not in pcts)
         m = world_svc.market_mult(pcts, "marijuana")
@@ -1437,6 +1437,203 @@ async def main() -> None:
           re.compile(r"^جستجو!?$").match("جستجو")
           and re.compile(r"^پناهگاه!?$").match("پناهگاه")
           and re.compile(r"^قمارخانه!?$|^قمار!?$").match("قمار"))
+
+
+    # ═══ آپدیت جدید: بازار 50/50 | متن جدید بازار | قفل کاشت | هلپ دکمه‌دار | /user /addtp /addxp | خوش‌آمد گروه ═══
+
+    # ── توزیع درصد بازار: 50/50 سود-ضرر و اغلب تو بازه کم‌نوسان ──
+    random.seed(21)
+    rolls = [world_svc.market_pct_roll() for _ in range(4000)]
+    check("درصد بازار بین 30٪− تا 50٪+",
+          min(rolls) >= -30 and max(rolls) <= 50, f"{min(rolls)}..{max(rolls)}")
+    ups = [r for r in rolls if r > 0]
+    downs = [r for r in rolls if r < 0]
+    check("سود و ضرر 50/50", 0.42 < len(ups) / max(1, len(downs) + len(ups)) < 0.58,
+          f"+:{len(ups)} −:{len(downs)}")
+    common = sum(1 for r in rolls if (0 <= r <= 20) or (-10 <= r <= 0)) / len(rolls)
+    check("اغلب‌ها (70٪+) تو بازه سود ≤20 و ضرر ≤10", common > 0.70, f"{common:.1%}")
+    check("تنظیمات بازار جدید",
+          config.MARKET_MIN_PCT == -30 and config.MARKET_MAX_PCT == 50
+          and config.MARKET_UP_COMMON == 20 and config.MARKET_DOWN_COMMON == 10)
+
+    # ── متن وضعیت بازار با علامت‌های 🟢🔴 ──
+    mtxt = world_svc.market_view_text(
+        {"marijuana": 46, "gharch": -12, "peyote": 9, "teriak": 34, "cocaine": -30}, 14340)
+    check("متن بازار هدر و راهنمای 🟢🔴 رو داره",
+          "📈 وضعیت بازار سیاه" in mtxt and "ارزش خرید" in mtxt and "🔴" in mtxt and "🟢" in mtxt
+          and "نشان می‌ده" in mtxt)
+    check("خط محصول با قیمت فروش و پایه",
+          "🟢46% | قیمت فروش: 613 | قیمت پایه: 420" in mtxt, mtxt.splitlines()[6][:90])
+    check("محصول افت کرده 🔴 می‌گیره", "🔴12%" in mtxt and "📉 قارچ" in mtxt)
+    check("تایمر ری‌رول بازار", "⏳ بازار 3 ساعت و 59 دقیقه دیگه ری‌رول میشه" in mtxt)
+
+    # ── قفل کاشت با لول ناکافی — متن دقیق ──
+    async with session_scope() as s:
+        lk, _ = await users.get_or_create(s, tg(8810, "lockp", "قفلی"))
+        lk.level = 2
+        lplots = await farming.get_user_plots(s, lk.id)
+        ok, msg = await farming.plant(s, lk, lplots[0], "cocaine")
+        check("کاشت محصول قفل رد میشه با متن جدید",
+              not ok and "قابل دسترسه" in msg and "لول (10)" in msg and "لولت (2)" in msg and "کنده کاری کن" in msg,
+          msg)
+        await s.commit()
+
+    # ── متن کاشت قفل از خود هندلر متنی (هدر 🌱 کاشت) ──
+    from handlers import textcmd as textcmd_h2
+    upd = _text_update("کاشت کوکائین", uid=8810, uname="lockp", fname="قفلی")
+    await textcmd_h2.plant_text(upd, None)
+    ptxt = upd.message.calls[-1][1]
+    check("هندلر کاشت متنی متن قفل رو با هدر جدا می‌فرسته",
+          "<b>🌱 کاشت</b>" in ptxt and "قابل دسترسه" in ptxt and "بیشتر کنده کاری کن" in ptxt,
+          ptxt[:120])
+
+    # ── دستورهای جدید: «زمین» | «لیدربرد» | «وضعیت هوا» | «وضعیت هواشناسی» ──
+    sn = "\u200c"
+    farm_pat2 = re.compile(rf"^مزرعه!?$|^زمین[\s{sn}]*های[\s{sn}]*من!?$|^زمین[\s{sn}]*هام!?$|^زمین[\s{sn}]*ها!?$|^زمین!?$")
+    check("پترن «زمین» به مزرعه وصله", farm_pat2.match("زمین") and farm_pat2.match("مزرعه"))
+    rank_pat2 = re.compile(rf"^رتبه!?$|^رتبه[\s{sn}]*بندی!?$|^لیدربرد!?$|^لیدر[\s{sn}]*برد!?$")
+    check("پترن «لیدربرد» و «رتبه»", rank_pat2.match("لیدربرد") and rank_pat2.match("رتبه"))
+    w_pat2 = re.compile(rf"^وضعیت[\s{sn}]+آب[\s{sn}]+و[\s{sn}]+هوا!?$|^آب[\s{sn}]*و[\s{sn}]*هوا!?$|^وضعیت[\s{sn}]+هواشناسی!?$|^وضعیت[\s{sn}]+هوا!?$")
+    check("پترن «وضعیت هوا» و «وضعیت هواشناسی»",
+          w_pat2.match("وضعیت هوا") and w_pat2.match("وضعیت هواشناسی") and w_pat2.match("وضعیت آب و هوا"))
+
+    # ── هلپ دکمه‌دار: منو | بخش‌ها | 🔙 آموزشات ──
+    from handlers import start as start_h2
+    check("منوی هلپ متن راهنمای انتخاب بخش رو داره",
+          "بخش مورد نظر رو انتخاب کن تا آموزشات لازم رو بهت بدم" in start_h2._HELP_INTRO)
+    menu_keys = [k for k, _ in kb2.HELP_MENU]
+    check("هر بخش هلپ جایی تو متن‌ها هست",
+          set(menu_keys) == set(start_h2.HELP_SECTIONS.keys()), str(menu_keys))
+    hkb = kb2.help_menu_kb()
+    h_datas = [b.callback_data for row in hkb.inline_keyboard for b in row]
+    check("دکمه‌های هلپ برای هر بخش ساخته میشن",
+          all(f"help:sec:{k}" in h_datas for k in menu_keys), str(h_datas))
+    bkb = kb2.help_back_kb()
+    b_datas = [b.callback_data for row in bkb.inline_keyboard for b in row]
+    b_texts = [b.text for row in bkb.inline_keyboard for b in row]
+    check("دکمه 🔙 آموزشات هست",
+          "help:menu" in b_datas and any("آموزشات" in t for t in b_texts), str(b_texts))
+    check("کیبورد برگشت هومم داره (تو گروه strip میشه)", "menu:home" in b_datas)  # تو گروه strip میشه
+    for must in ("تیم", "حمله", "سگ", "کاشت", "بانک"):
+        check(f"بخش «{must}» تو منوی هلپ هست", any(must in title for _, title in kb2.HELP_MENU))
+
+    # بخش سگ‌ها قابلیت هر نژاد + شخصیت‌ها رو داره
+    dog_sec = start_h2.HELP_SECTIONS["dogs"]
+    check("بخش سگ‌ها قابلیت هر نژاد رو داره",
+          all(d["breed"] in dog_sec and d["ability"] in dog_sec for d in config.DOGS.values()))
+    check("بخش سگ‌ها شخصیت‌ها رو داره",
+          all(p["name"] in dog_sec and p["desc"] in dog_sec for p in config.DOG_PERSONALITIES.values()))
+
+    upd = _text_update("راهنما", uid=8811, uname="helpr", fname="هلپر")
+    await start_h2.help_cmd(upd, None)
+    hmsg, hk = upd.message.calls[-1][1], upd.message.calls[-1][2].get("reply_markup")
+    check("خروجی «راهنما» منوی دکمه‌دار میاره",
+          "انتخاب کن" in hmsg and hk is not None
+          and any(b.callback_data == "help:sec:farm" for row in hk.inline_keyboard for b in row))
+
+    # رفتن تو یه بخش و برگشت با فیک کالبک
+    upd = _fake_update("help:sec:team", uid=8811)
+    await start_h2.help_section_cb(upd, None)
+    edittext = next(c[1] for c in upd.callback_query.calls if c[0] == "edit")
+    check("بخش تیم هلپ باز میشه با 🔙 آموزشات",
+          "<b>🏴 تیم</b>" in edittext and "جوین تیم" in edittext)
+    upd = _fake_update("help:menu", uid=8811)
+    await start_h2.help_menu_cb(upd, None)
+    backtext = next(c[1] for c in upd.callback_query.calls if c[0] == "edit")
+    check("برگشت به منوی آموزشات", "بخش مورد نظر رو انتخاب کن" in backtext)
+
+    # ── /user و /addtp و /addxp ادمین ──
+    from handlers import admin as admin_h
+    async with session_scope() as s:
+        victim2, _ = await users.get_or_create(s, tg(8812, "silktoch", "سیلکتاج"))
+        victim2.cash = 1000
+        victim2.level = 5
+        await s.commit()
+
+        check("جستجوی /user با آیدی عددی",
+              [u.telegram_id for u in await users.search_users(s, "8812")] == [8812])
+        check("جستجوی /user با @یوزرنیم",
+              [u.telegram_id for u in await users.search_users(s, "@silktoch")] == [8812])
+        check("جستجوی /user با بخشی از اسم",
+              any(u.telegram_id == 8812 for u in await users.search_users(s, "سیلک")))
+        check("جستجوی پوچ", await users.search_users(s, "ناشناس‌تازه") == [])
+        await s.commit()
+
+    # /addtp با کانتکست فیک
+    async def _run_admin_cmd(fn, args, uid):
+        updx = _text_update("/x", uid=uid, uname="adm", fname="ادمین")
+        await fn(updx, SimpleNamespace(args=args))
+        return updx
+
+    updx = await _run_admin_cmd(admin_h.addtp_cmd, ["8812", "5000"], 1001)
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        check("/addtp مستقیم واریز کرد",
+              t.cash == 6000 and "واریز شد" in updx.message.calls[-1][1] and "6,000" in updx.message.calls[-1][1],
+          updx.message.calls[-1][1][:100])
+
+    updx = await _run_admin_cmd(admin_h.addxp_cmd, ["8812", "300"], 1001)
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        check("/addxp مستقیم xp داد", t.xp > 0 or t.level > 5, f"lvl={t.level} xp={t.xp}")
+        check("گزارش addxp", "تجربه دادی" in updx.message.calls[-1][1], updx.message.calls[-1][1][:100])
+
+    updx = await _run_admin_cmd(admin_h.addtp_cmd, ["999999999", "5000"], 1001)
+    check("addtp به طرف ناموجود خطا میده", "نیس" in updx.message.calls[-1][1])
+    updx = await _run_admin_cmd(admin_h.addtp_cmd, ["8812"], 1001)
+    check("addtp ناقص راهنما میده", "فرم درست" in updx.message.calls[-1][1])
+    updx = await _run_admin_cmd(admin_h.addtp_cmd, ["8812", "5000"], 1002)  # غیرادمین
+    check("addtp برای غیرادمین کاملاً بی‌صداس", not updx.message.calls)
+
+    # /user با یه نتیجه → کارت + دکمه‌ها
+    updx = await _run_admin_cmd(admin_h.user_cmd, ["@silktoch"], 1001)
+    card_text, card_mk = updx.message.calls[-1][1], updx.message.calls[-1][2].get("reply_markup")
+    check("/user کارت طرف رو میاره",
+          "<b>👤 سیلکتاج</b>" in card_text and "8812" in card_text and "🏦 بانک" in card_text,
+          card_text[:120])
+    check("دکمه‌های پول/XP روی کارتن",
+          card_mk is not None
+          and "adm:gtp:8812" in [b.callback_data for row in card_mk.inline_keyboard for b in row]
+          and "adm:gxp:8812" in [b.callback_data for row in card_mk.inline_keyboard for b in row])
+
+    # /user با چند نتیجه → لیست دکمه‌دار
+    updx = await _run_admin_cmd(admin_h.user_cmd, [""], 1001)
+    check("/user بدون آرگومان راهنما میده", "فرم درست" in updx.message.calls[-1][1])
+
+    # فلو کامل کارت → پول دادن با پیام بعدی
+    upd = _fake_update("adm:gtp:8812", uid=1001)
+    await admin_h.admin_cb(upd, None)
+    async with session_scope() as s:
+        adm_user = await users.get_by_tg(s, 1001)
+        check("دکمه 💰 پول بده فلو pending رو شروع کرد",
+              adm_user.pending_action == "admtp" and adm_user.pending_value == "8812")
+    upd = _text_update("2500", uid=1001, uname="adm", fname="ادمین")
+    try:
+        await pending_h.capture(upd, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        adm_user = await users.get_by_tg(s, 1001)
+        check("pending ادمین پول رو به طرف رسوند",
+              t.cash == 8500 and adm_user.pending_action is None,
+              f"{t.cash}/{adm_user.pending_action}")
+        check("گزارش واریز ادمین", "واریز شد به" in upd.message.calls[-1][1], upd.message.calls[-1][1][:80])
+        # لغو فلو ادمین
+        adm_user.pending_action = "admxp"
+        adm_user.pending_value = "8812"
+        msg_c = await dog_svc.cancel_pending(s, adm_user)
+        check("لغو فلو ادمین پاکش می‌کنه", adm_user.pending_action is None and "بی‌خیال" in msg_c)
+
+    # ── متن خوش‌آمد گروه (اد شدن ربات) ──
+    gtxt = start_h2.group_welcome_text("TeriakyBot", is_admin=False)
+    check("متن اد گروه هدر و آموزش‌ها رو داره",
+          "🔥 سلام رفقا تریاکی اومد وسط این گروه" in gtxt
+          and "/start@TeriakyBot" in gtxt and "با 500 تی‌پوینت" in gtxt
+          and "«حمله»" in gtxt and "«کنده کاری»" in gtxt and "شاپ" in gtxt)
+    check("هشدار ادمین فقط وقتی ادمین نیستیم میاد",
+          "⚠️ من هنوز تو این گروه ادمین نیستم" in gtxt
+          and "⚠️" not in start_h2.group_welcome_text("TeriakyBot", is_admin=True))
 
     check("واحد پول لاتین", money(1000) == "1,000 تی‌پوینت" and money_tp(1000) == "1,000 TP")
     check("عدد لاتین", fa_num(12345) == "12,345" and fa_dur(169) == "2 دقیقه و 49 ثانیه")

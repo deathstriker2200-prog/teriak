@@ -1,6 +1,6 @@
 """سیم‌کشی هندلرها به اپلیکیشن — دستورهای متنی هم PV هم گروه جواب میدن"""
 
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
 from handlers import admin, attack, backup, bank, dogs, farm, mine, pending, profile, rank, shop, start, team, textcmd, world
 
@@ -28,6 +28,12 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("help", start.help_cmd))
     app.add_handler(CommandHandler("backup", backup.backup_cmd))
     app.add_handler(CommandHandler("upload_backup", backup.upload_backup_cmd))
+    app.add_handler(CommandHandler("user", admin.user_cmd))
+    app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
+    app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
+
+    # ── اد شدن ربات به گروه — خودش متن خوش‌آمد می‌فرسته ──
+    app.add_handler(ChatMemberHandler(start.bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
     # ── دستورهای متنی فارسی (PV و گروه) ──
     # ترتیب اضافه شدن مهمه: الگوهای اختصاصی اول
@@ -41,7 +47,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^خرید{S}+(.+)$"), textcmd.buy_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^کاشت{S}+(.+)$"), textcmd.plant_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^سگ{S}*های{S}*من!?$"), textcmd.dogs_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^مزرعه!?$|^زمین{S}*های{S}*من!?$|^زمین{S}*هام!?$|^زمین{S}*ها!?$"), textcmd.farm_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^مزرعه!?$|^زمین{S}*های{S}*من!?$|^زمین{S}*هام!?$|^زمین{S}*ها!?$|^زمین!?$"), textcmd.farm_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^رتبه!?$|^رتبه{S}*بندی!?$|^لیدربرد!?$|^لیدر{S}*برد!?$"), rank.rank_cb))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^آمار{S}+(.+)$"), dogs.dog_stats_text))
 
     # ── تیم ──
@@ -65,7 +72,7 @@ def register_handlers(app: Application) -> None:
 
     # ── سیستم‌های جهان ──
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^جستجو!?$|^جست{S}*و{S}*جو!?$"), world.search_cmd))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^وضعیت{S}+آب{S}+و{S}+هوا!?$|^آب{S}*و{S}*هوا!?$"), world.weather_cmd))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^وضعیت{S}+آب{S}+و{S}+هوا!?$|^آب{S}*و{S}*هوا!?$|^وضعیت{S}+هواشناسی!?$|^وضعیت{S}+هوا!?$"), world.weather_cmd))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^وضعیت{S}+بازار!?$|^بازار{S}*سیاه!?$"), world.market_cmd))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^پناهگاه!?$"), world.shelter_cmd))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^قمارخانه!?$|^قمار!?$"), world.casino_cmd))
@@ -140,6 +147,10 @@ def register_handlers(app: Application) -> None:
     # ── حمله ──
     app.add_handler(CallbackQueryHandler(attack.find_cb, pattern=r"^att:find$"))
     app.add_handler(CallbackQueryHandler(attack.attack_execute, pattern=r"^cf:att:\d+$"))
+
+    # ── آموزشات (هلپ دکمه‌دار) ──
+    app.add_handler(CallbackQueryHandler(start.help_section_cb, pattern=r"^help:sec:\w+$"))
+    app.add_handler(CallbackQueryHandler(start.help_menu_cb, pattern=r"^help:menu$"))
 
     # ── تایید دستورهای متنی (فقط خود کاربر — اسم سگ اختیاریه) ──
     app.add_handler(CallbackQueryHandler(textcmd.tx_confirm_cb, pattern=r"^txcf:\w+:\w+:\d+(?::.+)?$"))

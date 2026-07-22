@@ -84,7 +84,10 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
     if state != "empty":
         return False, "❌ این زمین الان خالی نیس"
     if not economy.is_seed_unlocked(seed_key, user.level):
-        return False, "🔒 این محصول هنوز برات باز نشده"
+        return False, (
+            f"🔒 این محصول در لول ({fa_num(seed['min_level'])}) قابل دسترسه و تو لولت ({fa_num(user.level)})، "
+            "هنوز برات باز نشده بیشتر کنده کاری کن"
+        )
 
     stock = await get_stock(session, user.id)
     if stock.get(seed_key, 0) <= 0:

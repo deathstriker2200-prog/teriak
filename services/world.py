@@ -166,6 +166,19 @@ def normal_seed_keys() -> list[str]:
     return [k for k, v in config.SEEDS.items() if not v.get("legendary")]
 
 
+def market_pct_roll() -> int:
+    """
+    قرعه درصد تغییر یه محصول — سود/ضرر 50/50
+    اغلب‌ها تو بازه کم‌نوسانن (سود 0..20 | ضرر 0..10) و گاهی بازه کامل (تا +50 / تا −30)
+    """
+    up = random.random() < 0.5
+    if random.random() < config.MARKET_COMMON_WEIGHT:
+        return random.randint(0, config.MARKET_UP_COMMON) if up else -random.randint(0, config.MARKET_DOWN_COMMON)
+    if up:
+        return random.randint(config.MARKET_UP_COMMON + 1, config.MARKET_MAX_PCT)
+    return -random.randint(config.MARKET_DOWN_COMMON + 1, -config.MARKET_MIN_PCT)
+
+
 async def ensure_market(session: AsyncSession) -> bool:
     """اگه زمان بازار گذشته بود رول کن — خروجی True یعنی همین لحظه رول شد"""
     until_raw = await _meta(session, "market_until")
@@ -180,7 +193,7 @@ async def ensure_market(session: AsyncSession) -> bool:
 
     parts = []
     for k in normal_seed_keys():
-        pct = random.randint(config.MARKET_MIN_PCT, config.MARKET_MAX_PCT)
+        pct = market_pct_roll()
         parts.append(f"{k}:{pct}")
     await _meta_set(session, "market", ",".join(parts))
     await _meta_set(session, "market_until", (now_utc() + timedelta(seconds=config.MARKET_ROLL_SECONDS)).isoformat())
@@ -208,6 +221,28 @@ def market_mult(pcts: dict[str, int], seed_key: str) -> float:
     if cfg.get("legendary"):
         return 1.0
     return max(0.1, 1.0 + pcts[seed_key] / 100)
+
+
+def market_view_text(pcts: dict[str, int], left: int) -> str:
+    """متن بخش «وضعیت بازار سیاه» — 🟢 ارزش خرید بالا | 🔴 ارزش خرید نداره"""
+    lines = [
+        "<b>📈 وضعیت بازار سیاه</b>",
+        "",
+        "اونایی که با 🔴 علامت گذاری شدن ارزش خرید ندارن چون الان ارزشش توی بازار پایین اومده اما، برعکس اونایی که با 🟢 علامت گذاری شدن ارزش خرید بالایی دارن چون ارزششون توی بازار بالا رفته",
+        "درصد کنارشم مقدار افزایش یا کاهش رو نشان می‌ده",
+        "",
+    ]
+    for key in normal_seed_keys():
+        sd = config.SEEDS[key]
+        pct = pcts.get(key, 0)
+        trend = "📈" if pct >= 0 else "📉"
+        dot = "🟢" if pct >= 0 else "🔴"
+        cur = int(sd["sell"] * (1 + pct / 100))
+        lines.append(f"{trend} {sd['name']}")
+        lines.append(f"{dot}{fa_num(abs(pct))}% | قیمت فروش: {fa_num(cur)} | قیمت پایه: {fa_num(sd['sell'])}")
+    lines.append("")
+    lines.append(f"⏳ بازار {fa_dur(left)} دیگه ری‌رول میشه")
+    return "\n".join(lines)
 
 
 # ═════════ کیفیت محصول ⭐ ═════════

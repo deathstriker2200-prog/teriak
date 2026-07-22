@@ -7,11 +7,12 @@
 from telegram import Update
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
+import config
 from database import session_scope
 from services import bank as bank_svc
 from services import dogs as dog_svc
 from services import teams, users
-from utils import esc, money, normalize_fa, parse_amount
+from utils import esc, fa_num, money, normalize_fa, parse_amount
 
 # متن‌هایی که دستورن و نباید به‌عنوان اسم قورت داده بشن («لغو» جداگانه هندل میشه)
 _KNOWN_TEXTS = {
@@ -22,8 +23,8 @@ _KNOWN_TEXTS = {
     "انحلال تیم", "ساخت تیم", "رتبه", "رتبه بندی", "بانک", "واریز",
     "تیم ساختمان", "تیم ساختمان ها", "تیم ساخت", "تیم پروفایل", "تیم عضویت",
     "تیم لیدربرد", "تیم چالش", "تیم کوئست", "تیم بانک", "تیم واریز",
-    "جستجو", "جست و جو", "آب و هوا", "وضعیت آب و هوا", "وضعیت بازار",
-    "بازار سیاه", "پناهگاه", "قمار", "قمارخانه",
+    "جستجو", "جست و جو", "آب و هوا", "وضعیت آب و هوا", "وضعیت هوا", "وضعیت هواشناسی", "وضعیت بازار",
+    "بازار سیاه", "پناهگاه", "قمار", "قمارخانه", "زمین", "لیدربرد", "رتبه بندی",
 }
 
 _KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ")
@@ -97,6 +98,47 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
             else:
                 await update.message.reply_html(res)
+            raise ApplicationHandlerStop()
+
+        # ── مبلغ هدیه ادمین به یه کاربر دیگه (از کارت /user) ──
+        if action in ("admtp", "admxp"):
+            if update.effective_user.id not in config.ADMIN_IDS:
+                user.pending_action = None
+                user.pending_value = None
+                await s.commit()
+                return
+
+            amount = parse_amount(text)
+            if amount is None:
+                await update.message.reply_html("❌ فقط عددشو بفرست — مثلا 5000\n\n❌ پشیمون شدی بنویس «لغو»")
+                raise ApplicationHandlerStop()
+
+            target_tg = int(user.pending_value or 0)
+            target = await users.get_by_tg(s, target_tg)
+            user.pending_action = None
+            user.pending_value = None
+            if target is None:
+                await s.commit()
+                await update.message.reply_html("❌ طرف پیدا نشد")
+                raise ApplicationHandlerStop()
+
+            name = esc(users.display_name(target))
+            if action == "admtp":
+                target.cash += amount
+                cash = target.cash
+                await s.commit()
+                await update.message.reply_html(
+                    f"<b>💰 {money(amount)} واریز شد به {name}</b>\n\n"
+                    f"موجودی جدیدش {money(cash)}"
+                )
+            else:
+                notes = users.add_xp(target, amount)
+                level = target.level
+                await s.commit()
+                out = f"<b>✨ {fa_num(amount)} تجربه دادی به {name}</b>\n\n⭐ الان لول {fa_num(level)} ـه"
+                if notes:
+                    out += "\n\n" + "\n".join(notes)
+                await update.message.reply_html(out)
             raise ApplicationHandlerStop()
 
         # ── اسم تیم بعد از «ساخت تیم» ──

@@ -218,7 +218,7 @@ async def cancel_pending(session: AsyncSession, user: User) -> str:
     action = user.pending_action
     if action == "dogname" and user.pending_value in config.DOGS:
         user.cash += config.DOGS[user.pending_value]["price"]
-    elif action in ("teamname", "bankdep", "bankwd"):
+    elif action in ("teamname", "bankdep", "bankwd", "admtp", "admxp"):
         pass  # اینا هنوز پولی جابه‌جا نکردن — فقط اکشن معلق پاک میشه
     else:
         return "🤷 کاری در جریان نیس که"

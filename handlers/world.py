@@ -71,12 +71,12 @@ async def weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     lines = [
         "<b>🌦 وضعیت آب و هوا</b>",
         "",
-        f"{w['emoji']} <b>{w['name']}</b>",
+        f"{w['emoji']} {w['name']}",
         f"⏳ {fa_dur(left)} دیگه عوض میشه",
         "",
     ]
     if key == "normal":
-        lines.append("افکت خاصی فعال نیس — هوا عادیه")
+        lines.append("افکت خاصی فعال نیست — هوا عادیه")
     else:
         lines.append("افکت‌های فعلی:")
         for b in w.get("boosts", []):
@@ -94,20 +94,7 @@ async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         pcts, left = await world_svc.market_pcts(s)
         await s.commit()
 
-    lines = ["<b>📈 وضعیت بازار سیاه</b>", ""]
-    for key in world_svc.normal_seed_keys():
-        sd = config.SEEDS[key]
-        pct = pcts.get(key, 0)
-        emoji = "📈" if pct >= 0 else "📉"
-        cur = int(sd["sell"] * (1 + pct / 100))
-        sign = f"+{fa_num(pct)}" if pct >= 0 else f"−{fa_num(-pct)}"
-        lines.append(
-            f"{emoji} {esc(sd['name'])}\n{sign}٪ | قیمت فروش: {fa_num(cur)} | قیمت پایه: {fa_num(sd['sell'])}"
-        )
-    lines.append("")
-    lines.append(f"⏳ بازار {fa_dur(left)} دیگه ری‌رول میشه")
-    lines.append("🔥😈 بذرهای افسانه‌ای تو بازار سیاه نیستن")
-    await respond(update, "\n".join(lines), kb.home_kb())
+    await respond(update, world_svc.market_view_text(pcts, left), kb.home_kb())
 
 
 # ═════════ پناهگاه 🏚 ═════════

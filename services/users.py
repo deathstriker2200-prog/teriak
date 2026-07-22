@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
@@ -36,6 +36,39 @@ async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
 async def get_by_tg(session: AsyncSession, telegram_id: int) -> User | None:
     q = select(User).where(User.telegram_id == telegram_id)
     return (await session.execute(q)).scalar_one_or_none()
+
+
+async def search_users(session: AsyncSession, query: str) -> list[User]:
+    """
+    جستجوی کاربر برای /user ادمین
+    آیدی عددی → دقیق | @یوزرنیم → اول مچ دقیق بعد جزئی | بخشی از اسم/یوزرنیم → جزئی
+    """
+    q = (query or "").strip()
+    if not q:
+        return []
+    if q.lstrip("-").isdigit():
+        u = await get_by_tg(session, int(q))
+        return [u] if u else []
+
+    norm = q.lstrip("@").lower()
+    if not norm:
+        return []
+
+    exact = list((await session.execute(
+        select(User).where(func.lower(User.username) == norm).limit(1)
+    )).scalars())
+    if exact:
+        return exact
+
+    qy = (
+        select(User)
+        .where(
+            (func.lower(User.username).contains(norm))
+            | (func.lower(User.first_name).contains(norm))
+        )
+        .limit(8)
+    )
+    return list((await session.execute(qy)).scalars())
 
 
 def display_name(user: User) -> str:
