@@ -1,6 +1,6 @@
 """
 دستورهای متنی فارسی — هم PV هم گروه
-«شاپ» «پروفایل» «خرید چاقو» «خرید سگ دوبرمن اصغر» «کاشت تریاک»
+«شاپ» «پروفایل» «خرید چاقو» «خرید سگ دوبرمن» «کاشت ماری جوانا» «واریز 1200»
 «برداشت محصول» «حمله» (با ریپلای) «مزرعه» «سگ‌های من» «کنده کاری»
 
 ⚠️ برای کار کردن تو گروه، Privacy Mode ربات باید توی BotFather خاموش باشه
@@ -117,7 +117,7 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     dog_name = p[4] if len(p) > 4 else None  # اسم دلخواه سگ
 
     if update.effective_user.id != int(owner_id):
-        await update.callback_query.answer("این فاکتور مال تو نیس داداش 😅", show_alert=True)
+        await update.callback_query.answer("این فاکتور مال تو نیس رفیق 😅", show_alert=True)
         return
 
     async with session_scope() as s:
@@ -194,7 +194,7 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if tg_target.is_bot:
         return await respond(update, "😅 ربات‌ها رو نمیشه زد رفیق")
     if tg_target.id == update.effective_user.id:
-        return await respond(update, "😅 خودتو نزن داداش")
+        return await respond(update, "😅 خودتو نزن رفیق")
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -219,7 +219,7 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"⭐ لول {fa_num(target.level)}\n"
             f"💵 وضعیت جیبش: {combat.cash_bucket(target.cash)}\n"
             f"هزینه حمله ⚡ {fa_num(config.ATTACK_ENERGY_COST)} انرژی\n\n"
-            "مطمئنی داداش؟"
+            "مطمئنی رفیق؟"
         )
         target_id = target.id
         await s.commit()
@@ -232,7 +232,7 @@ async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _, target_id, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer("این دعوا مال تو نیس داداش 😅", show_alert=True)
+        await update.callback_query.answer("این دعوا مال تو نیس رفیق 😅", show_alert=True)
         return
 
     async with session_scope() as s:
@@ -262,6 +262,6 @@ async def tx_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer("مال تو نیس داداش 😅", show_alert=True)
+        await update.callback_query.answer("مال تو نیس رفیق 😅", show_alert=True)
         return
     await respond(update, "<b>😅 بی‌خیال شدیم</b>")

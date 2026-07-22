@@ -42,19 +42,27 @@ def upgrade_price(plot_level: int) -> int:
 
 # ───────── بذر و محصول ─────────
 
+def plot_yield_mult(plot_level: int) -> float:
+    """ضریب درآمد زمین تو لولش — هر لول ۲۵٪ بیشتر (×۱٫۲۵)"""
+    return config.PLOT_YIELD_PER_LEVEL ** max(0, plot_level - 1)
+
+
+def plot_speed_mult(plot_level: int) -> float:
+    """ضریب سرعت رشد زمین تو لولش — هر لول ۴۰٪ سرعت بیشتر (زمان ÷۱٫۴۰)"""
+    return config.PLOT_SPEED_PER_LEVEL ** max(0, plot_level - 1)
+
+
 def crop_yield(seed_key: str, plot_level: int = 1, user_level: int = 1) -> int:
     """درآمد برداشت با ضریب لول زمین و بونس لول کاربر"""
     base = config.SEEDS[seed_key]["sell"]
-    mult = config.PLOT_YIELD_MULT.get(plot_level, config.PLOT_YIELD_MULT[1])
     user_mult = 1 + config.LEVEL_YIELD_BONUS * max(0, user_level - 1)
-    return int(base * mult * user_mult)
+    return int(base * plot_yield_mult(plot_level) * user_mult)
 
 
 def crop_grow_seconds(seed_key: str, plot_level: int = 1) -> int:
-    """مدت آماده شدن با ضریب سرعت لول زمین"""
+    """مدت آماده شدن با ضریب سرعت لول زمین — هر لول آپ ۴۰٪ سرعت بیشتر"""
     minutes = config.SEEDS[seed_key]["grow_min"]
-    mult = config.PLOT_SPEED_MULT.get(plot_level, config.PLOT_SPEED_MULT[1])
-    return max(30, int(minutes * 60 * mult))
+    return max(30, int(minutes * 60 / plot_speed_mult(plot_level)))
 
 
 def is_seed_unlocked(seed_key: str, user_level: int) -> bool:

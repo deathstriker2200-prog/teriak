@@ -13,16 +13,16 @@ from utils import esc, fa_num, money, money_tp
 
 # ───────── متن‌ها ─────────
 
-def _sections_text(cash: int) -> str:
+def _sections_text(cash: int, level: int) -> str:
     return (
         "<b>🛒 فروشگاه زیرزمینی</b>\n\n"
-        f"💵 نقدینگی {money(cash)}\n\n"
-        "🔪 سلاح‌ها | قدرت حمله\n"
-        "🛡 زره‌ها | دفاع و شگفتی افسانه‌ای\n"
-        "🌱 بذرها | بخر و بکار تو زمینت\n"
-        "🐕 سگ‌ها | بادیگارد شخصی\n"
-        "🍖 غذای سگ | لول ببرش بالا\n\n"
-        "💡 تو گروه هم می‌تونی بنویسی «خرید چاقو»"
+        f"💵 نقدینگی {money(cash)}\n"
+        f"🌟 سطح: {fa_num(level)}\n\n"
+        "🔪 سلاح‌ها: قدرت حمله\n"
+        "🛡 زره‌ها: قدرت دفاع\n"
+        "🌱 بذرها: با کاشتنشون پول خوبی به چنگ میزنی\n"
+        "🐕 سگ‌ها: بادیگارد شخصی\n"
+        "🍖 غذای سگ: باهاش سگتو قویتر کن"
     )
 
 
@@ -32,16 +32,16 @@ async def _section_text(session, user, kind: str) -> str:
             "<b>🔪 بخش سلاح‌ها</b>\n\n"
             "هر سلاح یه Attack مشخص داره\n"
             "فقط بهترین سلاحت رو استت حساب میشه\n\n"
-            "💡 روی جنس بزن یا بنویس «خرید [اسم سلاح]» مثلا «خرید چاقو»"
+            "💡 برای خرید روی جنس کلیک کنید یا از دستور «خرید [اسم سلاح]» مثلا «خرید چاقو» استفاده کنید"
         )
     if kind == "arm":
         return (
             "<b>🛡 بخش زره‌ها</b>\n\n"
             "زره خسارت وارده رو کم می‌کنه\n"
             "فقط بهترین زرهت رو استت حساب میشه\n\n"
-            "💡 خرید با «خرید [اسم زره]» مثلا «خرید جلیقه سنگین»\n\n"
+            "💡 برای خرید روی جنس کلیک کنید یا از دستور «خرید [اسم زره]» مثلا «خرید جلیقه سنگین» استفاده کنید\n\n"
             f"👑 {config.ARMORS['legend']['name']}:\n"
-            f"<i>{esc(config.ARMORS['legend']['desc'])}</i>"
+            f"{esc(config.ARMORS['legend']['desc'])}"
         )
     if kind == "seed":
         stock = await farming.get_stock(session, user.id)
@@ -51,20 +51,17 @@ async def _section_text(session, user, kind: str) -> str:
         )
         return (
             "<b>🌱 بخش بذرها</b>\n\n"
-            "بذر بخر و تو زمینت بکار\n"
-            "هر بذر زمان رشد و قیمت فروش خودشو داره\n\n"
+            "صبر کن تا بذرها رشد کنن، بعدش میتونی برداشت کنی\n\n"
             f"📦 انبارت:\n{have or '▫️ خالیه'}\n\n"
-            "💡 کاشت با دستور «کاشت تریاک» هم میشه"
+            "💡 کاشت با دستور «کاشت ماری جوانا» هم میشه"
         )
     if kind == "dog":
         return (
             "<b>🐕 بخش سگ‌ها</b>\n\n"
             "سگ‌ها به قدرت حمله تو اضافه میشن\n"
             f"حداکثر {fa_num(config.MAX_DOGS)} سگ می‌تونی داشته باشی\n\n"
-            "👑 گرگ سیاه شبح کمیاب‌ترین و بهترین سگه\n\n"
-            "💡 بعد از پرداخت اسمشو ازت می‌پرسم و با اون اسم صداش می‌زنی\n"
-            "💡 خرید با «خرید سگ دوبرمن» | یا یه راست با اسم: «خرید سگ دوبرمن رکس»\n"
-            "💡 آمار هر سگ با «آمار [اسمش]» — از همونجا غذاشم می‌دی"
+            "برای خرید روی سگ مورد نظر کلیک کنید یا از دستور «خرید سگ [نژاد] [اسم موردنظر]» استفاده کنید\n\n"
+            "👑 گرگ سیاه شبح می‌تواند تا 30٪ از دفاع حریف را کاهش دهد و تا 10٪ غرامت بیشتری از حریف دریافت کند — با هر لول‌آپ به این مقدار نزدیک‌تر می‌شه"
         )
     if kind == "food":
         return (
@@ -107,7 +104,7 @@ async def render_section(update: Update, kind: str, alert: str | None = None) ->
 async def shop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        text = _sections_text(user.cash)
+        text = _sections_text(user.cash, user.level)
         await s.commit()
     await respond(update, text, kb.shop_sections_kb())
 

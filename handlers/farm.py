@@ -82,7 +82,7 @@ async def buy_plot_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"قیمتش {money(price)}\n"
         f"الان {money(cash)} داری\n"
         + (f"🔨 بعد خرید {fa_dur(build)} طول می‌کشه ساخته بشه\n" if build else "")
-        + "\nمی‌خری داداش؟"
+        + "\nمی‌خری رفیق؟"
     )
     await respond(update, text, kb.confirm_kb("cf:farm:buy"))
 
@@ -107,7 +107,7 @@ def _picker_text(stock: dict[str, int]) -> str:
     return (
         "<b>🌾 انبار بذرت خالیه</b>\n\n"
         "از بخش 🌱 بذرهای شاپ بذر بخر\n"
-        "یا تو گروه بنویس «خرید تریاک»"
+        "یا تو گروه بنویس «خرید ماری جوانا»"
     )
 
 
@@ -199,14 +199,16 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return await render_farm(update, alert="⭐ این زمین مکس لوله")
 
         price = economy.upgrade_price(plot.level)
-        old_mult = config.PLOT_YIELD_MULT[plot.level]
-        new_mult = config.PLOT_YIELD_MULT[plot.level + 1]
+        old_y = economy.plot_yield_mult(plot.level)
+        new_y = economy.plot_yield_mult(plot.level + 1)
+        old_sp = economy.plot_speed_mult(plot.level)
+        new_sp = economy.plot_speed_mult(plot.level + 1)
         text = (
-            f"<b>⬆️ آپگرید زمین</b>\n\n"
+            f"<b>⬆️ لول‌آپ زمین — تا لول {fa_num(config.PLOT_MAX_LEVEL)}</b>\n\n"
             f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n"
             f"💸 هزینه {money(price)}\n"
-            f"📈 درآمد از ×{fa_num(old_mult)} میره رو ×{fa_num(new_mult)}\n"
-            "⚡ سرعت رشد هم بهتر میشه\n\n"
+            f"📈 درآمد 25٪ بهتر میشه (×{old_y:.2f} ← ×{new_y:.2f})\n"
+            f"⚡ سرعت رشد 40٪ بیشتر میشه (×{old_sp:.1f} ← ×{new_sp:.1f})\n\n"
             "انجامش بدیم؟"
         )
         markup = kb.confirm_kb(f"cf:farm:up:{plot.id}")

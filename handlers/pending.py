@@ -8,9 +8,10 @@ from telegram import Update
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 from database import session_scope
+from services import bank as bank_svc
 from services import dogs as dog_svc
 from services import teams, users
-from utils import esc, normalize_fa
+from utils import esc, money, normalize_fa, parse_amount
 
 # متن‌هایی که دستورن و نباید به‌عنوان اسم قورت داده بشن («لغو» جداگانه هندل میشه)
 _KNOWN_TEXTS = {
@@ -18,10 +19,12 @@ _KNOWN_TEXTS = {
     "مزرعه", "زمین هام", "زمین‌ها", "زمین‌های من", "سگ‌های من", "سگهای من",
     "راهنما", "help", "کنده کاری", "کنده کاری تیمی", "استخراج تیمی",
     "کوئست", "کوئست تیم", "استعلام کوئست", "تیم", "تیم من", "ترک تیم",
-    "انحلال تیم", "ساخت تیم", "رتبه", "رتبه بندی",
+    "انحلال تیم", "ساخت تیم", "رتبه", "رتبه بندی", "بانک", "واریز",
+    "تیم ساختمان", "تیم ساختمان ها", "تیم ساخت", "تیم پروفایل", "تیم عضویت",
+    "تیم لیدربرد", "تیم چالش", "تیم کوئست", "تیم بانک", "تیم واریز",
 }
 
-_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ")
+_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ")
 
 
 async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -56,6 +59,30 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     f"<b>🐕 {esc(res)} شد رفیق جدیدت</b>\n\n"
                     f"باهوشه و به اسمش جواب میده 😎\n"
                     f"هر وقت خواستی بنویس «آمار {esc(res)}» تا کارتو ببینی و از همونجا غذاش بدی"
+                )
+            else:
+                await update.message.reply_html(res)
+            raise ApplicationHandlerStop()
+
+        # ── مبلغ واریز/برداشت بانک (بعد از دکمه‌های «بانک») ──
+        if action in ("bankdep", "bankwd"):
+            amount = parse_amount(text)
+            if amount is None:
+                await update.message.reply_html("❌ فقط عددشو بفرست رفیق — مثلا 1200\n\n❌ پشیمون شدی بنویس «لغو»")
+                raise ApplicationHandlerStop()
+
+            user.pending_action = None
+            user.pending_value = None
+            if action == "bankdep":
+                ok, res = await bank_svc.deposit(s, user, amount)
+            else:
+                ok, res = await bank_svc.withdraw(s, user, amount)
+            cash, bal = user.cash, user.bank_balance
+            await s.commit()
+
+            if ok:
+                await update.message.reply_html(
+                    f"<b>{esc(res)}</b>\n\n🏦 موجودی بانک {money(bal)}\n💵 نقدینگی {money(cash)}"
                 )
             else:
                 await update.message.reply_html(res)

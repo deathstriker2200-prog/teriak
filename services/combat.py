@@ -156,6 +156,22 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
     atk, _ = combat_stats(user, user_items, user_dogs)
     _, dfn = combat_stats(target, target_items, [])
 
+    # بونس ساختمان‌های تیم — حمله مهاجم و دفاع مدافع
+    from services import teams as team_svc
+    user_team = await team_svc.get_team_of(session, user.id)
+    target_team = await team_svc.get_team_of(session, target.id)
+    tbuff = team_svc.atk_bonus(user_team)
+    tbuff_def = team_svc.def_bonus(target_team)
+    if tbuff:
+        atk = int(atk * (1 + tbuff))
+    if tbuff_def:
+        dfn = int(dfn * (1 + tbuff_def))
+
+    # گرگ سیاه دفاع حریف رو خرد می‌کنه — تا ۳۰٪ بسته به لولش
+    def_cut = dog_svc.rare_defense_cut(user_dogs)
+    if def_cut:
+        dfn = max(1, int(dfn * (1 - def_cut)))
+
     # هزینه حمله
     user.energy -= config.ATTACK_ENERGY_COST
     user.last_attack_at = now_utc()
@@ -169,6 +185,8 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
         "amount": 0,
         "bonus": 0.0,
         "halved": False,
+        "defcut": def_cut,
+        "tbuff": tbuff,
         "xp": config.ATTACK_WIN_XP if win else config.ATTACK_LOSE_XP,
         "penalty": 0 if win else config.ATTACK_LOSE_ENERGY,
         "notes": [],
@@ -185,7 +203,6 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
         result["notes"] = user_svc.add_xp(user, config.ATTACK_WIN_XP)
 
         # قلاب کوئست تیم — هر برد تو دعوا حساب میشه
-        from services import teams as team_svc
         quest_msg = await team_svc.record_kill(session, user)
         if quest_msg:
             result["notes"].append(quest_msg)

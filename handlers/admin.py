@@ -20,7 +20,7 @@ def _panel_text(user, extra: str | None = None) -> str:
         "<b>👑 پنل ادمین</b>\n\n"
         f"💵 {money(user.cash)}\n"
         f"⭐ لول {fa_num(user.level)} | ✨ {fa_num(user.xp)} از {fa_num(economy.xp_need(user.level))}\n\n"
-        "چی بر داری داداش؟"
+        "چی بر داری رفیق؟"
     )
     if extra:
         text += f"\n\n{extra}"

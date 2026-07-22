@@ -19,6 +19,13 @@ def fa_num(n) -> str:
     return f"{int(round(n)):,}"
 
 
+def bar(cur: int, total: int, cells: int = 10) -> str:
+    """نوار پر و خالی با ▰▱ — مثل ▰▰▰▰▰▰▰▰▰▱"""
+    total = max(total, 1)
+    filled = round(min(cur, total) / total * cells)
+    return "▰" * filled + "▱" * (cells - filled)
+
+
 def fa_dur(seconds: int | float) -> str:
     """فرمت مدت زمان به فارسی مثل «۲ ساعت و ۱۵ دقیقه»"""
     seconds = max(0, int(seconds))
@@ -53,6 +60,20 @@ def money(n) -> str:
 def money_tp(n) -> str:
     """مبلغ خلاصه برای دکمه‌ها و لیست‌ها — مثل «۱۲٬۵۰۰ TP»"""
     return f"{fa_num(n)} {UNIT_SHORT}"
+
+
+# ───────── پارس مبلغ از متن (واریز ۱۲۰۰ | واریز 1200) ─────────
+_FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def parse_amount(text: str) -> int | None:
+    """عدد مثبت از متن کاربر — فارسی/عربی/لاتین با کاما هم قبوله — غلط → None"""
+    t = str(text or "").translate(_FA_DIGITS)
+    t = t.replace(",", "").replace("٬", "").replace(" ", "").replace("‌", "")
+    if not t.isdigit():
+        return None
+    n = int(t)
+    return n if n > 0 else None
 
 
 # ───────── پردازش اسم فارسی (برای دستورهای متنی مثل «خرید چاقو») ─────────

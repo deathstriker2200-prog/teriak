@@ -23,6 +23,7 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_columns)
+        await conn.run_sync(_migrate_data)
 
 
 # ستون‌هایی که تو فازهای بعدی به جدول‌های موجود اضافه شدن
@@ -33,11 +34,22 @@ _NEW_COLUMNS = {
         ("feed_day", "VARCHAR(10)"),
         ("pending_action", "VARCHAR(16)"),
         ("pending_value", "VARCHAR(64)"),
+        ("bank_balance", "INTEGER NOT NULL DEFAULT 0"),
+        ("bank_level", "INTEGER NOT NULL DEFAULT 1"),
     ],
     "plots": [
         ("built_at", "DATETIME"),
     ],
+    "teams": [
+        ("points", "INTEGER NOT NULL DEFAULT 0"),
+        ("week_points", "INTEGER NOT NULL DEFAULT 0"),
+        ("atk_bld", "INTEGER NOT NULL DEFAULT 0"),
+        ("def_bld", "INTEGER NOT NULL DEFAULT 0"),
+    ],
 }
+
+# ری‌نیم بذرها — ردیف‌های دیتابیس‌های قدیمی رو به کلید جدید منتقل می‌کنیم
+_LEGACY_SEEDS = {"koka": "peyote", "ghat": "teriak"}
 
 
 def _ensure_columns(sync_conn) -> None:
@@ -50,6 +62,18 @@ def _ensure_columns(sync_conn) -> None:
         for name, coltype in cols:
             if name not in existing:
                 sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
+
+
+def _migrate_data(sync_conn) -> None:
+    """مایگریشن دیتا — بذرهای قدیمی (کوکا/قات) به کلیدهای جدید"""
+    from sqlalchemy import text
+
+    for old, new in _LEGACY_SEEDS.items():
+        try:
+            sync_conn.execute(text("UPDATE seed_stock SET seed_key=:n WHERE seed_key=:o"), {"n": new, "o": old})
+            sync_conn.execute(text("UPDATE plots SET crop=:n WHERE crop=:o"), {"n": new, "o": old})
+        except Exception:
+            pass  # جدول هنوز نیس یا خطای جزئی — مهم نیس
 
 
 async def reload_engine(url: str | None = None) -> None:

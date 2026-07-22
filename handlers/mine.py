@@ -22,7 +22,7 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if user.last_mine_at and now - user.last_mine_at < cooldown:
             left = cooldown - (now - user.last_mine_at)
             text = (
-                "<b>⏳ هول نکن داداش</b>\n\n"
+                "<b>⏳ هول نکن رفیق</b>\n\n"
                 f"{fa_dur(left.total_seconds())} دیگه بیا"
             )
         else:

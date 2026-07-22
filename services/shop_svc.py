@@ -50,7 +50,7 @@ async def purchase(
     if kind in ("weap", "arm"):
         owned = await users.get_item_keys(session, user.id)
         if key in owned:
-            return False, "اینو داری که داداش"
+            return False, "اینو داری که رفیق"
 
     if user.cash < item["price"]:
         return False, "❌ تی‌پوینتت کافی نیس رفیق"

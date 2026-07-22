@@ -57,7 +57,8 @@ def main_menu_kb() -> InlineKeyboardMarkup:
          _btn("⚔️ حمله", "menu:attack", PRIMARY)],
         [_btn("🐕 سگ‌های من", "menu:dogs", PRIMARY),
          _btn("🏴 تیم من", "menu:team", PRIMARY)],
-        [_btn("📊 رتبه‌بندی", "menu:rank", PRIMARY)],
+        [_btn("🏦 بانک", "menu:bank", PRIMARY),
+         _btn("📊 رتبه‌بندی", "menu:rank", PRIMARY)],
     ]
     if BOT_USERNAME:
         rows.append([InlineKeyboardButton(
@@ -104,10 +105,10 @@ def tx_attack_kb(target_id: int, owner_tg: int) -> InlineKeyboardMarkup:
 def admin_kb() -> InlineKeyboardMarkup:
     """پنل ساده ادمین"""
     return InlineKeyboardMarkup([
-        [_btn("💵 +۱۰٬۰۰۰ TP", "adm:cash:10000", SUCCESS),
-         _btn("💵 +۱۰۰٬۰۰۰ TP", "adm:cash:100000", SUCCESS)],
-        [_btn("✨ +۱۰۰ XP", "adm:xp:100", PRIMARY),
-         _btn("✨ +۱٬۰۰۰ XP", "adm:xp:1000", PRIMARY)],
+        [_btn("💵 +10,000 TP", "adm:cash:10000", SUCCESS),
+         _btn("💵 +100,000 TP", "adm:cash:100000", SUCCESS)],
+        [_btn("✨ +100 XP", "adm:xp:100", PRIMARY),
+         _btn("✨ +1,000 XP", "adm:xp:1000", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -359,12 +360,62 @@ def team_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
         [_btn("📜 کوئست‌های امروز", "team:quests", PRIMARY),
          _btn("⛏ کنده‌کاری تیمی", "team:mine", PRIMARY)],
+        [_btn("🏗 ساختمان‌ها", "team:bld", PRIMARY),
+         _btn("🏆 لیدربرد", "team:top", PRIMARY)],
     ]
     if is_owner:
         rows.append([_btn("💥 انحلال تیم", "team:disband", DANGER)])
     else:
         rows.append([_btn("🚪 ترک تیم", "team:leave", PRIMARY)])
     rows.append([_btn("🔃 رفرش", "menu:team", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def team_bld_kb(team, is_owner: bool, tg_id: int) -> InlineKeyboardMarkup:
+    """کیبورد ساختمان‌های تیم — ارتقا فقط برای رهبره"""
+    rows: list[list[InlineKeyboardButton]] = []
+    if is_owner:
+        can_atk = team.atk_bld < config.TEAM_BUILDING_MAX_LEVEL
+        can_def = team.def_bld < config.TEAM_BUILDING_MAX_LEVEL
+        row: list[InlineKeyboardButton] = []
+        if can_atk:
+            row.append(_btn("⚔️ ارتقا حمله", f"tbup:atk:{tg_id}", SUCCESS))
+        if can_def:
+            row.append(_btn("🛡 ارتقا دفاع", f"tbup:def:{tg_id}", SUCCESS))
+        if row:
+            rows.append(row)
+    rows.append([_btn("🔃 رفرش", "team:bld", PRIMARY)])
+    rows.append([_btn("🔙 تیم من", "menu:team", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def team_bld_confirm_kb(kind: str, tg_id: int) -> InlineKeyboardMarkup:
+    """تایید ارتقای ساختمان — فقط خود رهبر می‌تونه بزنه"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"tbcf:{kind}:{tg_id}", SUCCESS),
+        _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
+    ]])
+
+
+# ───────── بانک شخصی ─────────
+
+def bank_kb(user: User) -> InlineKeyboardMarkup:
+    """کیبورد بانک — واریز و برداشت مبلغ رو با پیام بعدی می‌پرسن"""
+    from services.bank import bank_upgrade_price
+
+    rows: list[list[InlineKeyboardButton]] = [
+        [_btn("💰 واریز", "bank:dep", SUCCESS),
+         _btn("💸 برداشت", "bank:wd", PRIMARY)],
+    ]
+    if user.bank_level < config.BANK_MAX_LEVEL:
+        price = bank_upgrade_price(user.bank_level)
+        rows.append([_btn(
+            f"⬆️ ارتقای بانک | لول {fa_num(user.bank_level + 1)} | {money_tp(price)}",
+            "bank:up", PRIMARY,
+        )])
+    else:
+        rows.append([_btn("⭐ بانک مکس لوله", "noop:maxbank")])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 

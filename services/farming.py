@@ -128,6 +128,13 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     total_xp = 0
     names: list[str] = []
     for p in ready:
+        if p.crop not in config.SEEDS:
+            # بذر قدیمی (از کاتالوگ حذف شده) — زمین خالی میشه بدون درآمد
+            p.status = "empty"
+            p.crop = None
+            p.planted_at = None
+            p.ready_at = None
+            continue
         gain = economy.crop_yield(p.crop, p.level, user.level)
         total_gain += gain
         total_xp += config.SEEDS[p.crop]["xp"]

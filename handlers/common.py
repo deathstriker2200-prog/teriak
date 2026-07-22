@@ -56,8 +56,12 @@ def format_attack_result(result: dict, target_name: str) -> str:
     roll_line = f"🎲 تو {fa_num(result['a_roll'])} | اون {fa_num(result['d_roll'])}"
 
     mods: list[str] = []
+    if result.get("tbuff"):
+        mods.append(f"🏰 ساختمان حمله تیمت +{fa_num(int(result['tbuff'] * 100))}٪")
+    if result.get("defcut"):
+        mods.append(f"🐺 دفاعش -{fa_num(int(result['defcut'] * 100))}٪ خرد شد")
     if result.get("bonus"):
-        mods.append(f"🐺 بونس سگ +{fa_num(int(result['bonus'] * 100))}٪")
+        mods.append(f"🐺 غرامت +{fa_num(int(result['bonus'] * 100))}٪")
     if result.get("halved"):
         mods.append("🛡 زره افسانه‌ایش نصفش کرد")
     mods_line = ("\n" + " | ".join(mods)) if mods else ""
@@ -76,7 +80,7 @@ def format_attack_result(result: dict, target_name: str) -> str:
         )
     else:
         text = (
-            "<b>❌ له شدی داداش</b>\n\n"
+            "<b>❌ له شدی رفیق</b>\n\n"
             f"ایبابا {target_name} حسابت رو رسوند\n"
             f"{roll_line}{mods_line}\n"
             f"⚡ {fa_num(result.get('penalty', 0))} انرژی جریمه شدی\n"

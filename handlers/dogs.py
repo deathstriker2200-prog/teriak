@@ -12,7 +12,7 @@ from keyboards import keyboards as kb
 from models import Dog
 from services import dogs as dog_svc
 from services import users
-from utils import esc, fa_num, money_tp
+from utils import bar, esc, fa_num, money_tp
 
 
 async def _dogs_text(session, user, dogs: list[Dog]) -> str:
@@ -57,28 +57,31 @@ async def dogs_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ───────── کارت آمار یه سگ — «آمار اصغر» ─────────
 
-def _xp_bar(xp: int, need: int) -> str:
-    filled = round(min(xp, need) / max(need, 1) * 10)
-    return "🟩" * filled + "⬛" * (10 - filled)
-
-
 def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
-    crown = "👑 " if dog.cfg.get("rare") else ""
     need = dog_svc.dog_xp_need(dog.level)
     atk = dog_svc.dog_attack(dog)
     maxed = dog.level >= config.DOG_MAX_LEVEL
+    crown = " 👑" if dog.cfg.get("rare") else ""
 
-    xp_line = "⭐ مکس لوله" if maxed else f"✨ {_xp_bar(dog.xp, need)} {fa_num(dog.xp)}/{fa_num(need)}"
+    if maxed:
+        xp_line = f"✨تجربه مکس 😎 {bar(1, 1)}"
+    else:
+        xp_line = f"✨تجربه {fa_num(dog.xp)}/{fa_num(need)} {bar(dog.xp, need)}"
+
     left = dog_svc.feeds_left(user)
+    if left > 0:
+        food_line = f"🍖 امروز {fa_num(left)} غذا مونده — از دکمه‌های پایین غذاش بده"
+    else:
+        food_line = "🍖 امروز دیگه نمی‌تونی غذا بهش بدی سگت گرسنش نیست"
 
     text = (
-        f"<b>{crown}🐕 آمار {esc(dog.name)}</b>\n\n"
-        f"🐾 نژاد {esc(dog.breed)}\n"
+        f"<b>🐕 آمار {esc(dog.name)}</b>\n\n"
+        f"🐾 نژاد {esc(dog.breed)}{crown}\n"
         f"⭐ لول {fa_num(dog.level)}\n"
         f"{xp_line}\n"
         f"💪 قدرت حمله {fa_num(atk)}\n"
         f"🎖 {esc(dog.cfg.get('ability', '—'))}\n\n"
-        f"🍖 امروز {fa_num(left)} غذا مونده — از دکمه‌های پایین غذاش بده"
+        f"{food_line}"
     )
     if extra:
         text += f"\n\n{extra}"
@@ -142,7 +145,7 @@ async def feed_picker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if left <= 0:
             await s.commit()
             return await render_my_dogs(
-                update, alert=f"🍖 امروز {fa_num(config.DOG_FEED_PER_DAY)} بار غذا دادی داداش — فردا بیا"
+                update, alert=f"امروز {fa_num(config.DOG_FEED_PER_DAY)} بار به سگت غذا دادی، دیگه گرسنش نیست فردا بیا"
             )
         if dog.level >= config.DOG_MAX_LEVEL:
             await s.commit()
@@ -179,7 +182,7 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return await render_dog_card(update, dog, alert=msg)
 
     # غذا از همون کارت سگ داده میشه — برمی‌گردیم همونجا
-    extra = f"{msg}\n💵 نقدینگی {money_tp(cash)} | 🍖 {fa_num(left)} غذا مونده"
+    extra = f"{msg}\n💵 نقدینگی {fa_num(cash)}TP"
     if notes:
         extra += "\n" + "\n".join(notes)
     await render_dog_card(update, dog, alert="🍖 نوش جون", extra=extra)

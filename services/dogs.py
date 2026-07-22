@@ -22,12 +22,22 @@ def dog_attack(dog: Dog) -> int:
 
 
 def rare_steal_bonus(dogs: list[Dog]) -> float:
-    """بونس سرقت بهترین سگ کمیاب — تا RARE_DOG_STEAL_MAX بر اساس لول"""
+    """غرامت بیشتر بهترین گرگ سیاه — تا RARE_DOG_STEAL_MAX (۱۰٪) بر اساس لول"""
     best = 0.0
     for d in dogs:
         if config.DOGS.get(d.dog_key, {}).get("rare"):
             ratio = min(1.0, d.level / config.DOG_MAX_LEVEL)
             best = max(best, ratio * config.RARE_DOG_STEAL_MAX)
+    return best
+
+
+def rare_defense_cut(dogs: list[Dog]) -> float:
+    """کاهش دفاع حریف توسط گرگ سیاه — تا RARE_DOG_DEF_CUT_MAX (۳۰٪) بر اساس لول"""
+    best = 0.0
+    for d in dogs:
+        if config.DOGS.get(d.dog_key, {}).get("rare"):
+            ratio = min(1.0, d.level / config.DOG_MAX_LEVEL)
+            best = max(best, ratio * config.RARE_DOG_DEF_CUT_MAX)
     return best
 
 
@@ -127,12 +137,12 @@ async def finalize_dog(session: AsyncSession, user: User, name: str) -> tuple[bo
 
 
 async def cancel_pending(session: AsyncSession, user: User) -> str:
-    """لغو کار معلق — پول سگ برمی‌گرده"""
+    """لغو کار معلق — پول سگ برمی‌گرده | اسم تیم و مبلغ بانک فقط پاک میشن"""
     action = user.pending_action
     if action == "dogname" and user.pending_value in config.DOGS:
         user.cash += config.DOGS[user.pending_value]["price"]
-    elif action == "teamname":
-        pass  # ساخت تیم هنوز پولی کم نکرده
+    elif action in ("teamname", "bankdep", "bankwd"):
+        pass  # اینا هنوز پولی جابه‌جا نکردن — فقط اکشن معلق پاک میشه
     else:
         return "🤷 کاری در جریان نیس که"
 
@@ -164,7 +174,7 @@ async def feed_dog(session: AsyncSession, user: User, dog: Dog, food_key: str) -
     if dog.user_id != user.id:
         return False, "❌ این سگ مال تو نیس", []
     if feeds_left(user) <= 0:
-        return False, f"🍖 امروز {fa_num(config.DOG_FEED_PER_DAY)} بار غذا دادی داداش — فردا بیا", []
+        return False, f"امروز {fa_num(config.DOG_FEED_PER_DAY)} بار به سگت غذا دادی، دیگه گرسنش نیست فردا بیا", []
     if dog.level >= config.DOG_MAX_LEVEL:
         return False, f"⭐ {dog.name} مکس لوله", []
     if user.cash < food["price"]:
@@ -184,7 +194,7 @@ async def feed_dog(session: AsyncSession, user: User, dog: Dog, food_key: str) -
     if dog.level >= config.DOG_MAX_LEVEL:
         dog.xp = 0
 
-    msg = f"🍖 {dog.name} {food['name']} رو پس داد و {fa_num(food['xp'])} ایکس‌پی گرفت"
+    msg = f"🍖 {dog.name} {food['name']} رو خورد و {fa_num(food['xp'])} تجربه گرفت"
     return True, msg, notes
 
 
@@ -201,7 +211,7 @@ def find_my_dog(dogs: list[Dog], query: str) -> Dog | None:
 
 
 def find_dog(query: str):
-    """پیدا کردن سگ از کاتالوگ با اسم — مثل «دوبرمن اصغر»"""
+    """پیدا کردن سگ از کاتالوگ با نژاد — مثل «دوبرمن»"""
     q = normalize_fa(query)
     for key, d in config.DOGS.items():
         if normalize_fa(d["name"]) == q:
@@ -216,7 +226,7 @@ def parse_dog_query(query: str):
     """
     پارس «نژاد [اسم دلخواه]» برای خرید متنی
     خروجی: (key, cfg, custom_name یا None)
-    مثال: «دوبرمن اصغر» → مچ دقیق اسم | «دوبرمن رکس» → نژاد دوبرمن با اسم رکس
+    مثال: «دوبرمن» → همون نژاد | «دوبرمن رکس» → نژاد دوبرمن با اسم رکس
     """
     q = normalize_fa(query)
     if not q:

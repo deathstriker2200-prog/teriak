@@ -37,7 +37,7 @@ async def get_by_tg(session: AsyncSession, telegram_id: int) -> User | None:
 
 
 def display_name(user: User) -> str:
-    return user.first_name or user.username or "داداش"
+    return user.first_name or user.username or "رفیق"
 
 
 def apply_energy_regen(user: User) -> None:
@@ -84,7 +84,7 @@ def add_xp(user: User, amount: int) -> list[str]:
         user.energy_updated_at = now_utc()
 
         note = (
-            f"🎉 <b>تبریک داداش — لول {fa_num(user.level)} شدی!</b>\n"
+            f"🎉 <b>تبریک رفیق — لول {fa_num(user.level)} شدی!</b>\n"
             f"💰 جایزه {money(reward)}\n"
             f"⚡ انرژیت فول شارژ شد"
         )

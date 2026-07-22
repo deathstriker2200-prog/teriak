@@ -30,7 +30,7 @@ async def _attack_home_text(session, user) -> str:
         f"🎲 اینجا: هدف رندوم تو بازه {fa_num(config.ATTACK_TARGET_LEVEL_RANGE)} لول بالا و پایین خودت\n\n"
         f"⚡ هر حمله {fa_num(config.ATTACK_ENERGY_COST)} انرژی می‌سوزونه\n"
         f"💰 بردی بین {fa_num(config.STEAL_MIN_PCT * 100)} تا {fa_num(config.STEAL_MAX_PCT * 100)} درصد جیبش مال توئه\n"
-        f"🐺 گرگ سیاه تا {fa_num(config.RARE_DOG_STEAL_MAX * 100)}٪ رو سکه می‌ذاره\n"
+        f"🐺 گرگ سیاه تا {fa_num(config.RARE_DOG_STEAL_MAX * 100)}٪ غرامت بیشتر می‌گیره و تا {fa_num(config.RARE_DOG_DEF_CUT_MAX * 100)}٪ دفاع طرف رو خرد می‌کنه\n"
         f"🛡 اگه زره افسانه‌ای داشت نصفش میشه\n"
         f"⏳ هر {fa_num(config.ATTACK_COOLDOWN_MINUTES)} دقیقه فقط یه حمله"
     )
@@ -79,7 +79,7 @@ async def find_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"⚔️ کارنامه {fa_num(target.wins)} برد | {fa_num(target.losses)} باخت\n"
             f"💵 وضعیت جیبش: {combat.cash_bucket(target.cash)}\n\n"
             f"هزینه حمله ⚡ {fa_num(config.ATTACK_ENERGY_COST)} انرژی\n"
-            "مطمئنی داداش؟"
+            "مطمئنی رفیق؟"
         )
         target_id = target.id
         await s.commit()

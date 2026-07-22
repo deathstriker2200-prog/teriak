@@ -11,13 +11,12 @@ from handlers.common import strip_home
 from keyboards import keyboards as kb
 from models import User
 from services import combat, dogs as dog_svc, economy, farming, teams as team_svc, users
-from utils import esc, fa_num, money
+from utils import bar, esc, fa_num, money
 
 # ───────── فرمت پروفایل ─────────
 
 def _bar(energy: int) -> str:
-    filled = round(energy / config.MAX_ENERGY * 10)
-    return "🟩" * filled + "⬛" * (10 - filled)
+    return bar(energy, config.MAX_ENERGY)
 
 
 async def _profile_caption(session, user) -> str:
@@ -40,7 +39,8 @@ async def _profile_caption(session, user) -> str:
     name = esc(users.display_name(user))
     uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
     joined = user.created_at.strftime("%Y/%m/%d") if user.created_at else "—"
-    dog_names = " | ".join(d.name for d in user_dogs) if user_dogs else "—"
+    # سگ فقط به تعداد نمایش داده میشه — نه اسم نه نژاد
+    dog_line = f"🐕 سگ {fa_num(len(user_dogs))} عدد" if user_dogs else "🐕 سگ نداری"
 
     team = await team_svc.get_team_of(session, user.id)
     team_line = f"🏴 تیم «{esc(team.name)}»\n" if team else ""
@@ -55,12 +55,13 @@ async def _profile_caption(session, user) -> str:
         f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n"
         f"{team_line}\n"
         f"━━━━━━ 💰 دارایی ━━━━━━\n"
-        f"🪙 {money(user.cash)}\n\n"
+        f"🪙 {money(user.cash)}\n"
+        f"🏦 بانک {money(user.bank_balance)}\n\n"
         f"━━━━━━ 🏗 اموال ━━━━━━\n"
         f"🌱 زمین‌ها {fa_num(len(plots))} | 🌾 رشد {fa_num(growing)} | ✅ آماده {fa_num(ready)}\n\n"
         f"🔫 {esc(weapon)}\n"
         f"🛡 {esc(armor)}\n"
-        f"🐕 سگ‌ها {fa_num(len(user_dogs))} تا: {esc(dog_names)}\n\n"
+        f"{dog_line}\n\n"
         f"━━━━━━ ⚔️ آمار جنگی ━━━━━━\n"
         f"💪 قدرت حمله {fa_num(atk)}\n"
         f"🛡 دفاع {fa_num(dfn)}\n"

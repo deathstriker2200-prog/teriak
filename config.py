@@ -83,20 +83,23 @@ PLOT_CATALOG = {
     4: {"price": 20000, "build_sec": 3600,       "min_level": 6},   # 1 ساعت
     5: {"price": 50000, "build_sec": 43200,      "min_level": 10},  # 12 ساعت
 }
-PLOT_MAX_LEVEL = 3
+# ───────── لول‌آپ زمین ─────────
+# هر لول آپ: ۲۵٪ درآمد بیشتر + ۴۰٪ سرعت رشد بیشتر — تا لول ۱۰ قابل آپگریده
+PLOT_MAX_LEVEL = 10
+PLOT_YIELD_PER_LEVEL = 1.25     # ×۱٫۲۵ درآمد به ازای هر لول
+PLOT_SPEED_PER_LEVEL = 1.40     # زمان رشد ÷۱٫۴۰ به ازای هر لول
 UPGRADE_BASE_PRICE = 800
 UPGRADE_PRICE_GROWTH = 2.4
-PLOT_YIELD_MULT = {1: 1.0, 2: 1.8, 3: 2.8}
-PLOT_SPEED_MULT = {1: 1.0, 2: 0.85, 3: 0.70}
 
 # ───────── بذرها (فروشگاه 🌱) ─────────
+# ترتیب پیشرفت: ماری‌جوانا → قارچ → پیوت → تریاک → کوکائین
 # price = قیمت بذر | grow_min = دقیقه رشد | sell = فروش | xp = تجربه برداشت | min_level = لول لازم
 SEEDS = {
-    "teriak":    {"name": "تریاک",      "price": 120,  "grow_min": 5,  "sell": 420,   "xp": 10, "min_level": 1,  "desc": "محصول شروع هر دلال"},
-    "marijuana": {"name": "ماری‌جوانا",  "price": 320,  "grow_min": 8,  "sell": 1150,  "xp": 18, "min_level": 3,  "desc": "سبزه و پرطرفدار"},
-    "koka":      {"name": "کوکا",        "price": 850,  "grow_min": 12, "sell": 3000,  "xp": 30, "min_level": 5,  "desc": "پودر سفید قیمتی"},
-    "ghat":      {"name": "قات",         "price": 2000, "grow_min": 18, "sell": 7500,  "xp": 45, "min_level": 7,  "desc": "برگ تلخ و گرون"},
-    "peyote":    {"name": "پیوته",       "price": 5200, "grow_min": 25, "sell": 20000, "xp": 70, "min_level": 10, "desc": "کاکتوس جادویی صحرا"},
+    "marijuana": {"name": "ماری‌جوانا",  "price": 120,  "grow_min": 5,  "sell": 420,   "xp": 10, "min_level": 1,  "desc": "محصول شروع هر دلال"},
+    "gharch":    {"name": "قارچ",         "price": 320,  "grow_min": 8,  "sell": 1150,  "xp": 18, "min_level": 3,  "desc": "کپک سحرآمیز و پرطرفدار"},
+    "peyote":    {"name": "پیوت",         "price": 850,  "grow_min": 12, "sell": 3000,  "xp": 30, "min_level": 5,  "desc": "کاکتوس جادویی صحرا"},
+    "teriak":    {"name": "تریاک",        "price": 2000, "grow_min": 18, "sell": 7500,  "xp": 45, "min_level": 7,  "desc": "طلای سیاه محله"},
+    "cocaine":   {"name": "کوکائین",      "price": 5200, "grow_min": 25, "sell": 20000, "xp": 70, "min_level": 10, "desc": "پودر سفید قیمتی"},
 }
 
 # ───────── کنده‌کاری ─────────
@@ -130,8 +133,8 @@ WEAPONS = {
     "knife":   {"name": "چاقو",              "price": 400,   "attack": 6,   "min_level": 1,  "desc": "سلاح کلاسیک محله", "gun": False},
     "shank":   {"name": "قمه",               "price": 850,   "attack": 11,  "min_level": 2,  "desc": "بلند و ترسناک", "gun": False},
     "pipe":    {"name": "میله آهنی",          "price": 1200,  "attack": 14,  "min_level": 3,  "desc": "سنگین و زخمی", "gun": False},
-    "colt":    {"name": "کلت کمری 🔫",        "price": 2200,  "attack": 22,  "min_level": 4,  "desc": "اولین اسلحه هر تازه‌کار", "gun": True},
-    "shocker": {"name": "شوکر دست‌ساز",        "price": 3500,  "attack": 30,  "min_level": 5,  "desc": "برق می‌گیرهت", "gun": False},
+    "shocker": {"name": "شوکر دست‌ساز",        "price": 1800,  "attack": 18,  "min_level": 4,  "desc": "برق می‌گیرهت ولی اسلحه نیس", "gun": False},
+    "colt":    {"name": "کلت کمری 🔫",        "price": 2600,  "attack": 24,  "min_level": 5,  "desc": "اولین اسلحه هر تازه‌کار", "gun": True},
     "uzi":     {"name": "اوزی 🔫",            "price": 5500,  "attack": 42,  "min_level": 6,  "desc": "رگباری و پرسرعت", "gun": True},
     "shotgun": {"name": "شات‌گان 🔫",         "price": 7500,  "attack": 52,  "min_level": 7,  "desc": "از نزدیک ویرانه", "gun": True},
     "deagle":  {"name": "کلت نقره‌ای 🔫",      "price": 10000, "attack": 60,  "min_level": 8,  "desc": "خشن و پرسرعت", "gun": True},
@@ -155,43 +158,44 @@ ARMORS = {
     "legend": {
         "name": "زره افسانه‌ای 👑", "price": 75000, "defense": 100, "min_level": 14,
         "legendary": True,
-        "desc": "این زره افسانه‌ای باعث می‌شود نصف مقدار سکه‌ای که دشمن از شما دریافت می‌کند از بین برود.",
+        "desc": "این زره افسانه‌ای باعث می‌شود نصف مقدار سکه‌ای که دشمن از شما دریافت می‌کند از بین برود",
     },
 }
 
 # ───────── سگ‌ها (فروشگاه 🐕) ─────────
-MAX_DOGS = 4                    # حداکثر سگ برای هر بازیکن
+MAX_DOGS = 2                    # حداکثر سگ برای هر بازیکن
 DOG_MAX_LEVEL = 10
 DOG_FEED_PER_DAY = 5            # هر بازیکن روزی فقط ۵ بار غذا میده
 DOG_XP_BASE = 40                # xp لازم سگ برای لول N = DOG_XP_BASE × N^DOG_XP_EXP
 DOG_XP_EXP = 1.35
-RARE_DOG_STEAL_MAX = 0.15       # حداکثر بونس سرقت سگ کمیاب (۱۵٪ با لول مکس)
-# قدرت سگ = attack + atk_per_level × (لول-۱)
+RARE_DOG_STEAL_MAX = 0.10       # حداکثر غرامت بیشتر گرگ سیاه (۱۰٪ با لول مکس)
+RARE_DOG_DEF_CUT_MAX = 0.30     # حداکثر کاهش دفاع حریف توسط گرگ سیاه (۳۰٪ با لول مکس)
+# قدرت سگ = attack + atk_per_level × (لول-۱) | اسم آیتم فقط نژاده — اسمشو خودت بعد خرید می‌ذاری
 DOGS = {
     "pitbull": {
-        "name": "پیتبول رکس", "breed": "پیتبول", "price": 2000, "attack": 8, "atk_per_level": 2,
+        "name": "پیتبول", "breed": "پیتبول", "price": 2000, "attack": 8, "atk_per_level": 2,
         "min_level": 1, "rare": False, "ability": "وفادار و همیشه آماده‌ی دعوا",
         "desc": "سگ اول هر گانگستر",
     },
     "doberman": {
-        "name": "دوبرمن اصغر", "breed": "دوبرمن", "price": 6000, "attack": 15, "atk_per_level": 3,
+        "name": "دوبرمن", "breed": "دوبرمن", "price": 6000, "attack": 15, "atk_per_level": 3,
         "min_level": 3, "rare": False, "ability": "تند و تیز — سرعت حمله بالا",
         "desc": "بادیگارد قدیمی محله",
     },
     "shepherd": {
-        "name": "ژرمن شپرد راکی", "breed": "ژرمن شپرد", "price": 15000, "attack": 26, "atk_per_level": 4,
+        "name": "ژرمن شپرد", "breed": "ژرمن شپرد", "price": 15000, "attack": 26, "atk_per_level": 4,
         "min_level": 6, "rare": False, "ability": "بویایی قوی — قربانی رو بو می‌کشه",
         "desc": "چیزی ازش پنهون نمیمونه",
     },
     "kangal": {
-        "name": "کانگال رستم", "breed": "کانگال", "price": 40000, "attack": 45, "atk_per_level": 6,
+        "name": "کانگال", "breed": "کانگال", "price": 40000, "attack": 45, "atk_per_level": 6,
         "min_level": 10, "rare": False, "ability": "فک افسانه‌ای که ول نمی‌کنه",
         "desc": "هیولاي آسیايی",
     },
     "blackwolf": {
-        "name": "گرگ سیاه شبح", "breed": "گرگ سیاه", "price": 150000, "attack": 70, "atk_per_level": 9,
+        "name": "گرگ سیاه", "breed": "گرگ سیاه", "price": 150000, "attack": 70, "atk_per_level": 9,
         "min_level": 15, "rare": True,
-        "ability": "بسته به لولش تا 15٪ سکه دزدیده‌شده از حریف رو زیاد می‌کنه 👑",
+        "ability": "با لول‌آپ تا 30٪ دفاع حریف رو خرد می‌کنه و تا 10٪ غرامت بیشتری از حریف می‌گیره 👑",
         "desc": "کمیاب‌ترین و بهترین سگ بازی",
     },
 }
@@ -223,6 +227,28 @@ TEAM_MINE_WINDOW_SECONDS = 300  # ۵ دقیقه فرصت برای جمع شدن
 TEAM_MINE_COOLDOWN_MINUTES = 60
 TEAM_MINE_PER_MIN = 150         # سهم هر پیوسته (حداقل)
 TEAM_MINE_PER_MAX = 400         # سهم هر پیوسته (حداکثر)
+
+# ───────── بانک شخصی 🏦 ─────────
+# پول بانک موقع حمله دزدیده نمیشه — ظرفیت با لول بانک رشد می‌کنه
+# لول بانک نمی‌تونه از لول خود بازیکن جلوتر بره
+BANK_MAX_LEVEL = 10
+BANK_CAP_BASE = 25000         # ظرفیت بانک = این عدد × لول بانک
+BANK_UPGRADE_BASE = 2000      # هزینه ارتقا از لول ۱ به ۲
+BANK_UPGRADE_GROWTH = 2.2     # هر لول گرون‌تر
+
+# ───────── امتیاز و رقابت هفتگی تیم 🏆 ─────────
+# امتیاز تیم با برد تو حمله و برداشت محصول جمع میشه — آخر هفته ۳ تیم اول جایزه می‌گیرن
+TEAM_POINT_KILL = 10          # امتیاز هر برد تو حمله
+TEAM_POINT_HARVEST = 2        # امتیاز هر محصول برداشت‌شده
+TEAM_WEEKLY_PRIZES = {1: 50000, 2: 30000, 3: 15000}   # جایزه هفتگی — میره تو بانک تیم
+
+# ───────── ساختمان‌های تیم 🏗 ─────────
+# رهبر با پول بانک تیم آپگریدشون می‌کنه و بونسش به همه اعضا میرسه
+TEAM_BUILDING_MAX_LEVEL = 10
+TEAM_BUILDING_BASE_COST = 5000    # هزینه ارتقا به لول ۱
+TEAM_BUILDING_COST_GROWTH = 1.8   # هر لول گرون‌تر
+TEAM_ATK_BONUS_PER_LEVEL = 0.03   # هر لول ساختمان حمله: +۳٪ قدرت حمله همه اعضا
+TEAM_DEF_BONUS_PER_LEVEL = 0.03   # هر لول ساختمان دفاع: +۳٪ دفاع همه اعضا
 
 # ───────── رتبه‌بندی ─────────
 RANK_LIMIT = 10

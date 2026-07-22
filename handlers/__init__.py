@@ -2,7 +2,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, dogs, farm, mine, pending, profile, rank, shop, start, team, textcmd
+from handlers import admin, attack, backup, bank, dogs, farm, mine, pending, profile, rank, shop, start, team, textcmd
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -45,6 +45,15 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^آمار{S}+(.+)$"), dogs.dog_stats_text))
 
     # ── تیم ──
+    # الگوهای «تیم X» اختصاصی قبل از الگوی عمومی «تیم [اسم]»
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+ساختمان(?:{S}*ها)?!?$|^تیم{S}+ساخت!?$"), team.buildings_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+پروفایل!?$"), team.team_profile_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+عضویت!?$"), team.roster_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+لیدربرد!?$|^تیم{S}+لیدر{S}*برد!?$"), team.top_teams_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+(?:کوئست|چالش)!?$"), team.quests_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+بانک!?$"), team.team_bank_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+واریز(?:{S}+(.+))?!?$"), team.team_deposit_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+ارتقا{S}+(?:حمله|دفاع)!?$"), team.team_upgrade_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^ساخت{S}+تیم!?$"), team.create_team_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^جوین{S}+تیم{S}+(.+)$"), team.join_team_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^ترک{S}+تیم!?$"), team.leave_confirm))
@@ -53,6 +62,11 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^کوئست{S}*تیم!?$|^کوئست!?$|^استعلام{S}*کوئست!?$"), team.quests_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم(?:{S}+(.+))?!?$"), team.team_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^لغو{S}*بک{S}*آپ!?$"), backup.cancel_upload_text))
+
+    # ── بانک شخصی ──
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^بانک!?$"), bank.bank_cb))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^واریز{S}+(.+)$"), bank.deposit_text))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(r"^برداشت[\s‌]+([0-9۰-۹٠-٩,٬]+)$"), bank.withdraw_text))
 
     app.add_handler(MessageHandler(fa_text & filters.Regex(r"^راهنما!?$|^[hH]elp$"), start.help_cmd))
 
@@ -96,6 +110,15 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.leave_confirm, pattern=r"^team:leave$"))
     app.add_handler(CallbackQueryHandler(team.disband_confirm, pattern=r"^team:disband$"))
     app.add_handler(CallbackQueryHandler(team.team_confirm_cb, pattern=r"^tmcf:(?:leave|disband):\d+$"))
+    app.add_handler(CallbackQueryHandler(team.buildings_cb, pattern=r"^team:bld$"))
+    app.add_handler(CallbackQueryHandler(team.team_upgrade_cb, pattern=r"^tbup:(?:atk|def):\d+$"))
+    app.add_handler(CallbackQueryHandler(team.team_upgrade_execute, pattern=r"^tbcf:(?:atk|def):\d+$"))
+
+    # ── بانک شخصی (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(bank.bank_cb, pattern=r"^menu:bank$"))
+    app.add_handler(CallbackQueryHandler(bank.bank_ask_cb, pattern=r"^bank:(?:dep|wd)$"))
+    app.add_handler(CallbackQueryHandler(bank.bank_upgrade_confirm, pattern=r"^bank:up$"))
+    app.add_handler(CallbackQueryHandler(bank.bank_upgrade_execute, pattern=r"^cf:bank:up$"))
 
     # ── حمله ──
     app.add_handler(CallbackQueryHandler(attack.find_cb, pattern=r"^att:find$"))
