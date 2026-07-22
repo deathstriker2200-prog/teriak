@@ -129,7 +129,7 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
 
     for i, plot in enumerate(plots, 1):
         state, left = plot.current_status()
-        rows.append([_btn(f"🗺 زمین {fa_num(i)} | لول {fa_num(plot.level)}", f"noop:plot:{plot.id}")])
+        rows.append([_btn(f"🗺 زمین {fa_num(i)} | لول {fa_num(plot.level)}", f"noop:plot:{i}")])
 
         actions: list[InlineKeyboardButton] = []
         if state == "building":
@@ -237,6 +237,8 @@ def shop_arm_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
 def shop_seed_kb(user: User, stock: dict[str, int]) -> InlineKeyboardMarkup:
     rows = []
     for key, s in config.SEEDS.items():
+        if s.get("legendary"):
+            continue  # بذر افسانه‌ای تو شاپ نیس — فقط جستجو/کاروان
         if user.level < s["min_level"]:
             rows.append([_btn(f"🔒 {s['name']} | لول {fa_num(s['min_level'])}", "noop:lock", DANGER)])
         else:
@@ -303,10 +305,19 @@ def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
                 f"cf:feed:{dog.id}:{key}", SUCCESS,
             )])
     elif feeds_left <= 0:
-        rows.append([_btn("🍖 سهمیه غذای امروزت تمومه", "noop:feedinfo", DANGER)])
-    rows.append([_btn("🔙 سگ‌های من", "menu:dogs", PRIMARY)])
+        rows.append([_btn("🍖 سیره — امروز دیگه غذا نمی‌خوره", "noop:feedinfo", DANGER)])
+    rows.append([_btn("🔙 سگ‌های من", "menu:dogs", PRIMARY),
+                 _btn("🕊 رهاش کن", f"dog:rel:{dog.id}", DANGER)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
+
+
+def release_confirm_kb(dog_id: int, tg_id: int) -> InlineKeyboardMarkup:
+    """تایید رها کردن سگ — فقط صاحبش"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ رهاش کن", f"relcf:{dog_id}:{tg_id}", SUCCESS),
+        _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
+    ]])
 
 
 def feed_foods_kb(dog_id: int) -> InlineKeyboardMarkup:
@@ -361,7 +372,8 @@ def team_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
         [_btn("📜 کوئست‌های امروز", "team:quests", PRIMARY),
          _btn("⛏ کنده‌کاری تیمی", "team:mine", PRIMARY)],
         [_btn("🏗 ساختمان‌ها", "team:bld", PRIMARY),
-         _btn("🏆 لیدربرد", "team:top", PRIMARY)],
+         _btn("🏦 بانک تیم", "team:bank", PRIMARY)],
+        [_btn("🏆 لیدربرد", "team:top", PRIMARY)],
     ]
     if is_owner:
         rows.append([_btn("💥 انحلال تیم", "team:disband", DANGER)])
@@ -406,7 +418,7 @@ def bank_kb(user: User) -> InlineKeyboardMarkup:
 
     rows: list[list[InlineKeyboardButton]] = [
         [_btn("💰 واریز", "bank:dep", SUCCESS),
-         _btn("💸 برداشت", "bank:wd", PRIMARY)],
+         _btn("💸 برداشت", "bank:wd", DANGER)],
     ]
     if user.bank_level < config.BANK_MAX_LEVEL:
         price = bank_upgrade_price(user.bank_level)
@@ -434,3 +446,63 @@ def team_confirm_kb(action: str, tg_id: int) -> InlineKeyboardMarkup:
         _btn("✅ تایید", f"tmcf:{action}:{tg_id}", SUCCESS),
         _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
     ]])
+
+
+# ───────── صفحات فرعی تیم — برگشت به تیم من + منوی اصلی ─────────
+
+def team_back_kb(home: bool = True) -> InlineKeyboardMarkup:
+    """🔙 تیم من + 🏠 منوی اصلی (تو گروه home با strip_home برمی‌ره)"""
+    rows = [[_btn("🔙 تیم من", "menu:team", PRIMARY)]]
+    if home:
+        rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def team_mine_kb() -> InlineKeyboardMarkup:
+    """دکمه‌های کنده‌کاری تیمی — جوین/رفرش + برگشت"""
+    return InlineKeyboardMarkup([
+        [_btn("⛏ میام استخراج", "team:mine", SUCCESS)],
+        [_btn("🔙 تیم من", "menu:team", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def team_bank_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("💰 واریز به بانک تیم | آموزش: «تیم واریز 1200»", "noop:depinfo", PRIMARY)],
+        [_btn("🔙 تیم من", "menu:team", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+# ───────── پناهگاه 🏚 ─────────
+
+def shelter_kb(user: User) -> InlineKeyboardMarkup:
+    from services.world import shelter_price
+    rows: list[list[InlineKeyboardButton]] = []
+    if user.shelter_level < config.SHELTER_MAX_LEVEL:
+        price = shelter_price(user.shelter_level + 1)
+        rows.append([_btn(
+            f"⬆️ ارتقا | لول {fa_num(user.shelter_level + 1)} | {money_tp(price)}",
+            "shelter:up", PRIMARY,
+        )])
+    else:
+        rows.append([_btn("⭐ پناهگاه مکس لوله", "noop:maxshelter")])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+# ───────── قمارخانه 🎰 ─────────
+
+def casino_kb() -> InlineKeyboardMarkup:
+    rows = []
+    for bet in config.CASINO_BETS:
+        rows.append([_btn(f"🎲 میز {money_tp(bet)} | برد {money_tp(int(bet * config.CASINO_WIN_MULT))}", f"cas:bet:{bet}", SUCCESS)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+# ───────── کاروان 🚛 ─────────
+
+def caravan_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[_btn("⚔️ حمله به کاروان", "cv:hit", DANGER)]])

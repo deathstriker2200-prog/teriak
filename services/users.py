@@ -18,6 +18,7 @@ async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
         # اسم/یوزرنیم ممکنه عوض شده باشه
         user.username = tg_user.username
         user.first_name = tg_user.first_name
+        user.last_seen_at = now_utc()
         return user, False
 
     user = User(
@@ -27,6 +28,7 @@ async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
     )
     session.add(user)
     await session.flush()  # گرفتن id بدون کامیت
+    user.last_seen_at = now_utc()
     session.add(Plot(user_id=user.id))  # زمین اول هدیه خونه‌بختگی 🎁
     return user, True
 

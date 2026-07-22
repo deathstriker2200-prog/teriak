@@ -36,8 +36,9 @@ def plot_build_seconds(plots_count: int) -> int:
 
 
 def upgrade_price(plot_level: int) -> int:
-    """هزینه آپگرید از لول فعلی به لول بعد — تصاعدی"""
-    return int(config.UPGRADE_BASE_PRICE * (config.UPGRADE_PRICE_GROWTH ** (plot_level - 1)))
+    """هزینه آپگرید از لول فعلی به لول بعد — جدول رند قیمت"""
+    lv = min(max(plot_level, 1), config.PLOT_MAX_LEVEL)
+    return config.PLOT_UPGRADE_PRICES[lv - 1]
 
 
 # ───────── بذر و محصول ─────────

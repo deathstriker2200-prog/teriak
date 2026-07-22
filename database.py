@@ -36,9 +36,18 @@ _NEW_COLUMNS = {
         ("pending_value", "VARCHAR(64)"),
         ("bank_balance", "INTEGER NOT NULL DEFAULT 0"),
         ("bank_level", "INTEGER NOT NULL DEFAULT 1"),
+        ("shelter_level", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_search_at", "DATETIME"),
+        ("last_casino_at", "DATETIME"),
+        ("last_seen_at", "DATETIME"),
     ],
     "plots": [
         ("built_at", "DATETIME"),
+    ],
+    "dogs": [
+        ("personality", "VARCHAR(16)"),
+        ("feeds_today", "INTEGER NOT NULL DEFAULT 0"),
+        ("feed_day", "VARCHAR(10)"),
     ],
     "teams": [
         ("points", "INTEGER NOT NULL DEFAULT 0"),

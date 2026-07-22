@@ -2,7 +2,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, dogs, farm, mine, pending, profile, rank, shop, start, team, textcmd
+from handlers import admin, attack, backup, bank, dogs, farm, mine, pending, profile, rank, shop, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -63,6 +63,13 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم(?:{S}+(.+))?!?$"), team.team_text))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^لغو{S}*بک{S}*آپ!?$"), backup.cancel_upload_text))
 
+    # ── سیستم‌های جهان ──
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^جستجو!?$|^جست{S}*و{S}*جو!?$"), world.search_cmd))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^وضعیت{S}+آب{S}+و{S}+هوا!?$|^آب{S}*و{S}*هوا!?$"), world.weather_cmd))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^وضعیت{S}+بازار!?$|^بازار{S}*سیاه!?$"), world.market_cmd))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^پناهگاه!?$"), world.shelter_cmd))
+    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^قمارخانه!?$|^قمار!?$"), world.casino_cmd))
+
     # ── بانک شخصی ──
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^بانک!?$"), bank.bank_cb))
     app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^واریز{S}+(.+)$"), bank.deposit_text))
@@ -102,6 +109,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(dogs.feed_picker, pattern=r"^dogs:feed:\d+$"))
     app.add_handler(CallbackQueryHandler(dogs.feed_execute, pattern=r"^cf:feed:\d+:\w+$"))
     app.add_handler(CallbackQueryHandler(dogs.dog_card_cb, pattern=r"^dog:card:\d+$"))
+    app.add_handler(CallbackQueryHandler(dogs.release_confirm, pattern=r"^dog:rel:\d+$"))
+    app.add_handler(CallbackQueryHandler(dogs.release_execute, pattern=r"^relcf:\d+:\d+$"))
 
     # ── تیم (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(team.quests_text, pattern=r"^team:quests$"))
@@ -111,8 +120,16 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.disband_confirm, pattern=r"^team:disband$"))
     app.add_handler(CallbackQueryHandler(team.team_confirm_cb, pattern=r"^tmcf:(?:leave|disband):\d+$"))
     app.add_handler(CallbackQueryHandler(team.buildings_cb, pattern=r"^team:bld$"))
+    app.add_handler(CallbackQueryHandler(team.team_bank_text, pattern=r"^team:bank$"))
     app.add_handler(CallbackQueryHandler(team.team_upgrade_cb, pattern=r"^tbup:(?:atk|def):\d+$"))
     app.add_handler(CallbackQueryHandler(team.team_upgrade_execute, pattern=r"^tbcf:(?:atk|def):\d+$"))
+
+    # ── سیستم‌های جهان (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(world.shelter_up_confirm, pattern=r"^shelter:up$"))
+    app.add_handler(CallbackQueryHandler(world.shelter_up_execute, pattern=r"^cf:shelter:up$"))
+    app.add_handler(CallbackQueryHandler(world.casino_bet_confirm, pattern=r"^cas:bet:\d+$"))
+    app.add_handler(CallbackQueryHandler(world.casino_execute, pattern=r"^cascf:\d+$"))
+    app.add_handler(CallbackQueryHandler(world.caravan_hit_cb, pattern=r"^cv:hit$"))
 
     # ── بانک شخصی (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(bank.bank_cb, pattern=r"^menu:bank$"))

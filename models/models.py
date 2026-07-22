@@ -39,6 +39,16 @@ class User(Base):
     bank_balance: Mapped[int] = mapped_column(Integer, default=0)
     bank_level: Mapped[int] = mapped_column(Integer, default=1)
 
+    # پناهگاه — لول ۰ یعنی نداره | خسارت یورش پلیس رو کم می‌کنه
+    shelter_level: Mapped[int] = mapped_column(Integer, default=0)
+
+    # کولدونهای سیستم‌های جهان
+    last_search_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_casino_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # آخرین فعالیت — یورش پلیس فقط به فعال‌های ۲۴ ساعت اخیر میاد
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # اکشن معلق بعدی متن کاربر — «dogname» (اسم سگ بعد خرید) | «teamname» (اسم تیم)
     pending_action: Mapped[str | None] = mapped_column(String(16), nullable=True)
     pending_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -129,6 +139,13 @@ class Dog(Base):
     level: Mapped[int] = mapped_column(Integer, default=1)
     xp: Mapped[int] = mapped_column(Integer, default=0)
 
+    # شخصیت سگ (وفادار/جنگجو/نگهبان/شکارچی/خوش‌شانس) — گرگ سیاه نداره
+    personality: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # سهمیه غذای روزانه مخصوص خودش — هر روز ساعت ۱۲ شب (به‌وقت ایران) ریست میشه
+    feeds_today: Mapped[int] = mapped_column(Integer, default=0)
+    feed_day: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     user: Mapped[User] = relationship(back_populates="dogs")
@@ -195,6 +212,15 @@ class TeamDaily(Base):
     harvests: Mapped[int] = mapped_column(Integer, default=0)
     kills_done: Mapped[int] = mapped_column(Integer, default=0)     # 1 = جایزه واریز شده
     harvests_done: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class GroupActivity(Base):
+    """فعالیت گروه‌ها — اعلان آب و هوا (۱ ساعت اخیر) و اسپون کاروان (۱ روز اخیر) بر اساس اینه"""
+    __tablename__ = "group_activity"
+
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    last_caravan_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class GameMeta(Base):

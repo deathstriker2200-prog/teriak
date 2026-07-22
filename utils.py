@@ -1,12 +1,64 @@
 """ابزارهای کمکی: زمان | اعداد (لاتین) | فرمت مدت | escape"""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape as _esc
 
 
 def now_utc() -> datetime:
     """زمان UTC بدون tzinfo — مناسب ذخیره توی SQLite"""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+_IRAN_OFFSET = timedelta(hours=3, minutes=30)
+
+
+def now_iran() -> datetime:
+    """زمان ایران (UTC+3:30 ثابت)"""
+    return now_utc() + _IRAN_OFFSET
+
+
+def iran_today() -> str:
+    """تاریخ امروز به‌وقت ایران — مبنای ریست ساعت ۱۲ شب (سهمیه غذای سگ)"""
+    return now_iran().date().isoformat()
+
+
+def gregorian_to_jalali(gy: int, gm: int, gd: int) -> tuple[int, int, int]:
+    """تبدیل میلادی به شمسی — بدون هیچ دیپندنسی (الگوریتم کلاسیک jdf)"""
+    g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+    gy2 = gy - 1600
+    gm2 = gm - 1
+    gd2 = gd - 1
+    day_no = 365 * gy2 + (gy2 + 3) // 4 - (gy2 + 99) // 100 + (gy2 + 399) // 400
+    if gm2 > 1 and ((gy2 % 4 == 0 and gy2 % 100 != 0) or (gy2 % 400 == 0)):
+        day_no += 1
+    day_no += g_d_m[gm2] + gd2
+    j_day_no = day_no - 79
+    j_np = j_day_no // 12053
+    j_day_no %= 12053
+    jy = 979 + 33 * j_np + 4 * (j_day_no // 1461)
+    j_day_no %= 1461
+    if j_day_no >= 366:
+        jy += (j_day_no - 1) // 365
+        j_day_no = (j_day_no - 1) % 365
+    if j_day_no < 186:
+        jm = 1 + j_day_no // 31
+        jd = 1 + j_day_no % 31
+    else:
+        jm = 7 + (j_day_no - 186) // 30
+        jd = 1 + (j_day_no - 186) % 30
+    return jy, jm, jd
+
+
+def jalali_str(dt: datetime) -> str:
+    """تاریخ شمسی با ارقام لاتین — مثل 1405/05/01"""
+    jy, jm, jd = gregorian_to_jalali(dt.year, dt.month, dt.day)
+    return f"{jy}/{jm:02d}/{jd:02d}"
+
+
+def iran_clock() -> str:
+    """ساعت ایران — مثل 23:45"""
+    n = now_iran()
+    return f"{n.hour:02d}:{n.minute:02d}"
 
 
 def fa(text) -> str:

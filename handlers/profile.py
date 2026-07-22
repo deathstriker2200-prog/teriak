@@ -11,7 +11,7 @@ from handlers.common import strip_home
 from keyboards import keyboards as kb
 from models import User
 from services import combat, dogs as dog_svc, economy, farming, teams as team_svc, users
-from utils import bar, esc, fa_num, money
+from utils import bar, esc, fa_num, iran_clock, jalali_str, money, now_iran
 
 # ───────── فرمت پروفایل ─────────
 
@@ -38,7 +38,9 @@ async def _profile_caption(session, user) -> str:
 
     name = esc(users.display_name(user))
     uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
-    joined = user.created_at.strftime("%Y/%m/%d") if user.created_at else "—"
+    # تاریخ عضویت و ساعت/تاریخ فعلی به شمسی و به‌وقت ایران
+    joined = jalali_str(user.created_at) if user.created_at else "—"
+    today_j = jalali_str(now_iran())
     # سگ فقط به تعداد نمایش داده میشه — نه اسم نه نژاد
     dog_line = f"🐕 سگ {fa_num(len(user_dogs))} عدد" if user_dogs else "🐕 سگ نداری"
 
@@ -49,7 +51,8 @@ async def _profile_caption(session, user) -> str:
         f"╭━━━━━━━━━━━━━━╮\n"
         f"👤 {name}\n"
         f"╰━━━━━━━━━━━━━━╯\n"
-        f"🆔 {uname} | 🗓 عضو {joined}\n\n"
+        f"🆔 {uname} | 🗓 عضو {joined}\n"
+        f"🕰 تایم ایران {iran_clock()} | 📅 {today_j}\n\n"
         f"🌟 لول {fa_num(user.level)} — XP {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}\n"
         f"⚡ انرژی {_bar(user.energy)} {fa_num(user.energy)}/{fa_num(config.MAX_ENERGY)}\n"
         f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n"

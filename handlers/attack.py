@@ -64,7 +64,7 @@ async def find_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if user.energy < config.ATTACK_ENERGY_COST:
             await s.commit()
-            return await attack_cb(update, context, alert="⚡ انرژیت کمه رفیق")
+            return await attack_cb(update, context, alert="⚡ انرژیت کمه")
 
         target = await combat.find_target(s, user)
         if not target:
@@ -79,7 +79,7 @@ async def find_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"⚔️ کارنامه {fa_num(target.wins)} برد | {fa_num(target.losses)} باخت\n"
             f"💵 وضعیت جیبش: {combat.cash_bucket(target.cash)}\n\n"
             f"هزینه حمله ⚡ {fa_num(config.ATTACK_ENERGY_COST)} انرژی\n"
-            "مطمئنی رفیق؟"
+            "مطمئنی؟"
         )
         target_id = target.id
         await s.commit()
@@ -107,7 +107,7 @@ async def attack_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not result["ok"]:
         msg = (
             f"⏳ هنوز {fa_dur(result['left'])} مونده" if result["reason"] == "cooldown"
-            else "⚡ انرژیت کمه رفیق"
+            else "⚡ انرژیت کمه"
         )
         return await attack_cb(update, context, alert=msg)
 

@@ -52,6 +52,9 @@ def main() -> None:
     )
     register_handlers(app)
 
+    from handlers import jobs
+    jobs.register_jobs(app)
+
     logger.info("ربات تریاکی اومد بالا 🤖")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

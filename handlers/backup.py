@@ -93,7 +93,7 @@ async def backup_doc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     doc = update.effective_message.document
     if not doc:
-        return await update.effective_message.reply_html("❌ فایل نفرستادی که رفیق")
+        return await update.effective_message.reply_html("❌ فایل نفرستادی که ")
 
     if doc.file_size and doc.file_size > 25 * 1024 * 1024:
         return await update.effective_message.reply_html("❌ فایل خیلی گنده‌ست — دی‌بی این‌قدری نداریم")

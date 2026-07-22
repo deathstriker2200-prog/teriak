@@ -37,7 +37,7 @@ async def render_farm(update: Update, extra: str | None = None, alert: str | Non
                 lines.append(f"✅ {head} | {esc(seed_name)} آماده برداشته")
 
         if not plots:
-            lines.append("هنوز زمینی نداری رفیق")
+            lines.append("هنوز زمینی نداری")
 
         text = "<b>🌱 مزرعه من</b>\n\n" + "\n".join(lines)
         text += f"\n\n💵 نقدینگی {money(user.cash)}"
@@ -72,7 +72,7 @@ async def buy_plot_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await s.commit()
 
     if count >= config.MAX_PLOTS:
-        return await render_farm(update, alert="🏡 به سقف 5 زمین رسیدی رفیق")
+        return await render_farm(update, alert="🏡 به سقف 5 زمین رسیدی")
     if level < req_level:
         return await render_farm(update, alert=f"🔒 زمین شماره {fa_num(count + 1)} لول {fa_num(req_level)} می‌خواد")
 
@@ -82,7 +82,7 @@ async def buy_plot_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"قیمتش {money(price)}\n"
         f"الان {money(cash)} داری\n"
         + (f"🔨 بعد خرید {fa_dur(build)} طول می‌کشه ساخته بشه\n" if build else "")
-        + "\nمی‌خری رفیق؟"
+        + "\nمی‌خری؟"
     )
     await respond(update, text, kb.confirm_kb("cf:farm:buy"))
 
@@ -102,7 +102,7 @@ def _picker_text(stock: dict[str, int]) -> str:
         return (
             "<b>🌱 چی بکاریم؟</b>\n\n"
             "بذرهات | ⏱ زمان رشد | 💰 درآمد برداشت\n\n"
-            "یکی رو انتخاب کن رفیق"
+            "یکی رو انتخاب کن"
         )
     return (
         "<b>🌾 انبار بذرت خالیه</b>\n\n"

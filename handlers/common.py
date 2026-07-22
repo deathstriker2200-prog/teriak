@@ -56,6 +56,11 @@ def format_attack_result(result: dict, target_name: str) -> str:
     roll_line = f"🎲 تو {fa_num(result['a_roll'])} | اون {fa_num(result['d_roll'])}"
 
     mods: list[str] = []
+    if result.get("weather") and result["weather"] != "normal":
+        import config as _cfg
+        _w = _cfg.WEATHERS.get(result["weather"], {})
+        if _w:
+            mods.append(f"{_w['emoji']} {_w['name']}")
     if result.get("tbuff"):
         mods.append(f"🏰 ساختمان حمله تیمت +{fa_num(int(result['tbuff'] * 100))}٪")
     if result.get("defcut"):
@@ -80,7 +85,7 @@ def format_attack_result(result: dict, target_name: str) -> str:
         )
     else:
         text = (
-            "<b>❌ له شدی رفیق</b>\n\n"
+            "<b>❌ له شدی</b>\n\n"
             f"ایبابا {target_name} حسابت رو رسوند\n"
             f"{roll_line}{mods_line}\n"
             f"⚡ {fa_num(result.get('penalty', 0))} انرژی جریمه شدی\n"

@@ -103,17 +103,23 @@ def steal_amount(
     victim_cash: int,
     attacker_dogs: list,
     victim_has_legend: bool,
+    victim_dogs: list | None = None,
 ) -> tuple[int, float, bool]:
     """
-    مبلغ سرقت با مادیفایرها
-    خروجی: (مبلغ نهایی, درصد بونس سگ کمیاب, آیا زره افسانه‌ای نصف کرد)
+    مبلغ سرقت با مادیفایرها (گرگ + شخصیت سگ‌ها و زره افسانه‌ای)
+    خروجی: (مبلغ نهایی, درصد بونس غرامت مهاجم, آیا زره افسانه‌ای نصف کرد)
     """
     pct = random.uniform(config.STEAL_MIN_PCT, config.STEAL_MAX_PCT)
     amount = victim_cash * pct
 
-    bonus = dog_svc.rare_steal_bonus(attacker_dogs)
+    bonus = dog_svc.rare_steal_bonus(attacker_dogs) + dog_svc.personality_steal_bonus(attacker_dogs)
     if bonus:
         amount *= 1 + bonus
+
+    if victim_dogs:
+        cut = dog_svc.personality_steal_cut(victim_dogs)
+        if cut:
+            amount *= 1 - cut
 
     if victim_has_legend and amount:
         amount *= 0.5
@@ -152,9 +158,10 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
     user_items = await user_svc.get_item_keys(session, user.id)
     target_items = await user_svc.get_item_keys(session, target.id)
     user_dogs = await dog_svc.get_user_dogs(session, user.id)
+    target_dogs = await dog_svc.get_user_dogs(session, target.id)
 
     atk, _ = combat_stats(user, user_items, user_dogs)
-    _, dfn = combat_stats(target, target_items, [])
+    _, dfn = combat_stats(target, target_items, target_dogs)
 
     # بونس ساختمان‌های تیم — حمله مهاجم و دفاع مدافع
     from services import teams as team_svc
@@ -166,6 +173,15 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
         atk = int(atk * (1 + tbuff))
     if tbuff_def:
         dfn = int(dfn * (1 + tbuff_def))
+
+    # افکت آب و هوا روی نبرد (طوفان −۱۰٪ حمله | مه +۲۰٪ دفاع)
+    from services import world as world_svc
+    wkey, _ = await world_svc.current_weather(session)
+    watk, wdef = world_svc.weather_combat_mods(wkey)
+    if watk:
+        atk = max(1, int(atk * (1 + watk)))
+    if wdef:
+        dfn = max(1, int(dfn * (1 + wdef)))
 
     # گرگ سیاه دفاع حریف رو خرد می‌کنه — تا ۳۰٪ بسته به لولش
     def_cut = dog_svc.rare_defense_cut(user_dogs)
@@ -187,6 +203,7 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
         "halved": False,
         "defcut": def_cut,
         "tbuff": tbuff,
+        "weather": wkey,
         "xp": config.ATTACK_WIN_XP if win else config.ATTACK_LOSE_XP,
         "penalty": 0 if win else config.ATTACK_LOSE_ENERGY,
         "notes": [],
@@ -194,7 +211,7 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
 
     if win:
         amount, bonus, halved = steal_amount(
-            target.cash, user_dogs, has_legend_armor(target_items)
+            target.cash, user_dogs, has_legend_armor(target_items), target_dogs
         )
         target.cash -= amount
         user.cash += amount

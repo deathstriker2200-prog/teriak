@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import config
 from models import Plot, SeedStock, User
 from services import economy, users
-from utils import fa_dur, fa_num, money, now_utc
+from utils import fa_dur, fa_num, money, money_tp, now_utc
 
 
 # ───────── ابزار ─────────
@@ -48,7 +48,7 @@ async def add_seed_stock(session: AsyncSession, user_id: int, seed_key: str, amo
 async def buy_plot(session: AsyncSession, user: User) -> tuple[bool, str]:
     count = await plots_count(session, user.id)
     if count >= config.MAX_PLOTS:
-        return False, "🏡 به سقف 5 زمین رسیدی رفیق"
+        return False, "🏡 به سقف 5 زمین رسیدی"
 
     n = count + 1
     req_level = economy.plot_required_level(count)
@@ -57,7 +57,7 @@ async def buy_plot(session: AsyncSession, user: User) -> tuple[bool, str]:
 
     price = economy.plot_price(count)
     if user.cash < price:
-        return False, "❌ تی‌پوینتت کافی نیس رفیق"
+        return False, "❌ تی‌پوینتت کافی نیس"
 
     build_sec = economy.plot_build_seconds(count)
     user.cash -= price
@@ -92,7 +92,11 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
     await add_seed_stock(session, user.id, seed_key, -1)
 
-    seconds = economy.crop_grow_seconds(seed_key, plot.level)
+    # آب و هوا روی سرعت رشد اثر می‌ذاره (باران سریع‌تر | گرما/سرما کندتر)
+    from services import world as world_svc
+    wkey, _ = await world_svc.current_weather(session)
+    speed = world_svc.weather_grow_speed(wkey)
+    seconds = max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
     plot.status = "growing"
     plot.crop = seed_key
     plot.planted_at = now_utc()
@@ -122,11 +126,18 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     plots = await get_user_plots(session, user.id)
     ready = [p for p in plots if p.current_status()[0] == "ready"]
     if not ready:
-        return False, "▫️ چیزی آماده برداشت نیس رفیق", None
+        return False, "▫️ چیزی آماده برداشت نیس", None
+
+    # افکت‌های جهان: کیفیت برداشت ⭐ + آب و هوا 🌦 + بازار سیاه 📈
+    from services import world as world_svc
+    wkey, _ = await world_svc.current_weather(session)
+    sell_mult = world_svc.weather_sell_mult(wkey)
+    q5_bonus = world_svc.weather_q5_bonus(wkey)
+    pcts, _ = await world_svc.market_pcts(session)
 
     total_gain = 0
     total_xp = 0
-    names: list[str] = []
+    item_lines: list[str] = []
     for p in ready:
         if p.crop not in config.SEEDS:
             # بذر قدیمی (از کاتالوگ حذف شده) — زمین خالی میشه بدون درآمد
@@ -135,10 +146,15 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
             p.planted_at = None
             p.ready_at = None
             continue
-        gain = economy.crop_yield(p.crop, p.level, user.level)
+        tier = world_svc.roll_quality(q5_bonus)
+        base = economy.crop_yield(p.crop, p.level, user.level)
+        mkt = world_svc.market_mult(pcts, p.crop)
+        gain = int(base * tier["mult"] * sell_mult * mkt)
         total_gain += gain
         total_xp += config.SEEDS[p.crop]["xp"]
-        names.append(config.SEEDS[p.crop]["name"])
+        item_lines.append(
+            f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)} — {money_tp(gain)}"
+        )
         p.status = "empty"
         p.crop = None
         p.planted_at = None
@@ -152,10 +168,13 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     from services import teams as team_svc
     quest_msg = await team_svc.record_harvest(session, user, len(ready))
 
-    extra = (
-        f"📦 {' و '.join(names)} برداشت شد و {money(total_gain)} خالص گیرت اومد"
-        + (f"\n✨ {fa_num(total_xp)} تجربه" if total_xp else "")
-    )
+    extra = "\n".join(item_lines)
+    extra += f"\n\n💰 مجموع {money(total_gain)} خالص گیرت اومد"
+    if total_xp:
+        extra += f"\n✨ {fa_num(total_xp)} تجربه"
+    if wkey != "normal" and sell_mult != 1.0:
+        w = world_svc.weather_of(wkey)
+        extra += f"\n{w['emoji']} افکت {w['name']} روش حساب شد"
     if quest_msg:
         extra += "\n\n" + quest_msg
     if notes:
@@ -173,7 +192,7 @@ async def upgrade_plot(session: AsyncSession, user: User, plot: Plot) -> tuple[b
 
     price = economy.upgrade_price(plot.level)
     if user.cash < price:
-        return False, "❌ تی‌پوینتت کافی نیس رفیق"
+        return False, "❌ تی‌پوینتت کافی نیس"
 
     user.cash -= price
     plot.level += 1

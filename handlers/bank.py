@@ -52,7 +52,7 @@ async def _amount_cmd(update: Update, action: str, sample: str) -> int | None:
     p = txt.split(None, 1)
     amount = parse_amount(p[1]) if len(p) > 1 else None
     if amount is None:
-        await respond(update, f"❌ مبلغو درست بگو رفیق — مثلا «{sample}»")
+        await respond(update, f"❌ مبلغو درست بگو — مثلا «{sample}»")
     return amount
 
 

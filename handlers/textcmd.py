@@ -87,7 +87,7 @@ async def buy_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     kind, key, item = shop_svc.find_shop_item(query)
     if not key:
-        return await respond(update, "🤷 جنسی با این اسم پیدا نشد رفیق")
+        return await respond(update, "🤷 جنسی با این اسم پیدا نشد")
 
     emoji = shop_svc.KIND_EMOJI.get(kind, "🛒")
     extra = ""
@@ -117,7 +117,7 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     dog_name = p[4] if len(p) > 4 else None  # اسم دلخواه سگ
 
     if update.effective_user.id != int(owner_id):
-        await update.callback_query.answer("این فاکتور مال تو نیس رفیق 😅", show_alert=True)
+        await update.callback_query.answer("این فاکتور مال تو نیس 😅", show_alert=True)
         return
 
     async with session_scope() as s:
@@ -147,7 +147,7 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         building = next((p for p in plots if p.current_status()[0] == "building"), None)
 
         if not plots:
-            msg = "🌱 زمینی نداری رفیق — اول از مزرعه زمین بخر"
+            msg = "🌱 زمینی نداری — اول از مزرعه زمین بخر"
         elif empty is None:
             if building is not None:
                 _, left = building.current_status()
@@ -192,9 +192,9 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     tg_target = reply.from_user
     if tg_target.is_bot:
-        return await respond(update, "😅 ربات‌ها رو نمیشه زد رفیق")
+        return await respond(update, "😅 ربات‌ها رو نمیشه زد")
     if tg_target.id == update.effective_user.id:
-        return await respond(update, "😅 خودتو نزن رفیق")
+        return await respond(update, "😅 خودتو نزن")
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -206,7 +206,7 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return await respond(update, f"⏳ هنوز {fa_dur(left)} از کولدونت مونده")
         if user.energy < config.ATTACK_ENERGY_COST:
             await s.commit()
-            return await respond(update, "⚡ انرژیت کمه رفیق")
+            return await respond(update, "⚡ انرژیت کمه")
 
         target = await users.get_by_tg(s, tg_target.id)
         if not target:
@@ -232,7 +232,7 @@ async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _, target_id, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer("این دعوا مال تو نیس رفیق 😅", show_alert=True)
+        await update.callback_query.answer("این دعوا مال تو نیس 😅", show_alert=True)
         return
 
     async with session_scope() as s:
@@ -251,7 +251,7 @@ async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not result["ok"]:
         msg = (
             f"⏳ هنوز {fa_dur(result['left'])} از کولدونت مونده"
-            if result["reason"] == "cooldown" else "⚡ انرژیت کمه رفیق"
+            if result["reason"] == "cooldown" else "⚡ انرژیت کمه"
         )
         return await respond(update, msg)
     await respond(update, format_attack_result(result, target_name), kb.attack_result_kb())
@@ -262,6 +262,6 @@ async def tx_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer("مال تو نیس رفیق 😅", show_alert=True)
+        await update.callback_query.answer("مال تو نیس 😅", show_alert=True)
         return
     await respond(update, "<b>😅 بی‌خیال شدیم</b>")

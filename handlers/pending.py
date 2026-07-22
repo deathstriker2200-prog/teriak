@@ -22,6 +22,8 @@ _KNOWN_TEXTS = {
     "انحلال تیم", "ساخت تیم", "رتبه", "رتبه بندی", "بانک", "واریز",
     "تیم ساختمان", "تیم ساختمان ها", "تیم ساخت", "تیم پروفایل", "تیم عضویت",
     "تیم لیدربرد", "تیم چالش", "تیم کوئست", "تیم بانک", "تیم واریز",
+    "جستجو", "جست و جو", "آب و هوا", "وضعیت آب و هوا", "وضعیت بازار",
+    "بازار سیاه", "پناهگاه", "قمار", "قمارخانه",
 }
 
 _KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ")
@@ -32,7 +34,16 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not text or text.startswith("/"):
         return
 
+    chat = update.effective_chat
+    is_group = chat is not None and chat.type in ("group", "supergroup")
+
     async with session_scope() as s:
+        # ردیابی فعالیت گروه — برای اعلان آب و هوا و اسپون کاروان
+        if is_group:
+            from services import world as world_svc
+            await world_svc.touch_group(s, chat.id)
+            await s.commit()
+
         user = await users.get_by_tg(s, update.effective_user.id)
         if user is None or not user.pending_action:
             return
@@ -68,7 +79,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if action in ("bankdep", "bankwd"):
             amount = parse_amount(text)
             if amount is None:
-                await update.message.reply_html("❌ فقط عددشو بفرست رفیق — مثلا 1200\n\n❌ پشیمون شدی بنویس «لغو»")
+                await update.message.reply_html("❌ فقط عددشو بفرست — مثلا 1200\n\n❌ پشیمون شدی بنویس «لغو»")
                 raise ApplicationHandlerStop()
 
             user.pending_action = None

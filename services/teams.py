@@ -64,7 +64,7 @@ async def member_count(session: AsyncSession, team_id: int) -> int:
 async def can_create_team(session: AsyncSession, user: User) -> tuple[bool, str]:
     """چک‌های قبل از پرسیدن اسم تیم"""
     if user.level < config.TEAM_CREATE_MIN_LEVEL:
-        return False, f"🔒 ساخت تیم لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)} می‌خواد رفیق"
+        return False, f"🔒 ساخت تیم لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
         return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی — اول «ترک تیم» رو بزن"
     if user.cash < config.TEAM_CREATE_COST:
@@ -270,9 +270,13 @@ async def _record(session: AsyncSession, user: User, key: str, n: int) -> str | 
                 if u:
                     u.cash += quest["reward"]
 
+            bank_reward = quest.get("bank_reward", 0)
+            team.bank += bank_reward
+            bank_line = f"\n🏦 و {money(bank_reward)} هم به بانک تیم رسید" if bank_reward else ""
+
             return (
                 f"🏴 کوئست {quest['emoji']} «{quest['title']}» تیم «{team.name}» کامل شد!\n"
-                f"🎁 {money(quest['reward'])} به هر عضو تیم رسید"
+                f"🎁 {money(quest['reward'])} به هر عضو تیم رسید{bank_line}"
             )
     return None
 
@@ -477,8 +481,9 @@ async def maybe_weekly_rollover(session: AsyncSession) -> list[dict] | None:
 # ───────── ساختمان‌های تیم 🏗 ─────────
 
 def building_cost(level: int) -> int:
-    """هزینه ارتقا به لول level (لول ۱ = هزینه پایه)"""
-    return int(config.TEAM_BUILDING_BASE_COST * (config.TEAM_BUILDING_COST_GROWTH ** max(0, level - 1)))
+    """هزینه ارتقا به لول level (۱..۱۰) — جدول رند، گرونه چون همه تیم جمعش می‌کنن"""
+    lv = min(max(level, 1), config.TEAM_BUILDING_MAX_LEVEL)
+    return config.TEAM_BUILDING_PRICES[lv - 1]
 
 
 def atk_bonus(team: Team | None) -> float:

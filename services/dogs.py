@@ -1,11 +1,13 @@
 """منطق سگ‌ها: خرید | غذا دادن | لول‌آپ | قدرت"""
 
+import random
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import Dog, User
-from utils import fa_num, money, normalize_fa, now_utc
+from utils import fa_num, iran_today, money, normalize_fa, now_utc
 
 
 def dog_xp_need(level: int) -> int:
@@ -13,12 +15,67 @@ def dog_xp_need(level: int) -> int:
     return int(config.DOG_XP_BASE * (level ** config.DOG_XP_EXP))
 
 
+def personality_of(dog: Dog) -> dict | None:
+    """کانفیگ شخصیت سگ — گرگ سیاه شخصیت نداره"""
+    if not dog.personality:
+        return None
+    return config.DOG_PERSONALITIES.get(dog.personality)
+
+
+def ensure_personality(dog: Dog) -> None:
+    """به سگ‌های قدیمی که شخصیت ندارن یه شخصیت رندوم بده (گرگ سیاه مستثنی)"""
+    if dog.personality or config.DOGS.get(dog.dog_key, {}).get("rare"):
+        return
+    dog.personality = random.choice(list(config.DOG_PERSONALITIES.keys()))
+
+
+def roll_personality(dog_key: str) -> str | None:
+    """شخصیت رندوم موقع خرید — گرگ سیاه با قابلیت‌های خودش می‌مونه"""
+    if config.DOGS.get(dog_key, {}).get("rare"):
+        return None
+    return random.choice(list(config.DOG_PERSONALITIES.keys()))
+
+
 def dog_attack(dog: Dog) -> int:
-    """قدرت حمله سگ با در نظر گرفتن لولش"""
+    """قدرت حمله سگ با لول و شخصیتش (وفادار +۵٪ | جنگجو +۱۰٪)"""
     cfg = config.DOGS.get(dog.dog_key)
     if not cfg:
         return 0
-    return cfg["attack"] + cfg["atk_per_level"] * max(0, dog.level - 1)
+    atk = cfg["attack"] + cfg["atk_per_level"] * max(0, dog.level - 1)
+    per = personality_of(dog)
+    if per and per.get("atk_mult"):
+        atk = int(atk * (1 + per["atk_mult"]))
+    return atk
+
+
+def personality_steal_bonus(dogs: list[Dog]) -> float:
+    """شکارچی 💰 — غرامت جنگی ۸٪+"""
+    best = 0.0
+    for d in dogs:
+        per = personality_of(d)
+        if per and per.get("steal_bonus"):
+            best = max(best, per["steal_bonus"])
+    return best
+
+
+def personality_steal_cut(dogs: list[Dog]) -> float:
+    """نگهبان 🛡 — دزدی از جیبت ۱۰٪−"""
+    best = 0.0
+    for d in dogs:
+        per = personality_of(d)
+        if per and per.get("def_steal_cut"):
+            best = max(best, per["def_steal_cut"])
+    return best
+
+
+def search_luck(dogs: list[Dog]) -> float:
+    """خوش‌شانس 🍀 — شانس جایزه‌های خوب جستجو بیشتر"""
+    best = 1.0
+    for d in dogs:
+        per = personality_of(d)
+        if per and per.get("luck"):
+            best = max(best, per["luck"])
+    return best
 
 
 def rare_steal_bonus(dogs: list[Dog]) -> float:
@@ -41,9 +98,25 @@ def rare_defense_cut(dogs: list[Dog]) -> float:
     return best
 
 
+def rare_ability_lines(dog: Dog) -> list[str]:
+    """متن قابلیت گرگ سیاه با اعداد مقیاس لولش — مثل «دفاع حریف رو 18٪ کاهش میده»"""
+    if not config.DOGS.get(dog.dog_key, {}).get("rare"):
+        return []
+    ratio = min(1.0, dog.level / config.DOG_MAX_LEVEL)
+    cut = round(ratio * config.RARE_DOG_DEF_CUT_MAX * 100)
+    steal = round(ratio * config.RARE_DOG_STEAL_MAX * 100)
+    return [
+        f"🎖 دفاع حریف رو {fa_num(cut)}٪ کاهش میده",
+        f"🪙 غرامت جنگی رو {fa_num(steal)}٪ افزایش میده",
+    ]
+
+
 async def get_user_dogs(session: AsyncSession, user_id: int) -> list[Dog]:
     q = select(Dog).where(Dog.user_id == user_id).order_by(Dog.id)
-    return list((await session.execute(q)).scalars())
+    dogs = list((await session.execute(q)).scalars())
+    for d in dogs:
+        ensure_personality(d)
+    return dogs
 
 
 def _check_buyable(user: User, dogs: list[Dog], dog_key: str) -> tuple[bool, str]:
@@ -52,13 +125,13 @@ def _check_buyable(user: User, dogs: list[Dog], dog_key: str) -> tuple[bool, str
     if not cfg:
         return False, "❌ همچین سگی نیس"
     if any(d.dog_key == dog_key for d in dogs):
-        return False, f"تو نژاد {cfg['breed']} رو داری که رفیق"
+        return False, f"تو نژاد {cfg['breed']} رو داری که"
     if len(dogs) >= config.MAX_DOGS:
         return False, f"🐕 بیشتر از {fa_num(config.MAX_DOGS)} سگ نمی‌تونی داشته باشی"
     if user.level < cfg["min_level"]:
         return False, f"🔒 لول {fa_num(cfg['min_level'])} می‌خواد"
     if user.cash < cfg["price"]:
-        return False, "❌ تی‌پوینتت کافی نیس رفیق"
+        return False, "❌ تی‌پوینتت کافی نیس"
     return True, ""
 
 
@@ -82,6 +155,7 @@ async def buy_dog(
         dog_key=dog_key,
         name=name,
         breed=cfg["breed"],
+        personality=roll_personality(dog_key),
     ))
     return True, f"🐕 {name} شد رفیق جدیدت"
 
@@ -132,7 +206,10 @@ async def finalize_dog(session: AsyncSession, user: User, name: str) -> tuple[bo
 
     user.pending_action = None
     user.pending_value = None
-    session.add(Dog(user_id=user.id, dog_key=dog_key, name=display, breed=cfg["breed"]))
+    session.add(Dog(
+        user_id=user.id, dog_key=dog_key, name=display, breed=cfg["breed"],
+        personality=roll_personality(dog_key),
+    ))
     return True, display
 
 
@@ -153,13 +230,18 @@ async def cancel_pending(session: AsyncSession, user: User) -> str:
     return "😅 بی‌خیال شدیم"
 
 
-def feeds_left(user: User) -> int:
-    """غذاهای باقی‌مونده امروز — با شروع روز جدید ریست میشه (صدا زدنش state رو عوض می‌کنه ولی نیاز به کامیت داره)"""
-    today = now_utc().date().isoformat()
-    if user.feed_day != today:
-        user.feed_day = today
-        user.feeds_used_today = 0
-    return max(0, config.DOG_FEED_PER_DAY - user.feeds_used_today)
+def feeds_left(dog: Dog) -> int:
+    """سهمیه غذای باقی‌مونده خودِ این سگ — هر روز ساعت ۱۲ شب (به‌وقت ایران) ریست میشه"""
+    today = iran_today()
+    if dog.feed_day != today:
+        dog.feed_day = today
+        dog.feeds_today = 0
+    return max(0, config.DOG_FEED_PER_DAY - dog.feeds_today)
+
+
+def full_text(dog: Dog) -> str:
+    """متن سیر بودن یه سگ خاص"""
+    return f"🍖 {dog.name} امروز حسابی لمبونده دیگه گرسنش نیست"
 
 
 async def feed_dog(session: AsyncSession, user: User, dog: Dog, food_key: str) -> tuple[bool, str, list[str]]:
@@ -173,15 +255,15 @@ async def feed_dog(session: AsyncSession, user: User, dog: Dog, food_key: str) -
 
     if dog.user_id != user.id:
         return False, "❌ این سگ مال تو نیس", []
-    if feeds_left(user) <= 0:
-        return False, f"امروز {fa_num(config.DOG_FEED_PER_DAY)} بار به سگت غذا دادی، دیگه گرسنش نیست فردا بیا", []
+    if feeds_left(dog) <= 0:
+        return False, full_text(dog), []
     if dog.level >= config.DOG_MAX_LEVEL:
         return False, f"⭐ {dog.name} مکس لوله", []
     if user.cash < food["price"]:
-        return False, "❌ تی‌پوینتت کافی نیس رفیق", []
+        return False, "❌ تی‌پوینتت کافی نیس", []
 
     user.cash -= food["price"]
-    user.feeds_used_today += 1
+    dog.feeds_today += 1
     dog.xp += food["xp"]
 
     notes: list[str] = []
@@ -196,6 +278,15 @@ async def feed_dog(session: AsyncSession, user: User, dog: Dog, food_key: str) -
 
     msg = f"🍖 {dog.name} {food['name']} رو خورد و {fa_num(food['xp'])} تجربه گرفت"
     return True, msg, notes
+
+
+async def release_dog(session: AsyncSession, user: User, dog: Dog) -> tuple[bool, str]:
+    """رها کردن سگ — برگشتی نداره"""
+    if dog.user_id != user.id:
+        return False, "❌ این سگ مال تو نیس"
+    name = dog.name
+    await session.delete(dog)
+    return True, f"🕊 {name} رو رها کردی — رفت دنبال زندگیش"
 
 
 def find_my_dog(dogs: list[Dog], query: str) -> Dog | None:

@@ -19,6 +19,11 @@ CATALOGS = {
 KIND_EMOJI = {"weap": "🗡", "arm": "🛡", "seed": "🌱", "dog": "🐕"}
 
 
+def shop_seeds() -> dict:
+    """بذرهای قابل خرید تو شاپ — افسانه‌ای‌ها 🔥😈 تو بازار سیاه/شاپ نمیان"""
+    return {k: v for k, v in CATALOGS["seed"].items() if not v.get("legendary")}
+
+
 async def purchase(
     session: AsyncSession, user: User, kind: str, key: str, dog_name: str | None = None
 ) -> tuple[bool, str]:
@@ -50,10 +55,22 @@ async def purchase(
     if kind in ("weap", "arm"):
         owned = await users.get_item_keys(session, user.id)
         if key in owned:
-            return False, "اینو داری که رفیق"
+            return False, "اینو داری که"
 
     if user.cash < item["price"]:
-        return False, "❌ تی‌پوینتت کافی نیس رفیق"
+        return False, "❌ تی‌پوینتت کافی نیس"
+
+    # بذر افسانه‌ای قابل خرید نیس — فقط از جستجو/کاروان/ایونت
+    if kind == "seed" and item.get("legendary"):
+        return False, "❌ این بذر افسانه‌ایه و تو شاپ فروخته نمیشه — از جستجو یا کاروان برمی‌داری"
+
+    if kind == "seed":
+        from services.world import seed_storage_cap
+        from services.farming import get_stock
+        cap = seed_storage_cap(user)
+        stock = await get_stock(session, user.id)
+        if stock.get(key, 0) >= cap:
+            return False, f"🌾 انبارت پره — ظرفیت هر بذر {fa_num(cap)} تاست؛ با «پناهگاه» بیشترش کن"
 
     user.cash -= item["price"]
 
