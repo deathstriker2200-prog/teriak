@@ -23,7 +23,7 @@ logger = logging.getLogger("teriaky.jobs")
 
 
 async def _send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, markup=None) -> None:
-    """ارسال امن — گروه ریمووشده/بلاک بی‌صدا رد میشه"""
+    """ارسال امن، گروه ریمووشده/بلاک بی‌صدا رد میشه"""
     try:
         await context.bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
     except (BadRequest, Forbidden):
@@ -109,10 +109,10 @@ async def police_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 # ───────── ثبت جاب‌ها ─────────
 
 def register_jobs(app) -> None:
-    """ثبت جاب‌های دوره‌ای روی JobQueue — بدون دیپندنسی جاب پاکش میشه"""
+    """ثبت جاب‌های دوره‌ای روی JobQueue، بدون دیپندنسی جاب پاکش میشه"""
     jq = getattr(app, "job_queue", None)
     if jq is None:
-        logger.warning("JobQueue available نیس — جاب‌های زمان‌دار غیرفعال شدن (python-telegram-bot[job-queue] نصب کن)")
+        logger.warning("JobQueue available نیس، جاب‌های زمان‌دار غیرفعال شدن (python-telegram-bot[job-queue] نصب کن)")
         return
 
     jq.run_repeating(weather_job, interval=config.WEATHER_ROLL_SECONDS, first=60, name="weather")

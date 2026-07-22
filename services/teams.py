@@ -16,7 +16,7 @@ import config
 from models import GameMeta, Team, TeamDaily, TeamMember, User
 from utils import fa_num, money, normalize_fa, now_utc
 
-# ───────── سشن‌های کنده‌کاری تیمی (درون حافظه — با ری‌استارت پاک میشن) ─────────
+# ───────── سشن‌های کنده‌کاری تیمی (درون حافظه، با ری‌استارت پاک میشن) ─────────
 # team_id → {chat_id, message_id, members(set of user_id), needed, member_count, expires_at}
 TEAM_MINE_SESSIONS: dict[int, dict] = {}
 
@@ -45,7 +45,7 @@ async def get_team_of(session: AsyncSession, user_id: int) -> Team | None:
     m = await get_membership(session, user_id)
     if not m:
         return None
-    # lazy-load تو async ممنوعه — مستقیم می‌گیریم
+    # lazy-load تو async ممنوعه، مستقیم می‌گیریم
     return await session.get(Team, m.team_id)
 
 
@@ -66,14 +66,14 @@ async def can_create_team(session: AsyncSession, user: User) -> tuple[bool, str]
     if user.level < config.TEAM_CREATE_MIN_LEVEL:
         return False, f"🔒 ساخت تیم لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
-        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی — اول «ترک تیم» رو بزن"
+        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی، اول «ترک تیم» رو بزن"
     if user.cash < config.TEAM_CREATE_COST:
         return False, f"❌ ساخت تیم {money(config.TEAM_CREATE_COST)} هزینه داره و پولت کمه"
     return True, ""
 
 
 def validate_team_name(name: str) -> tuple[bool, str, str]:
-    """ولیدیشن اسم تیم — خروجی: (اوکی, اسم تمیز, دلیل رد)"""
+    """ولیدیشن اسم تیم، خروجی: (اوکی, اسم تمیز, دلیل رد)"""
     clean = normalize_fa(name)
     if not clean or len(clean) < 2:
         return False, clean, "❌ اسم تیم خیلی کوتاهه"
@@ -85,7 +85,7 @@ def validate_team_name(name: str) -> tuple[bool, str, str]:
 
 
 async def create_team(session: AsyncSession, user: User, name: str) -> tuple[bool, str]:
-    """ساخت تیم با اسم انتخابی — هزینه همونجا کم میشه"""
+    """ساخت تیم با اسم انتخابی، هزینه همونجا کم میشه"""
     ok, alert = await can_create_team(session, user)
     if not ok:
         return False, alert
@@ -95,9 +95,9 @@ async def create_team(session: AsyncSession, user: User, name: str) -> tuple[boo
         return False, why
 
     if await get_team_by_name(session, clean):
-        return False, f"🏴 تیمی با اسم «{clean}» از قبل هست — یه اسم دیگه بردار"
+        return False, f"🏴 تیمی با اسم «{clean}» از قبل هست، یه اسم دیگه بردار"
 
-    # اسم نمایشی همون چیزی میمونه که کاربر تایپ کرد (با نیم‌فاصله) — نسخه نرمال فقط برای یکتایی
+    # اسم نمایشی همون چیزی میمونه که کاربر تایپ کرد (با نیم‌فاصله)، نسخه نرمال فقط برای یکتایی
     display = " ".join(str(name).split())
     user.cash -= config.TEAM_CREATE_COST
     team = Team(name=display, name_norm=team_name_norm(display), owner_id=user.id)
@@ -111,7 +111,7 @@ async def join_team(session: AsyncSession, user: User, name: str) -> tuple[bool,
     if user.level < config.TEAM_JOIN_MIN_LEVEL:
         return False, f"🔒 عضویت تو تیم لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
-        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی — اول «ترک تیم» رو بزن"
+        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی، اول «ترک تیم» رو بزن"
 
     team = await get_team_by_name(session, name)
     if not team:
@@ -126,12 +126,12 @@ async def join_team(session: AsyncSession, user: User, name: str) -> tuple[bool,
 
 
 async def leave_team(session: AsyncSession, user: User) -> tuple[bool, str]:
-    """عضو عادی خارج میشه — رهبر نمی‌تونه بره مگر تیم رو منحل کنه"""
+    """عضو عادی خارج میشه، رهبر نمی‌تونه بره مگر تیم رو منحل کنه"""
     m = await get_membership(session, user.id)
     if not m:
         return False, "🏴 اصلا تو تیمی نیستی که"
     if m.role == "owner":
-        return False, "👑 تو رهبری — یا تیم رو با «انحلال تیم» منحل کن یا اول جانشین بذار ندارم 😅"
+        return False, "👑 تو رهبری، یا تیم رو با «انحلال تیم» منحل کن یا اول جانشین بذار ندارم 😅"
     team = await session.get(Team, m.team_id)
     name = team.name if team else "؟"
     await session.delete(m)
@@ -139,7 +139,7 @@ async def leave_team(session: AsyncSession, user: User) -> tuple[bool, str]:
 
 
 async def disband_team(session: AsyncSession, user: User) -> tuple[bool, str]:
-    """انحلال توسط رهبر — خزانه و آمار نابود میشه"""
+    """انحلال توسط رهبر، خزانه و آمار نابود میشه"""
     m = await get_membership(session, user.id)
     if not m or m.role != "owner":
         return False, "👑 فقط رهبر می‌تونه تیم رو منحل کنه"
@@ -153,7 +153,7 @@ async def disband_team(session: AsyncSession, user: User) -> tuple[bool, str]:
 
 
 async def set_bio(session: AsyncSession, user: User, bio: str) -> tuple[bool, str]:
-    """ست کردن پروفایل/بیو تیم — فقط رهبر — تو آمار تیم نمایش داده میشه"""
+    """ست کردن پروفایل/بیو تیم، فقط رهبر، تو آمار تیم نمایش داده میشه"""
     m = await get_membership(session, user.id)
     if not m or m.role != "owner":
         return False, "👑 فقط رهبر می‌تونه بیوی تیم رو عوض کنه"
@@ -213,7 +213,7 @@ async def top_teams(session: AsyncSession, limit: int = 10) -> list[tuple[Team, 
 # ───────── کوئست روزانه ─────────
 
 async def _daily(session: AsyncSession, team_id: int) -> TeamDaily:
-    """ردیف امروز تیم رو بگیر — اگه نبود بساز"""
+    """ردیف امروز تیم رو بگیر، اگه نبود بساز"""
     day = _today()
     q = select(TeamDaily).where(TeamDaily.team_id == team_id, TeamDaily.day == day)
     row = (await session.execute(q)).scalar_one_or_none()
@@ -232,7 +232,7 @@ def _quest_progress(daily: TeamDaily, key: str) -> tuple[int, bool]:
 
 async def _record(session: AsyncSession, user: User, key: str, n: int) -> str | None:
     """
-    ثبت پیشرفت کوئست + امتیاز تیم — اگه سقف پر شد جایزه به همه اعضا میرسه
+    ثبت پیشرفت کوئست + امتیاز تیم، اگه سقف پر شد جایزه به همه اعضا میرسه
     خروجی: متن اعلان تکمیل کوئست یا None
     """
     await maybe_weekly_rollover(session)  # اول هفته جدید چک بشه
@@ -282,17 +282,17 @@ async def _record(session: AsyncSession, user: User, key: str, n: int) -> str | 
 
 
 async def record_kill(session: AsyncSession, user: User) -> str | None:
-    """هر برد تو حمله — با قلاب execute_attack صدا زده میشه"""
+    """هر برد تو حمله، با قلاب execute_attack صدا زده میشه"""
     return await _record(session, user, "kills", 1)
 
 
 async def record_harvest(session: AsyncSession, user: User, n: int) -> str | None:
-    """هر محصول برداشت‌شده — با قلاب harvest_all صدا زده میشه"""
+    """هر محصول برداشت‌شده، با قلاب harvest_all صدا زده میشه"""
     return await _record(session, user, "harvest", n)
 
 
 def quests_view(daily: TeamDaily) -> list[dict]:
-    """نمایش کوئست‌ها با پیشرفت — برای متن استعلام"""
+    """نمایش کوئست‌ها با پیشرفت، برای متن استعلام"""
     out = []
     for q in config.TEAM_QUESTS:
         progress, done = _quest_progress(daily, q["key"])
@@ -303,14 +303,14 @@ def quests_view(daily: TeamDaily) -> list[dict]:
 # ───────── کنده‌کاری تیمی (استخراج) ─────────
 
 def mine_needed(member_n: int) -> int:
-    """تعداد نفرات لازم — سقف ۷۰٪ اعضا و حداقل ۳ نفر (تیم زیر ۳ نفره نمی‌تونه استخراج کنه)"""
+    """تعداد نفرات لازم، سقف ۷۰٪ اعضا و حداقل ۳ نفر (تیم زیر ۳ نفره نمی‌تونه استخراج کنه)"""
     return max(3, math.ceil(config.TEAM_MINE_JOIN_PCT * member_n))
 
 
 async def team_mine_join(session: AsyncSession, user: User) -> dict:
     """
     پیوستن/استارت کنده‌کاری تیمی با دستور متنی
-    خروجی: دیکشنری وضعیت برای هندلر — status:
+    خروجی: دیکشنری وضعیت برای هندلر، status:
       no_team | cooldown | started | joined | already | completed | failed_expired_* (+ restart)
     """
     await maybe_weekly_rollover(session)
@@ -371,7 +371,7 @@ async def team_mine_join(session: AsyncSession, user: User) -> dict:
     }
 
     if joined >= sess["needed"]:
-        # تکمیل — پول میره تو خزانه
+        # تکمیل، پول میره تو خزانه
         per = [random.randint(config.TEAM_MINE_PER_MIN, config.TEAM_MINE_PER_MAX) for _ in sess["members"]]
         total = sum(per)
         team.bank += total
@@ -393,7 +393,7 @@ def bind_mine_message(team_id: int, chat_id: int, message_id: int) -> None:
 # ───────── امتیاز تیم و رقابت هفتگی 🏆 ─────────
 
 def current_week_key() -> str:
-    """کلید هفته جاری (ISO) — مثل 2026-W30"""
+    """کلید هفته جاری (ISO)، مثل 2026-W30"""
     iso = now_utc().isocalendar()
     return f"{iso[0]}-W{iso[1]:02d}"
 
@@ -412,21 +412,21 @@ async def meta_set(session: AsyncSession, key: str, value: str) -> None:
 
 
 async def top_teams_by_points(session: AsyncSession, limit: int = 10) -> list[tuple[Team, int]]:
-    """لیدربرد کلی — بر اساس امتیاز تیم"""
+    """لیدربرد کلی، بر اساس امتیاز تیم"""
     q = select(Team).order_by(Team.points.desc(), Team.total_kills.desc()).limit(limit)
     teams_ = list((await session.execute(q)).scalars())
     return [(t, await member_count(session, t.id)) for t in teams_]
 
 
 async def top_teams_week(session: AsyncSession, limit: int = 10) -> list[tuple[Team, int]]:
-    """رقابت این هفته — بر اساس امتیاز هفته"""
+    """رقابت این هفته، بر اساس امتیاز هفته"""
     q = select(Team).order_by(Team.week_points.desc(), Team.points.desc()).limit(limit)
     teams_ = list((await session.execute(q)).scalars())
     return [(t, await member_count(session, t.id)) for t in teams_]
 
 
 async def member_telegram_ids(session: AsyncSession, team_id: int) -> list[int]:
-    """تلگرام‌آی‌دی اعضا — برای اطلاع‌رسانی جایزه هفتگی"""
+    """تلگرام‌آی‌دی اعضا، برای اطلاع‌رسانی جایزه هفتگی"""
     q = select(TeamMember.user_id).where(TeamMember.team_id == team_id)
     ids = list((await session.execute(q)).scalars())
     out: list[int] = []
@@ -439,7 +439,7 @@ async def member_telegram_ids(session: AsyncSession, team_id: int) -> list[int]:
 
 async def maybe_weekly_rollover(session: AsyncSession) -> list[dict] | None:
     """
-    رول‌اور رقابت هفتگی — اگه هفته (ISO) عوض شده باشه:
+    رول‌اور رقابت هفتگی، اگه هفته (ISO) عوض شده باشه:
     به ۳ تیم اول امتیاز هفته جایزه میرسه (به بانک تیم) و امتیاز هفته همه ریست میشه
     خروجی: لیست برنده‌ها [{team, rank, prize, points}] یا None اگه هفته عوض نشده
     نتیجه هفته قبل هم تو game_meta ذخیره میشه تا تو «تیم لیدربرد» نمایش داده بشه
@@ -466,12 +466,12 @@ async def maybe_weekly_rollover(session: AsyncSession) -> list[dict] | None:
         rec = {"team": t, "rank": i, "prize": prize, "points": t.week_points}
         out.append(rec)
         summary.append(
-            f"{medals[i]} «{t.name}» با {fa_num(t.week_points)} امتیاز — {money(prize)} به بانک تیم"
+            f"{medals[i]} «{t.name}» با {fa_num(t.week_points)} امتیاز، {money(prize)} به بانک تیم"
         )
 
     await session.execute(update(Team).values(week_points=0))
     await meta_set(session, "week_key", wk)
-    # فقط وقتی برنده‌ای داشتیم نتیجه رو به‌روز کن — نتیجه خالی قهرمانای قبلی رو نپوشونه
+    # فقط وقتی برنده‌ای داشتیم نتیجه رو به‌روز کن، نتیجه خالی قهرمانای قبلی رو نپوشونه
     if summary:
         await meta_set(session, "last_week_result", "\n".join(summary))
     await session.flush()
@@ -481,13 +481,13 @@ async def maybe_weekly_rollover(session: AsyncSession) -> list[dict] | None:
 # ───────── ساختمان‌های تیم 🏗 ─────────
 
 def building_cost(level: int) -> int:
-    """هزینه ارتقا به لول level (۱..۱۰) — جدول رند، گرونه چون همه تیم جمعش می‌کنن"""
+    """هزینه ارتقا به لول level (۱..۱۰)، جدول رند، گرونه چون همه تیم جمعش می‌کنن"""
     lv = min(max(level, 1), config.TEAM_BUILDING_MAX_LEVEL)
     return config.TEAM_BUILDING_PRICES[lv - 1]
 
 
 def atk_bonus(team: Team | None) -> float:
-    """ضریب بونس حمله همه اعضا — مثلا ۰٫۰۹ برای ساختمان لول ۳"""
+    """ضریب بونس حمله همه اعضا، مثلا ۰٫۰۹ برای ساختمان لول ۳"""
     if not team:
         return 0.0
     return config.TEAM_ATK_BONUS_PER_LEVEL * (team.atk_bld or 0)
@@ -502,7 +502,7 @@ def def_bonus(team: Team | None) -> float:
 
 async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tuple[bool, str]:
     """
-    ارتقای ساختمان توسط رهبر — پولش از بانک تیم میره
+    ارتقای ساختمان توسط رهبر، پولش از بانک تیم میره
     kind: «atk» ساختمان حمله | «def» ساختمان دفاع
     """
     if kind not in ("atk", "def"):
@@ -540,18 +540,18 @@ async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tupl
         effect = f"+{fa_num(bonus_pct)}٪ دفاع همه اعضا"
 
     new_level = team.atk_bld if kind == "atk" else team.def_bld
-    return True, f"🏗 {title} رفت رو لول {fa_num(new_level)} — {effect}"
+    return True, f"🏗 {title} رفت رو لول {fa_num(new_level)}، {effect}"
 
 
 async def team_deposit(session: AsyncSession, user: User, amount: int) -> tuple[bool, str]:
-    """واریز کمک مالی عضو به بانک تیم — «تیم واریز 1200»"""
+    """واریز کمک مالی عضو به بانک تیم، «تیم واریز 1200»"""
     if amount <= 0:
-        return False, "❌ مبلغو درست بگو — مثلا «تیم واریز 1200»"
+        return False, "❌ مبلغو درست بگو، مثلا «تیم واریز 1200»"
     team = await get_team_of(session, user.id)
     if not team:
         return False, "🏴 تو تیمی نیستی که بخوای بهش کمک کنی"
     if user.cash < amount:
-        return False, f"❌ این همه پول نقد نداری — جیبت {money(user.cash)} ـه"
+        return False, f"❌ این همه پول نقد نداری، جیبت {money(user.cash)} ـه"
     user.cash -= amount
     team.bank += amount
-    return True, f"🏦 {money(amount)} به بانک تیم «{team.name}» واریز شد — دستت درد نکنه رفیق 🙏"
+    return True, f"🏦 {money(amount)} به بانک تیم «{team.name}» واریز شد، دستت درد نکنه رفیق 🙏"

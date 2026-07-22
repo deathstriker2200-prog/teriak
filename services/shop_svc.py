@@ -1,4 +1,4 @@
-"""منطق خرید فروشگاه — مرکزی برای هندلرهای اینلاین و دستورهای متنی"""
+"""منطق خرید فروشگاه، مرکزی برای هندلرهای اینلاین و دستورهای متنی"""
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,7 @@ KIND_EMOJI = {"weap": "🗡", "arm": "🛡", "seed": "🌱", "dog": "🐕"}
 
 
 def shop_seeds() -> dict:
-    """بذرهای قابل خرید تو شاپ — افسانه‌ای‌ها 🔥😈 تو بازار سیاه/شاپ نمیان"""
+    """بذرهای قابل خرید تو شاپ، افسانه‌ای‌ها 🔥😈 تو بازار سیاه/شاپ نمیان"""
     return {k: v for k, v in CATALOGS["seed"].items() if not v.get("legendary")}
 
 
@@ -33,7 +33,7 @@ async def purchase(
     """
     if kind == "dog":
         if dog_name:
-            # اسمشو تو همون دستور داده — خرید مستقیم
+            # اسمشو تو همون دستور داده، خرید مستقیم
             return await dog_svc.buy_dog(session, user, key, custom_name=dog_name)
         # بعد از پرداخت اسمشو ازش می‌پرسیم
         return await dog_svc.hold_dog(session, user, key)
@@ -60,9 +60,9 @@ async def purchase(
     if user.cash < item["price"]:
         return False, "❌ تی‌پوینتت کافی نیس"
 
-    # بذر افسانه‌ای قابل خرید نیس — فقط از جستجو/کاروان/ایونت
+    # بذر افسانه‌ای قابل خرید نیس، فقط از جستجو/کاروان/ایونت
     if kind == "seed" and item.get("legendary"):
-        return False, "❌ این بذر افسانه‌ایه و تو شاپ فروخته نمیشه — از جستجو یا کاروان برمی‌داری"
+        return False, "❌ این بذر افسانه‌ایه و تو شاپ فروخته نمیشه، از جستجو یا کاروان برمی‌داری"
 
     if kind == "seed":
         from services.world import seed_storage_cap
@@ -70,7 +70,7 @@ async def purchase(
         cap = seed_storage_cap(user)
         stock = await get_stock(session, user.id)
         if stock.get(key, 0) >= cap:
-            return False, f"🌾 انبارت پره — ظرفیت هر بذر {fa_num(cap)} تاست؛ با «پناهگاه» بیشترش کن"
+            return False, f"🌾 انبارت پره، ظرفیت هر بذر {fa_num(cap)} تاست؛ با «پناهگاه» بیشترش کن"
 
     user.cash -= item["price"]
 
@@ -85,7 +85,7 @@ async def purchase(
 
 def find_shop_item(query: str) -> tuple[str | None, str | None, dict | None]:
     """
-    پیدا کردن آیتم از اسم — ترتیب جستجو: سلاح → زره → بذر
+    پیدا کردن آیتم از اسم، ترتیب جستجو: سلاح → زره → بذر
     خروجی: (kind, key, item)
     """
     from utils import find_by_name

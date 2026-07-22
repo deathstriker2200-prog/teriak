@@ -1,4 +1,4 @@
-"""پروفایل — عکس تلگرام + کپشن فانتزی — دستور و دکمه هر دو همون متن"""
+"""پروفایل، عکس تلگرام + کپشن فانتزی، دستور و دکمه هر دو همون متن"""
 
 from sqlalchemy import func, select
 from telegram import Update
@@ -11,7 +11,7 @@ from handlers.common import strip_home
 from keyboards import keyboards as kb
 from models import User
 from services import combat, dogs as dog_svc, economy, farming, teams as team_svc, users
-from utils import bar, esc, fa_num, iran_clock, jalali_str, money, now_iran
+from utils import bar, esc, fa_num, jalali_str, money
 
 # ───────── فرمت پروفایل ─────────
 
@@ -38,10 +38,9 @@ async def _profile_caption(session, user) -> str:
 
     name = esc(users.display_name(user))
     uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
-    # تاریخ عضویت و ساعت/تاریخ فعلی به شمسی و به‌وقت ایران
+    # تاریخ عضویت به شمسی
     joined = jalali_str(user.created_at) if user.created_at else "—"
-    today_j = jalali_str(now_iran())
-    # سگ فقط به تعداد نمایش داده میشه — نه اسم نه نژاد
+    # سگ فقط به تعداد نمایش داده میشه، نه اسم نه نژاد
     dog_line = f"🐕 سگ {fa_num(len(user_dogs))} عدد" if user_dogs else "🐕 سگ نداری"
 
     team = await team_svc.get_team_of(session, user.id)
@@ -51,9 +50,8 @@ async def _profile_caption(session, user) -> str:
         f"╭━━━━━━━━━━━━━━╮\n"
         f"👤 {name}\n"
         f"╰━━━━━━━━━━━━━━╯\n"
-        f"🆔 {uname} | 🗓 عضو {joined}\n"
-        f"🕰 تایم ایران {iran_clock()} | 📅 {today_j}\n\n"
-        f"🌟 لول {fa_num(user.level)} — XP {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}\n"
+        f"🆔 {uname} | 🗓 عضو {joined}\n\n"
+        f"🌟 لول {fa_num(user.level)}، XP {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}\n"
         f"⚡ انرژی {_bar(user.energy)} {fa_num(user.energy)}/{fa_num(config.MAX_ENERGY)}\n"
         f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n"
         f"{team_line}\n"
@@ -73,14 +71,14 @@ async def _profile_caption(session, user) -> str:
 
 
 async def _send_profile(bot, chat_id: int, tg_id: int, caption: str, markup=None) -> None:
-    """ارسال پروفایل با عکس تلگرام کاربر — اگه عکس نداشت متن ساده"""
+    """ارسال پروفایل با عکس تلگرام کاربر، اگه عکس نداشت متن ساده"""
     file_id = None
     try:
         photos = await bot.get_user_profile_photos(tg_id, limit=1)
         if photos and photos.total_count:
             file_id = photos.photos[0][-1].file_id  # بزرگ‌ترین سایز
     except Exception:
-        file_id = None  # سلب دسترسی — میریم رو متن ساده
+        file_id = None  # سلب دسترسی، میریم رو متن ساده
 
     if file_id:
         await bot.send_photo(
@@ -91,7 +89,7 @@ async def _send_profile(bot, chat_id: int, tg_id: int, caption: str, markup=None
         await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML", reply_markup=markup)
 
 
-# ───────── دستور «پروفایل» / /profile — خالص بدون هیچ متن یا دکمه زیرش ─────────
+# ───────── دستور «پروفایل» / /profile، خالص بدون هیچ متن یا دکمه زیرش ─────────
 
 async def profile_photo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
@@ -104,7 +102,7 @@ async def profile_photo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await _send_profile(context.bot, update.effective_chat.id, tg_id, caption, markup=None)
 
 
-# ───────── دکمه پروفایل تو منو — عکس + رفرش ─────────
+# ───────── دکمه پروفایل تو منو، عکس + رفرش ─────────
 
 async def profile_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -118,7 +116,7 @@ async def profile_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         chat_id = query.message.chat_id if query.message else update.effective_chat.id
         await s.commit()
 
-    # قاب ادیت نمیشه به عکس — پاک می‌کنیم و تازه می‌فرستیم
+    # قاب ادیت نمیشه به عکس، پاک می‌کنیم و تازه می‌فرستیم
     try:
         if query.message:
             await query.message.delete()
@@ -131,5 +129,5 @@ async def profile_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
-# /profile همون نسخه عکس‌دار — بدون دکمه و متن اضافی زیرش
+# /profile همون نسخه عکس‌دار، بدون دکمه و متن اضافی زیرش
 profile_cmd = profile_photo_cmd

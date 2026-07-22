@@ -2,8 +2,8 @@
 سیستم‌های جهان بازی: آب و هوا 🌦 | بازار سیاه 📈 | جستجو 🔍 | قمارخانه 🎰
 یورش پلیس 🚔 | کاروان 🚛 | فعالیت گروه‌ها
 
-همه state ها یا توی game_meta هستن (آب و هوا/بازار — با ری‌استارت می‌مونن)
-یا توی حافظه (کاروان — مثل کنده‌کاری تیمی، زودگذره)
+همه state ها یا توی game_meta هستن (آب و هوا/بازار، با ری‌استارت می‌مونن)
+یا توی حافظه (کاروان، مثل کنده‌کاری تیمی، زودگذره)
 """
 
 import random
@@ -22,7 +22,7 @@ from utils import fa_dur, fa_num, money, now_utc
 # ═════════ فعالیت گروه‌ها ═════════
 
 async def touch_group(session: AsyncSession, chat_id: int) -> None:
-    """آپدیت آخرین فعالیت گروه — موجب میشه گروه تو لیست اعلان آب و هوا و کاروان بمونه"""
+    """آپدیت آخرین فعالیت گروه، موجب میشه گروه تو لیست اعلان آب و هوا و کاروان بمونه"""
     row = await session.get(GroupActivity, chat_id)
     if row:
         row.last_active_at = now_utc()
@@ -68,13 +68,13 @@ def weather_announce_text(key: str) -> str:
     else:
         lines.append(f"{w['emoji']} {w['name']} آغاز شد")
         for b in w.get("boosts", []):
-            lines.append(f"🌱 {b} — تا 2 ساعت آینده")
+            lines.append(f"🌱 {b}، تا 2 ساعت آینده")
     return "\n".join(lines)
 
 
 async def ensure_weather(session: AsyncSession) -> tuple[str, object | None]:
     """
-    آب و هوای فعلی رو بگیر — اگه زمانش گذشته بود همینجا رول کن (تنبل، رول‌بک‌پروف)
+    آب و هوای فعلی رو بگیر، اگه زمانش گذشته بود همینجا رول کن (تنبل، رول‌بک‌پروف)
     خروجی: (کلید, رکورد جدید اگه همین لحظه رول شده وگرنه None)
     """
     until_raw = await _meta(session, "weather_until")
@@ -106,7 +106,7 @@ async def ensure_weather(session: AsyncSession) -> tuple[str, object | None]:
 
 
 async def current_weather(session: AsyncSession) -> tuple[str, int]:
-    """(کلید آب و هوا, ثانیه مونده) — برای نمایش و افکت‌ها"""
+    """(کلید آب و هوا, ثانیه مونده)، برای نمایش و افکت‌ها"""
     key, _ = await ensure_weather(session)
     until_raw = await _meta(session, "weather_until")
     from datetime import datetime as _dt
@@ -128,7 +128,7 @@ def weather_sell_mult(key: str) -> float:
 
 
 def weather_combat_mods(key: str) -> tuple[float, float]:
-    """(اصلاح حمله, اصلاح دفاع) — طوفان −10٪ موفقیت حمله | مه +20٪ دفاع"""
+    """(اصلاح حمله, اصلاح دفاع)، طوفان −10٪ موفقیت حمله | مه +20٪ دفاع"""
     w = weather_of(key)
     return w.get("atk_mod", 0.0), w.get("def_mod", 0.0)
 
@@ -162,13 +162,13 @@ def _parse_market(raw: str | None) -> dict[str, int]:
 
 
 def normal_seed_keys() -> list[str]:
-    """فقط بذرهای معمولی — بذرهای افسانه‌ای تو بازار سیاه نمیان"""
+    """فقط بذرهای معمولی، بذرهای افسانه‌ای تو بازار سیاه نمیان"""
     return [k for k, v in config.SEEDS.items() if not v.get("legendary")]
 
 
 def market_pct_roll() -> int:
     """
-    قرعه درصد تغییر یه محصول — سود/ضرر 50/50
+    قرعه درصد تغییر یه محصول، سود/ضرر 50/50
     اغلب‌ها تو بازه کم‌نوسانن (سود 0..20 | ضرر 0..10) و گاهی بازه کامل (تا +50 / تا −30)
     """
     up = random.random() < 0.5
@@ -180,7 +180,7 @@ def market_pct_roll() -> int:
 
 
 async def ensure_market(session: AsyncSession) -> bool:
-    """اگه زمان بازار گذشته بود رول کن — خروجی True یعنی همین لحظه رول شد"""
+    """اگه زمان بازار گذشته بود رول کن، خروجی True یعنی همین لحظه رول شد"""
     until_raw = await _meta(session, "market_until")
     from datetime import datetime as _dt
     try:
@@ -214,7 +214,7 @@ async def market_pcts(session: AsyncSession) -> tuple[dict[str, int], int]:
 
 
 def market_mult(pcts: dict[str, int], seed_key: str) -> float:
-    """ضریب قیمت بازار — فقط بذرهای معمولی"""
+    """ضریب قیمت بازار، فقط بذرهای معمولی"""
     if seed_key not in pcts:
         return 1.0
     cfg = config.SEEDS.get(seed_key, {})
@@ -224,7 +224,7 @@ def market_mult(pcts: dict[str, int], seed_key: str) -> float:
 
 
 def market_view_text(pcts: dict[str, int], left: int) -> str:
-    """متن بخش «وضعیت بازار سیاه» — 🟢 ارزش خرید بالا | 🔴 ارزش خرید نداره"""
+    """متن بخش «وضعیت بازار سیاه»، 🟢 ارزش خرید بالا | 🔴 ارزش خرید نداره"""
     lines = [
         "<b>📈 وضعیت بازار سیاه</b>",
         "",
@@ -248,7 +248,7 @@ def market_view_text(pcts: dict[str, int], left: int) -> str:
 # ═════════ کیفیت محصول ⭐ ═════════
 
 def roll_quality(q5_bonus: float = 0.0) -> dict:
-    """قرعه کیفیت برداشت — شب مهتابی شانس ⭐⭐⭐⭐⭐ رو بالا می‌بره (بقیه به‌تناسب کوچیک میشن)"""
+    """قرعه کیفیت برداشت، شب مهتابی شانس ⭐⭐⭐⭐⭐ رو بالا می‌بره (بقیه به‌تناسب کوچیک میشن)"""
     p5 = min(1.0, config.QUALITY_TIERS[-1]["chance"] + q5_bonus)
     scale = (1.0 - p5) / (1.0 - config.QUALITY_TIERS[-1]["chance"])
     r = random.random()
@@ -277,7 +277,7 @@ def search_cooldown_left(user: User) -> int:
 
 async def do_search(session: AsyncSession, user: User, luck: float = 1.0) -> dict:
     """
-    اجرای جستجو — نتیجه کاملاً تصادفی با شانس‌های مستقل
+    اجرای جستجو، نتیجه کاملاً تصادفی با شانس‌های مستقل
     luck (شخصیت خوش‌شانس 🍀): وزن نتایج خوب رو زیاد و دزد رو کم می‌کنه
     خروجی دیکشنری با status: cooldown | money | seed_* | thief
     """
@@ -326,7 +326,7 @@ def casino_cooldown_left(user: User) -> int:
 
 async def casino_play(session: AsyncSession, user: User, bet: int) -> dict:
     """
-    یه دست قمار — ۴۰٪ برد ۶۰٪ باخت | برد = ۱٫۸ برابر شرط (تو بلندمدت ضرره)
+    یه دست قمار، ۴۰٪ برد ۶۰٪ باخت | برد = ۱٫۸ برابر شرط (تو بلندمدت ضرره)
     """
     if user.level < config.CASINO_MIN_LEVEL:
         return {"status": "locked"}
@@ -356,17 +356,17 @@ def shelter_price(level: int) -> int:
 
 
 def shelter_raid_cut(level: int) -> float:
-    """کاهش خسارت یورش — هر لول ۵٪"""
+    """کاهش خسارت یورش، هر لول ۵٪"""
     return min(0.9, config.SHELTER_RAID_CUT_PER_LEVEL * level)
 
 
 def shelter_dodge_chance(level: int) -> float:
-    """شانس فرار کامل از یورش — هر لول ۴٪"""
+    """شانس فرار کامل از یورش، هر لول ۴٪"""
     return min(0.5, config.SHELTER_DODGE_PER_LEVEL * level)
 
 
 def seed_storage_cap(user: User) -> int:
-    """ظرفیت انبار هر بذر — پناهگاه بالاتر، محل نگهداری بیشتر"""
+    """ظرفیت انبار هر بذر، پناهگاه بالاتر، محل نگهداری بیشتر"""
     return config.SHELTER_SEED_CAP_BASE + config.SHELTER_SEED_CAP_PER_LEVEL * user.shelter_level
 
 
@@ -391,7 +391,7 @@ async def upgrade_shelter(session: AsyncSession, user: User) -> tuple[bool, str]
 
 async def police_wave(session: AsyncSession) -> list[dict]:
     """
-    موج یورش — برای هر بازیکن فعال ۲۴ ساعت اخیر که انبار محصول داره
+    موج یورش، برای هر بازیکن فعال ۲۴ ساعت اخیر که انبار محصول داره
     خروجی: لیست [{user, lost(dict seed→count), dodged}] برای اطلاع‌رسانی
     """
     limit = now_utc() - timedelta(hours=config.POLICE_ACTIVITY_HOURS)
@@ -431,7 +431,7 @@ def police_report_text(rec: dict) -> str:
         return (
             "<b>🚔 موج پلیس اومد ولی رد شد</b>\n\n"
             "🏚 پناهگاهت کاری کرد که چیزی پیدا نکنن 😮‍💨\n"
-            "محله امنه — به کارت ادامه بده"
+            "محله امنه، به کارت ادامه بده"
         )
     lost = rec["lost"]
     total = sum(lost.values())
@@ -502,7 +502,7 @@ def caravan_loot_key() -> str:
 
 async def caravan_attack(session: AsyncSession, chat_id: int, user: User, dmg: int) -> dict:
     """
-    ضربه به کاروان — دمیج = قدرت حمله بازیکن
+    ضربه به کاروان، دمیج = قدرت حمله بازیکن
     هر ضربه جایزه نقدی و XP همون لحظه میده
     خروجی: {status: none|cooldown|hit|killed, ...}
     """
@@ -541,7 +541,7 @@ async def caravan_attack(session: AsyncSession, chat_id: int, user: User, dmg: i
 
 
 async def caravan_expire(session: AsyncSession, chat_id: int) -> dict | None:
-    """تایم کاروان تموم شده — اگه فعال بود تسویه جزئی کن"""
+    """تایم کاروان تموم شده، اگه فعال بود تسویه جزئی کن"""
     cv = CARAVANS.get(chat_id)
     if not cv or cv["expires_at"] > now_utc() or cv["hp"] <= 0:
         return None
@@ -551,7 +551,7 @@ async def caravan_expire(session: AsyncSession, chat_id: int) -> dict | None:
 
 async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> list[dict]:
     """
-    تسویه کاروان — بذر به هر شرکت‌کننده (قرعه) + نفر اول بیشترین جایزه
+    تسویه کاروان، بذر به هر شرکت‌کننده (قرعه) + نفر اول بیشترین جایزه
     خروجی: [{user_id, name, dmg, seed(seed name or None), top(bool), money}]
     """
     cv = CARAVANS.pop(chat_id, None)
@@ -609,8 +609,8 @@ def caravan_board_text(cv: dict) -> str:
         f"❤️ HP {bar} {fa_num(max(0, cv['hp']))}/{fa_num(cv['max_hp'])}",
         f"⏳ تا {fa_dur(left)} دیگه فرار می‌کنه",
         "",
-        "هرکی هر 1 دقیقه یه ضربه می‌تونه بزنه — دمیجت = قدرت حمله‌ته",
-        "🏆 نفر اول بیشترین جایزه رو می‌گیره — شاید بذر جهنم 🔥 یا ابلیس 😈",
+        "هرکی هر 1 دقیقه یه ضربه می‌تونه بزنه، دمیجت = قدرت حمله‌ته",
+        "🏆 نفر اول بیشترین جایزه رو می‌گیره، شاید بذر جهنم 🔥 یا ابلیس 😈",
         "",
     ]
     top = sorted(cv["damages"].items(), key=lambda kv: -kv[1])[:5]
@@ -619,7 +619,7 @@ def caravan_board_text(cv: dict) -> str:
         medals = ["🥇", "🥈", "🥉"]
         for i, (uid, dmg) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i + 1}."
-            lines.append(f"{medal} {cv['names'].get(uid, '؟')} — {fa_num(dmg)}")
+            lines.append(f"{medal} {cv['names'].get(uid, '؟')}، {fa_num(dmg)}")
     return "\n".join(lines)
 
 
@@ -641,7 +641,7 @@ def caravan_end_text(rewards: list[dict], killed: bool) -> str:
     lines = [head, ""]
     for r in rewards:
         tag = "🏆 " if r["top"] else "▫️ "
-        part = f"{tag}{r['name']} — {fa_num(r['dmg'])} دمیج | 💰 {fa_num(r['money'])}TP"
+        part = f"{tag}{r['name']}، {fa_num(r['dmg'])} دمیج | 💰 {fa_num(r['money'])}TP"
         if r["seed"]:
             part += f" | 🎁 {r['seed']}"
         lines.append(part)

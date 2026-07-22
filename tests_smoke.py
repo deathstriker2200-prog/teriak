@@ -1,5 +1,5 @@
 """
-اسموک‌تست آفلاین تریاکی — فاز ۲ — بدون اتصال به تلگرام
+اسموک‌تست آفلاین تریاکی، فاز ۲، بدون اتصال به تلگرام
 اجرا:  python tests_smoke.py
 """
 
@@ -266,7 +266,7 @@ async def main() -> None:
         check("گرگ سیاه با اسم شبح", ok and ok2 and res2 == "شبح")
         check("نژاد تکراری رد میشه", (await shop_svc.purchase(s, u1, "dog", "doberman"))[0] is False)
         nok, msg = await shop_svc.purchase(s, u1, "dog", "shepherd")
-        check("حداکثر ۲ سگ — سومیش بلاکه", not nok and "2" in msg, msg)
+        check("حداکثر ۲ سگ، سومیش بلاکه", not nok and "2" in msg, msg)
 
         dogs = await dog_svc.get_user_dogs(s, u1.id)
         check("دو سگ ثبت شد با اسم دلخواه", {d.dog_key: d.name for d in dogs} == {"doberman": "اصغر", "blackwolf": "شبح"})
@@ -350,7 +350,7 @@ async def main() -> None:
 
         random.seed(1)
         amount, b, halved = combat.steal_amount(10000, [], False)
-        check("سرقت بدون مادیفایر", 1000 <= amount <= 2500 and not halved and b == 0, str(amount))
+        check("سرقت بدون مادیفایر 5 تا 10 درصد", 500 <= amount <= 1000 and not halved and b == 0, str(amount))
         random.seed(1)
         amount_base, _, _ = combat.steal_amount(10000, [], False)
         random.seed(1)
@@ -443,7 +443,7 @@ async def main() -> None:
           all(x in mine_text for x in ["⛏ کنده‌کاری", "گیرت اومد", "الان", "تی‌پوینت داری", "ارزشش رو داشت", "پول حاصل از کار خلاف بیشتره"]),
           mine_text.replace("\n", " | ")[:100])
 
-    # ═══ هندلر pending — اسم سگ بعد از پرداخت ═══
+    # ═══ هندلر pending، اسم سگ بعد از پرداخت ═══
     from handlers import pending as pending_h
 
     upd = _text_update("رکس", uid=7702, uname="pnd", fname="پندی")
@@ -471,7 +471,7 @@ async def main() -> None:
           stopped and upd.message.calls and any(d.name == "رکس" for d in pdogs), str([d.name for d in pdogs]))
     check("«آمار رکس» صداش می‌زنه", dog_svc.find_my_dog(pdogs, "رکس") is not None)
 
-    # لغو وسط راه — پول برمی‌گرده
+    # لغو وسط راه، پول برمی‌گرده
     async with session_scope() as s:
         puser = await users.get_by_tg(s, 7702)
         await dog_svc.hold_dog(s, puser, "doberman")
@@ -594,7 +594,7 @@ async def main() -> None:
         check("برد تو حمله واقعی روی کوئست تیم حساب شد", won and kills_a == kills_b + 1, f"{kills_b}→{kills_a}")
         await s.commit()
 
-    # ═══ کنده‌کاری تیمی (استخراج — ۷۰٪ اعضا) ═══
+    # ═══ کنده‌کاری تیمی (استخراج، ۷۰٪ اعضا) ═══
     check("فرمول نیاز ۷۰٪ اعضا",
           [team_svc.mine_needed(m) for m in (1, 2, 3, 7, 10)] == [3, 3, 3, 5, 7],
           str([team_svc.mine_needed(m) for m in (1, 2, 3, 7, 10)]))
@@ -662,7 +662,7 @@ async def main() -> None:
         check("واریز بیشتر از جیب رد میشه", not ok)
         bank_b = team.bank
         ok, msg = await team_svc.team_deposit(s, m1, 400)
-        check("«تیم واریز 1200» — واریز عضو به بانک تیم", ok and team.bank == bank_b + 400 and m1.cash == 600, msg)
+        check("«تیم واریز 1200»، واریز عضو به بانک تیم", ok and team.bank == bank_b + 400 and m1.cash == 600, msg)
         ok, msg = await team_svc.team_deposit(s, m1, 0)
         check("واریز صفر رد میشه", not ok)
 
@@ -808,7 +808,7 @@ async def main() -> None:
         ok, msg = await bank_svc.withdraw(s, b, 99999)
         check("برداشت بیشتر از موجودی بانک رد", not ok)
 
-        # ظرفیت لول ۱ = 25,000 — پر کردنش و رد بیشترش
+        # ظرفیت لول ۱ = 25,000، پر کردنش و رد بیشترش
         b.cash = 100000
         ok, msg = await bank_svc.deposit(s, b, 23000)
         check("تا سقف ظرفیت واریز میشه", ok and b.bank_balance == 25000, f"{b.bank_balance}")
@@ -835,7 +835,8 @@ async def main() -> None:
         check("پروفایل سگ‌ها رو فقط به تعداد میگه",
               "🐕 سگ 2 عدد" in cap and "اصغر" not in cap and "شبح" not in cap, cap[:120])
         check("خط بانک تو پروفایل هست", "🏦 بانک" in cap)
-        check("تایم ایران و تاریخ شمسی تو پروفایل هست", "🕰 تایم ایران" in cap and "📅" in cap)
+        check("تایم ایران از پروفایل برداشته شد (تاریخ عضویت کافیه)",
+              "🕰 تایم ایران" not in cap and "📅" not in cap)
         check("تاریخ عضویت شمسیه", "🗓 عضو 14" in cap)
         u_b = await users.get_by_tg(s, 7711)
         cap2 = await profile_h._profile_caption(s, u_b)
@@ -989,7 +990,7 @@ async def main() -> None:
     ok, msg = await backup_svc.restore_bytes(bytes(300))
     check("فایل خرد شده هم رد میشه", not ok)
 
-    # یه تغییر می‌دیم بعد ری‌استور می‌کنیم — باید برگرده سر جاش
+    # یه تغییر می‌دیم بعد ری‌استور می‌کنیم، باید برگرده سر جاش
     async with session_scope() as s:
         ghost, _ = await users.get_or_create(s, tg(999999, "ghost", "روح"))
         await s.commit()
@@ -1247,7 +1248,7 @@ async def main() -> None:
               r2["status"] == "cooldown" and r2["left"] > 11 * 3600, str(r2.get("left")))
         check("برد قمار 1.8 برابر شرطه", config.CASINO_WIN_MULT == 1.8)
 
-        # بلندمدت ضرر — ۳۰۰۰ دست شبیه‌سازی
+        # بلندمدت ضرر، ۳۰۰۰ دست شبیه‌سازی
         cu.cash = 10_000_000
         net0 = cu.cash
         wins = 0
@@ -1414,7 +1415,7 @@ async def main() -> None:
             kok, kmsg, _ = await dog_svc.feed_dog(s, sg_user, o, "gold")
             assert kok, kmsg
         allt = await dogs_h2._dogs_text(s, sg_user, await dog_svc.get_user_dogs(s, sg_user.id))
-        check("همه سیرن — پیام جمعی سگ‌ها",
+        check("همه سیرن، پیام جمعی سگ‌ها",
               "دیگه نمی‌تونی به سگ‌هات غذا بدی گرسنشون نیست" in allt)
         check("فرمت خط سگ تو لیست (نژاد | لول و تجربه | قدرت | قابلیت)",
               all(x in allt for x in ["🐾 نژاد", "⭐ لول", "از", "💪 قدرت حمله", "🎖"]))
@@ -1467,7 +1468,7 @@ async def main() -> None:
     check("محصول افت کرده 🔴 می‌گیره", "🔴12%" in mtxt and "📉 قارچ" in mtxt)
     check("تایمر ری‌رول بازار", "⏳ بازار 3 ساعت و 59 دقیقه دیگه ری‌رول میشه" in mtxt)
 
-    # ── قفل کاشت با لول ناکافی — متن دقیق ──
+    # ── قفل کاشت با لول ناکافی، متن دقیق ──
     async with session_scope() as s:
         lk, _ = await users.get_or_create(s, tg(8810, "lockp", "قفلی"))
         lk.level = 2
@@ -1517,12 +1518,25 @@ async def main() -> None:
     for must in ("تیم", "حمله", "سگ", "کاشت", "بانک"):
         check(f"بخش «{must}» تو منوی هلپ هست", any(must in title for _, title in kb2.HELP_MENU))
 
-    # بخش سگ‌ها قابلیت هر نژاد + شخصیت‌ها رو داره
+    # بخش سگ‌ها — متن کورییت‌شده کاربر: قابلیت هر نژاد + شخصیت‌ها (اعداد لاتین)
     dog_sec = start_h2.HELP_SECTIONS["dogs"]
     check("بخش سگ‌ها قابلیت هر نژاد رو داره",
-          all(d["breed"] in dog_sec and d["ability"] in dog_sec for d in config.DOGS.values()))
+          all(x in dog_sec for x in [
+              "🐕 پیتبول", "قدرت حمله بیشتر",
+              "🐕 دوبرمن", "سرعت حمله بیشتر",
+              "🐕 ژرمن شپرد", "شانس پیدا کردن هدف بهتر",
+              "🐕 کانگال", "قدرت حمله بسیار بالا",
+              "👑 گرگ سیاه", "تا 30٪ دفاع حریف",
+          ]))
     check("بخش سگ‌ها شخصیت‌ها رو داره",
-          all(p["name"] in dog_sec and p["desc"] in dog_sec for p in config.DOG_PERSONALITIES.values()))
+          all(x in dog_sec for x in [
+              "🦴 وفادار", "5٪ قدرت بیشتر",
+              "⚔ جنگجو", "10٪ قدرت بیشتر",
+              "🛡 نگهبان", "10٪ کاهش سکه از دست رفته",
+              "💰 شکارچی", "8٪ سکه بیشتر",
+              "🍀 خوش‌شانس", "شانس بیشتر برای پیدا کردن جایزه در جستجو",
+              "👑 گرگ سیاه شخصیت نداره",
+          ]))
 
     upd = _text_update("راهنما", uid=8811, uname="helpr", fname="هلپر")
     await start_h2.help_cmd(upd, None)
@@ -1635,10 +1649,87 @@ async def main() -> None:
           "⚠️ من هنوز تو این گروه ادمین نیستم" in gtxt
           and "⚠️" not in start_h2.group_welcome_text("TeriakyBot", is_admin=True))
 
+
+    # ═══ این دور: قانون ویرگول (نه —) | زمین مکس ۵ و آپگرید گرون | غارت ۵-۱۰٪ | ایموجی بذرها | هلپ کورییت‌شده ═══
+
+    # ── هیج « — » توی متن‌های بات نمونه (ویرگول «،» جاش نشسته) ──
+    import glob as _glob
+    dash_spots = []
+    for f in _glob.glob("handlers/*.py") + _glob.glob("services/*.py") + _glob.glob("keyboards/*.py") + ["config.py"]:
+        if " — " in open(f, encoding="utf-8").read():
+            dash_spots.append(f)
+    check("ویرگول جای دش توی همه متن‌های بات", not dash_spots, str(dash_spots))
+
+    # ── غارت 5 تا 10 درصد ──
+    check("بازه غارت 5٪ تا 10٪",
+          config.STEAL_MIN_PCT == 0.05 and config.STEAL_MAX_PCT == 0.10)
+
+    # ── زمین: مکس لول ۵ و آپگرید گرون‌تر ──
+    check("مکس لول زمین ۵ه", config.PLOT_MAX_LEVEL == 5)
+    check("قیمت آپگرید زمین جدید و رنده",
+          config.PLOT_UPGRADE_PRICES == [4000, 10000, 22000, 45000]
+          and economy.upgrade_price(1) == 4000 and economy.upgrade_price(4) == 45000,
+      str(config.PLOT_UPGRADE_PRICES))
+
+    # ── کولدون برداشت با ویرگول ──
+    async with session_scope() as s:
+        huser = await users.get_by_tg(s, 1001)
+        huser.last_harvest_at = now_utc() - timedelta(seconds=42)
+        ok, msg, _ = await farming.harvest_all(s, huser)
+        check("متن کولدون برداشت با ویرگول",
+              not ok and "میشه برداشت کرد،" in msg and "مونده" in msg, msg)
+
+    # ── ایموجی بذرها تو شاپ و دکمه کاشت ──
+    check("ایموجی هر بذر تو کانفیگه",
+          [config.SEEDS[k]["emoji"] for k in ("marijuana", "gharch", "peyote", "teriak", "cocaine")]
+          == ["🌿", "🍄", "🌵", "🌱", "⚪"])
+    async with session_scope() as s:
+        su1 = await users.get_by_tg(s, 1001)
+        su1.level = 20
+        skb = kb2.shop_seed_kb(su1, {"teriak": 3})
+        seed_texts = [b.text for row in skb.inline_keyboard for b in row]
+        check("دکمه‌های بذر شاپ ایموجی محصول رو دارن",
+              any(t.startswith("🌿 ماری‌جوانا") for t in seed_texts)
+              and any(t.startswith("🍄 قارچ") for t in seed_texts)
+              and any(t.startswith("🌱 تریاک") for t in seed_texts), str(seed_texts[:4]))
+        plots1 = await farming.get_user_plots(s, su1.id)
+        pkb = kb2.seeds_kb(su1, plots1[0], {"teriak": 3})
+        p_texts = [b.text for row in pkb.inline_keyboard for b in row]
+        check("دکمه کاشت بذر هم ایموجی داره",
+              any(t.startswith("🌱 تریاک") for t in p_texts), str(p_texts[:3]))
+
+    # ── بخش‌های هلپ — متن نهایی کورییت‌شده ──
+    import re as _re
+    check("ارقام هلپ همه لاتینن",
+          not any(_re.search(r"[۰-۹]", v) for v in start_h2.HELP_SECTIONS.values()))
+    HS = start_h2.HELP_SECTIONS
+    check("هلپ کاشت و برداشت",
+          all(x in HS["farm"] for x in ["🌿 ماری‌جوانا", "🍄 قارچ", "🌵 پیوت", "🌱 تریاک", "⚪ کوکائین",
+                                        "تا لول 5", "🔥 بذر جهنم", "⭐ تا ⭐⭐⭐⭐⭐", "🏚 با ارتقای پناهگاه"]))
+    check("هلپ شاپ",
+          all(x in HS["shop"] for x in ["پنج بخش اصلی داره", "تایید ✅ یا لغو ❌",
+                                        "قوی‌ترینشون توی نبرد", "بعد از خرید مستقیم به سگت داده میشه"]))
+    check("هلپ حمله (غارت 5% تا 10%)",
+          all(x in HS["attack"] for x in ["بین 5% تا 10%", "🌪 طوفان", "🌫 مه", "15 انرژی", "نصف می‌کنه"]))
+    check("هلپ سگ‌ها",
+          all(x in HS["dogs"] for x in ["🐕 پیتبول", "👑 گرگ سیاه شخصیت نداره", "12 به وقت ایران"]))
+    check("هلپ تیم",
+          all(x in HS["team"] for x in ["حداکثر 10 عضو", "ست بیو تیم [متن]", "3 تیم برتر",
+                                        "70٪ اعضا", "تیم واریز [مبلغ]"]))
+    check("هلپ بانک",
+          all(x in HS["bank"] for x in ["25,000 سکه", "لول بازیکنت", "واریز [مبلغ]", "برداشت [مبلغ]"]))
+    check("هلپ کنده‌کاری",
+          all(x in HS["mine"] for x in ["30 ثانیه", "10 تا 150", "اعداد کمتر بیشتره"]))
+    check("هلپ جهان",
+          all(x in HS["world"] for x in ["قمارخانه از لول 7", "یورش پلیس", "کاروان", "بذر جهنم",
+                                         "وضعیت بازار هر 4 ساعت", "«پناهگاه»"]))
+    check("هلپ لول و اقتصاد",
+          all(x in HS["eco"] for x in ["2٪", "لیدربرد", "«پروفایل»", "تجربه بیشتری نیاز داری"]))
+
     check("واحد پول لاتین", money(1000) == "1,000 تی‌پوینت" and money_tp(1000) == "1,000 TP")
     check("عدد لاتین", fa_num(12345) == "12,345" and fa_dur(169) == "2 دقیقه و 49 ثانیه")
 
-    print(f"\n🎉 همه تست‌ها سبز شدن — {PASS} مورد")
+    print(f"\n🎉 همه تست‌ها سبز شدن، {PASS} مورد")
 
 
 asyncio.run(main())

@@ -1,4 +1,4 @@
-"""سیم‌کشی هندلرها به اپلیکیشن — دستورهای متنی هم PV هم گروه جواب میدن"""
+"""سیم‌کشی هندلرها به اپلیکیشن، دستورهای متنی هم PV هم گروه جواب میدن"""
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
@@ -11,7 +11,7 @@ S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
 def register_handlers(app: Application) -> None:
     fa_text = filters.TEXT & ~filters.COMMAND
 
-    # ── ورودی معلق (اسم سگ بعد خرید | اسم تیم بعد ساخت) — قبل از همه دستورهای متنی ──
+    # ── ورودی معلق (اسم سگ بعد خرید | اسم تیم بعد ساخت)، قبل از همه دستورهای متنی ──
     app.add_handler(MessageHandler(fa_text, pending.capture), group=-1)
 
     # ── دستورهای اسلشی ──
@@ -32,7 +32,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
 
-    # ── اد شدن ربات به گروه — خودش متن خوش‌آمد می‌فرسته ──
+    # ── اد شدن ربات به گروه، خودش متن خوش‌آمد می‌فرسته ──
     app.add_handler(ChatMemberHandler(start.bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
     # ── دستورهای متنی فارسی (PV و گروه) ──
@@ -152,7 +152,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(start.help_section_cb, pattern=r"^help:sec:\w+$"))
     app.add_handler(CallbackQueryHandler(start.help_menu_cb, pattern=r"^help:menu$"))
 
-    # ── تایید دستورهای متنی (فقط خود کاربر — اسم سگ اختیاریه) ──
+    # ── تایید دستورهای متنی (فقط خود کاربر، اسم سگ اختیاریه) ──
     app.add_handler(CallbackQueryHandler(textcmd.tx_confirm_cb, pattern=r"^txcf:\w+:\w+:\d+(?::.+)?$"))
     app.add_handler(CallbackQueryHandler(textcmd.tx_attack_cb, pattern=r"^txatt:\d+:\d+$"))
     app.add_handler(CallbackQueryHandler(textcmd.tx_cancel_cb, pattern=r"^txcl:\d+$"))

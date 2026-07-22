@@ -1,5 +1,5 @@
 """
-دستورهای متنی فارسی — هم PV هم گروه
+دستورهای متنی فارسی، هم PV هم گروه
 «شاپ» «پروفایل» «خرید چاقو» «خرید سگ دوبرمن» «کاشت ماری جوانا» «واریز 1200»
 «برداشت محصول» «حمله» (با ریپلای) «مزرعه» «سگ‌های من» «کنده کاری»
 
@@ -27,7 +27,7 @@ from utils import esc, fa_dur, fa_num, find_by_name, money, normalize_fa
 # ───────── ابزار ─────────
 
 def _match_arg(update: Update) -> str:
-    """بخش بعد از فعل دستور — مثلا «چاقو» از «خرید چاقو»"""
+    """بخش بعد از فعل دستور، مثلا «چاقو» از «خرید چاقو»"""
     text = update.message.text or ""
     m = re.match(r"^\S+\s+(.+)$", text.strip())
     return m.group(1) if m else ""
@@ -111,7 +111,7 @@ async def buy_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای تایید خرید دستور متنی — فقط خودِ صاحب دستور می‌تونه بزنه"""
+    """اجرای تایید خرید دستور متنی، فقط خودِ صاحب دستور می‌تونه بزنه"""
     p = parts(update)
     kind, key, owner_id = p[1], p[2], p[3]
     dog_name = p[4] if len(p) > 4 else None  # اسم دلخواه سگ
@@ -147,11 +147,11 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         building = next((p for p in plots if p.current_status()[0] == "building"), None)
 
         if not plots:
-            msg = "🌱 زمینی نداری — اول از مزرعه زمین بخر"
+            msg = "🌱 زمینی نداری، اول از مزرعه زمین بخر"
         elif empty is None:
             if building is not None:
                 _, left = building.current_status()
-                msg = f"🔨 زمین جدیدت داره ساخته میشه — {fa_dur(left)} دیگه می‌تونی بکاری"
+                msg = f"🔨 زمین جدیدت داره ساخته میشه، {fa_dur(left)} دیگه می‌تونی بکاری"
             else:
                 msg = "🌱 همه زمین‌هات پره صبر کن یدونه آماده بشه"
         else:
@@ -176,7 +176,7 @@ async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await respond(update, text, kb.home_kb())
 
 
-# ───────── حمله با ریپلای (گروه و PV) — با تاییدیه ─────────
+# ───────── حمله با ریپلای (گروه و PV)، با تاییدیه ─────────
 
 async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reply = update.message.reply_to_message
@@ -211,7 +211,7 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         target = await users.get_by_tg(s, tg_target.id)
         if not target:
             await s.commit()
-            return await respond(update, "🤷 این هنوز وارد محله نشده — اول باید به بات /start بزنه")
+            return await respond(update, "🤷 این هنوز وارد محله نشده، اول باید به بات /start بزنه")
 
         name = esc(users.display_name(target))
         text = (
@@ -228,7 +228,7 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای حمله بعد از تایید — فقط خود مهاجم می‌تونه بزنه"""
+    """اجرای حمله بعد از تایید، فقط خود مهاجم می‌تونه بزنه"""
     _, target_id, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):
@@ -258,7 +258,7 @@ async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def tx_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """لغو فاکتور/تایید متنی — فقط صاحبش"""
+    """لغو فاکتور/تایید متنی، فقط صاحبش"""
     _, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):

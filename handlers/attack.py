@@ -1,4 +1,4 @@
-"""حمله PvP: خانه | جستجوی هدف رندوم | تایید | اجرا — منطق توی services.combat"""
+"""حمله PvP: خانه | جستجوی هدف رندوم | تایید | اجرا، منطق توی services.combat"""
 
 from telegram import Update
 from telegram.ext import ContextTypes

@@ -1,5 +1,5 @@
 """
-بک‌آپ و ری‌استور دیتابیس (فقط ادمین) — فایل SQLite کل اطلاعات بازیه
+بک‌آپ و ری‌استور دیتابیس (فقط ادمین)، فایل SQLite کل اطلاعات بازیه
 /backup → اسنپ‌شات سالم فایل دی‌بی رو می‌فرسته
 /upload_backup → فایل رو می‌گیره، اعتبارسنجی می‌کنه و جایگزین می‌کنه (روی ولوم ذخیره میشه)
 """
@@ -16,14 +16,14 @@ _REQUIRED_TABLES = {"users"}
 
 
 def backup_supported() -> bool:
-    """فقط روی SQLite معنی داره — PostgreSQL باشه بک‌آپ فایلی نداریم"""
+    """فقط روی SQLite معنی داره، PostgreSQL باشه بک‌آپ فایلی نداریم"""
     return config.sqlite_path() is not None
 
 
 async def create_snapshot() -> str:
     """
     ساخت اسنپ‌شات سالم از دیتابیس زنده با VACUUM INTO
-    خروجی: مسیر فایل موقت — مسئولیت پاک کردنش با صدا کننده‌ست
+    خروجی: مسیر فایل موقت، مسئولیت پاک کردنش با صدا کننده‌ست
     اگه VACUUM نشد، کپی خام فایل برمی‌گردونه
     """
     src = config.sqlite_path()
@@ -57,7 +57,7 @@ def is_valid_backup_file(path: str) -> bool:
         with open(path, "rb") as f:
             if f.read(16) != _MAGIC:
                 return False
-        # باز کردن واقعی و چک جداول — فایل خراب اینجا می‌ترکه
+        # باز کردن واقعی و چک جداول، فایل خراب اینجا می‌ترکه
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
             rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -76,7 +76,7 @@ async def restore_bytes(data: bytes) -> tuple[bool, str]:
     """
     db_path = config.sqlite_path()
     if not db_path:
-        return False, "❌ دیتابیس SQLite نیس — بک‌آپ فایلی روش کار نمی‌کنه"
+        return False, "❌ دیتابیس SQLite نیس، بک‌آپ فایلی روش کار نمی‌کنه"
 
     fd, tmp = tempfile.mkstemp(prefix="teriaky-restore-", suffix=".db")
     try:
@@ -87,10 +87,10 @@ async def restore_bytes(data: bytes) -> tuple[bool, str]:
             return False, "❌ این فایل بک‌آپ سالم تریاکی نیس"
 
         await database.engine.dispose()
-        os.replace(tmp, db_path)      # اتمی — رو ولوم ذخیره میشه
+        os.replace(tmp, db_path)      # اتمی، رو ولوم ذخیره میشه
         tmp = ""
         await database.reload_engine()
-        return True, "✅ بک‌آپ ری‌استور شد — همه اطلاعات مطابق فایله"
+        return True, "✅ بک‌آپ ری‌استور شد، همه اطلاعات مطابق فایله"
     finally:
         if tmp and os.path.exists(tmp):
             os.remove(tmp)

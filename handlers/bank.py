@@ -1,6 +1,6 @@
 """
-بانک شخصی 🏦 — «بانک» با دکمه‌های واریز/برداشت | «واریز 1200» | «برداشت 1200»
-پول بانک موقع حمله دزدیده نمیشه — واریز/برداشت با دکمه، مبلغ رو با پیام بعدی می‌پرسه
+بانک شخصی 🏦، «بانک» با دکمه‌های واریز/برداشت | «واریز 1200» | «برداشت 1200»
+پول بانک موقع حمله دزدیده نمیشه، واریز/برداشت با دکمه، مبلغ رو با پیام بعدی می‌پرسه
 """
 
 from telegram import Update
@@ -22,7 +22,7 @@ def _bank_text(user) -> str:
         f"💰 موجودی بانک {money(user.bank_balance)}\n"
         f"📦 ظرفیت {bar(user.bank_balance, cap)} {fa_num(user.bank_balance)}/{fa_num(cap)}\n"
         f"⭐ لول بانک {fa_num(user.bank_level)}\n\n"
-        "🛡 پولی که تو بانکه موقع حمله دزدیده نمیشه — امنه\n\n"
+        "🛡 پولی که تو بانکه موقع حمله دزدیده نمیشه، امنه\n\n"
         "💰 واریز با دستور «واریز 1200»\n"
         "💸 برداشت با دستور «برداشت 1200»"
     )
@@ -47,12 +47,12 @@ async def bank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ───────── دستورهای متنی «واریز n» / «برداشت n» ─────────
 
 async def _amount_cmd(update: Update, action: str, sample: str) -> int | None:
-    """خواندن مبلغ از آخر دستور — نامعتبر/بدون مبلغ → پیام راهنما و None"""
+    """خواندن مبلغ از آخر دستور، نامعتبر/بدون مبلغ → پیام راهنما و None"""
     txt = (update.message.text or "").strip()
     p = txt.split(None, 1)
     amount = parse_amount(p[1]) if len(p) > 1 else None
     if amount is None:
-        await respond(update, f"❌ مبلغو درست بگو — مثلا «{sample}»")
+        await respond(update, f"❌ مبلغو درست بگو، مثلا «{sample}»")
     return amount
 
 
@@ -90,10 +90,10 @@ async def withdraw_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
-# ───────── دکمه‌های واریز/برداشت — مبلغ با پیام بعدی ─────────
+# ───────── دکمه‌های واریز/برداشت، مبلغ با پیام بعدی ─────────
 
 async def bank_ask_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """دکمه 💰 واریز / 💸 برداشت — اکشن معلق می‌ذاره و مبلغ می‌خواد"""
+    """دکمه 💰 واریز / 💸 برداشت، اکشن معلق می‌ذاره و مبلغ می‌خواد"""
     action = update.callback_query.data.split(":")[1]  # dep | wd
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -108,13 +108,13 @@ async def bank_ask_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if action == "dep":
         text = (
             "<b>💰 مبلغ واریز به بانک</b>\n\n"
-            "عددشو همینجا بنویس و بفرست — مثلا 1200\n\n"
+            "عددشو همینجا بنویس و بفرست، مثلا 1200\n\n"
             "❌ پشیمون شدی بنویس «لغو»"
         )
     else:
         text = (
             "<b>💸 مبلغ برداشت از بانک</b>\n\n"
-            "عددشو همینجا بنویس و بفرست — مثلا 1200\n\n"
+            "عددشو همینجا بنویس و بفرست، مثلا 1200\n\n"
             "❌ پشیمون شدی بنویس «لغو»"
         )
     await respond(update, text)
@@ -135,7 +135,7 @@ async def bank_upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
         await s.commit()
 
     text = (
-        f"<b>⬆️ ارتقای بانک — از لول {fa_num(level)} به {fa_num(level + 1)}</b>\n\n"
+        f"<b>⬆️ ارتقای بانک، از لول {fa_num(level)} به {fa_num(level + 1)}</b>\n\n"
         f"💸 هزینه {money(price)}\n"
         f"📦 ظرفیت {fa_num(cap_now)} ← {fa_num(cap_next)}\n\n"
         "انجامش بدیم؟"

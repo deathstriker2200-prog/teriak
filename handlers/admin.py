@@ -1,5 +1,5 @@
 """
-پنل ادمین — دادن پول و XP به خودت + مدیریت کاربرا
+پنل ادمین، دادن پول و XP به خودت + مدیریت کاربرا
 /user @silktoch یا /user 123456789 یا /user بخشی‌از‌اسم → پیدا کردن و دیدن پروفایل و پول/XP دادن
 /addtp [آیدی عددی] [مبلغ] | /addxp [آیدی عددی] [مقدار] → دادن مستقیم
 به غریبه‌ها کاملاً بی‌صداس
@@ -28,10 +28,10 @@ def _panel_text(user, extra: str | None = None) -> str:
         f"⭐ لول {fa_num(user.level)} | ✨ {fa_num(user.xp)} از {fa_num(economy.xp_need(user.level))}\n\n"
         "چی بر داری؟\n\n"
         "<b>دستورهای مدیریتی:</b>\n"
-        "▫️ <code>/user @username</code> یا <code>/user 123456789</code> یا بخشی از اسم — پیداش کن، پروفایلش رو ببین و از همونجا پول/XP بده\n"
-        "▫️ <code>/addtp 123456789 5000</code> — واریز مستقیم تی‌پوینت\n"
-        "▫️ <code>/addxp 123456789 100</code> — دادن مستقیم تجربه\n"
-        "▫️ /backup و /upload_backup — بک‌آپ و ری‌استور"
+        "▫️ <code>/user @username</code> یا <code>/user 123456789</code> یا بخشی از اسم، پیداش کن، پروفایلش رو ببین و از همونجا پول/XP بده\n"
+        "▫️ <code>/addtp 123456789 5000</code>، واریز مستقیم تی‌پوینت\n"
+        "▫️ <code>/addxp 123456789 100</code>، دادن مستقیم تجربه\n"
+        "▫️ /backup و /upload_backup، بک‌آپ و ری‌استور"
     )
     if extra:
         text += f"\n\n{extra}"
@@ -69,7 +69,7 @@ async def _user_card_text(session, target) -> str:
     )
 
 
-# ───────── /user — پیدا کردن کاربر ─────────
+# ───────── /user، پیدا کردن کاربر ─────────
 
 async def user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_admin(update):
@@ -103,7 +103,7 @@ async def user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-# ───────── /addtp و /addxp — دادن مستقیم ─────────
+# ───────── /addtp و /addxp، دادن مستقیم ─────────
 
 async def addtp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_admin(update):
@@ -183,7 +183,7 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await s.commit()
         return await respond(update, text, kb.admin_user_kb(num))
 
-    # ── شروع فلو پول/XP دادن به کاربر — مبلغ رو با پیام بعدی می‌پرسیم ──
+    # ── شروع فلو پول/XP دادن به کاربر، مبلغ رو با پیام بعدی می‌پرسیم ──
     if kind in ("gtp", "gxp"):
         async with session_scope() as s:
             target = await users.get_by_tg(s, num)
@@ -199,7 +199,7 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return await respond(
             update,
             f"<b>{label} به {name} بدیم؟</b>\n\n"
-            "فقط عددشو بفرست — مثلا 5000\n\n"
+            "فقط عددشو بفرست، مثلا 5000\n\n"
             "❌ پشیمون شدی بنویس «لغو»",
         )
 

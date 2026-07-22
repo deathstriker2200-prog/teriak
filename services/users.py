@@ -12,7 +12,7 @@ from utils import fa_num, money, now_utc
 
 
 async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
-    """ثبت‌نام خودکار با اولین تعامل — یه زمین رایگان هم بهت میرسه"""
+    """ثبت‌نام خودکار با اولین تعامل، یه زمین رایگان هم بهت میرسه"""
     user = await get_by_tg(session, tg_user.id)
     if user:
         # اسم/یوزرنیم ممکنه عوض شده باشه
@@ -76,7 +76,7 @@ def display_name(user: User) -> str:
 
 
 def apply_energy_regen(user: User) -> None:
-    """ریجن تنبلی انرژی — فقط موقع دیدن کاربر حساب میشه"""
+    """ریجن تنبلی انرژی، فقط موقع دیدن کاربر حساب میشه"""
     now = now_utc()
     if user.energy_updated_at is None:
         user.energy_updated_at = now
@@ -103,7 +103,7 @@ async def get_item_keys(session: AsyncSession, user_id: int) -> list[str]:
 
 def add_xp(user: User, amount: int) -> list[str]:
     """
-    اضافه کردن xp + مدیریت لول‌آپ — خروجی: لیست پیام‌های تبریک لول‌آپ
+    اضافه کردن xp + مدیریت لول‌آپ، خروجی: لیست پیام‌های تبریک لول‌آپ
     جایزه هر لول: اسکناس + شارژ کامل انرژی + لیست چیزایی که باز میشن
     """
     notes: list[str] = []
@@ -119,7 +119,7 @@ def add_xp(user: User, amount: int) -> list[str]:
         user.energy_updated_at = now_utc()
 
         note = (
-            f"🎉 <b>تبریک رفیق — لول {fa_num(user.level)} شدی!</b>\n"
+            f"🎉 <b>تبریک رفیق، لول {fa_num(user.level)} شدی!</b>\n"
             f"💰 جایزه {money(reward)}\n"
             f"⚡ انرژیت فول شارژ شد"
         )

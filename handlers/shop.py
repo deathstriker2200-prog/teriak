@@ -1,4 +1,4 @@
-"""فروشگاه: چهار بخش + غذای سگ — هم منوی اینلاین هم دستور متنی"""
+"""فروشگاه: چهار بخش + غذای سگ، هم منوی اینلاین هم دستور متنی"""
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -61,7 +61,7 @@ async def _section_text(session, user, kind: str) -> str:
             "سگ‌ها به قدرت حمله تو اضافه میشن\n"
             f"حداکثر {fa_num(config.MAX_DOGS)} سگ می‌تونی داشته باشی\n\n"
             "برای خرید روی سگ مورد نظر کلیک کنید یا از دستور «خرید سگ [نژاد] [اسم موردنظر]» استفاده کنید\n\n"
-            "👑 گرگ سیاه شبح می‌تواند تا 30٪ از دفاع حریف را کاهش دهد و تا 10٪ غرامت بیشتری از حریف دریافت کند — با هر لول‌آپ به این مقدار نزدیک‌تر می‌شه"
+            "👑 گرگ سیاه شبح می‌تواند تا 30٪ از دفاع حریف را کاهش دهد و تا 10٪ غرامت بیشتری از حریف دریافت کند، با هر لول‌آپ به این مقدار نزدیک‌تر می‌شه"
         )
     if kind == "food":
         return (
@@ -77,7 +77,7 @@ async def _section_text(session, user, kind: str) -> str:
 # ───────── نمایش ─────────
 
 async def render_section(update: Update, kind: str, alert: str | None = None) -> None:
-    """رندر یه بخش شاپ — بدون تکیه بر callback_data"""
+    """رندر یه بخش شاپ، بدون تکیه بر callback_data"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         text = await _section_text(s, user, kind)
@@ -162,5 +162,5 @@ async def buy_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         user, _ = await users.get_or_create(s, update.effective_user)
         _, alert = await shop_svc.purchase(s, user, kind, key)
         await s.commit()
-    # توجه: CallbackQuery تلگرام قابل تغییر نیس — به جای دست‌کاری data بخش رو مستقیم رندر می‌کنیم
+    # توجه: CallbackQuery تلگرام قابل تغییر نیس، به جای دست‌کاری data بخش رو مستقیم رندر می‌کنیم
     await render_section(update, kind, alert=alert)

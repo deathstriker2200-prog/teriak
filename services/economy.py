@@ -5,7 +5,7 @@ import random
 import config
 
 
-# ───────── منحنی تجربه (Idle/RPG — پایین سریع | بالا سنگین‌تر) ─────────
+# ───────── منحنی تجربه (Idle/RPG، پایین سریع | بالا سنگین‌تر) ─────────
 
 def xp_need(level: int) -> int:
     """xp لازم برای رفتن از این لول به لول بعد"""
@@ -15,13 +15,13 @@ def xp_need(level: int) -> int:
 # ───────── زمین ─────────
 
 def plot_info(plot_number: int) -> dict:
-    """مشخصات زمین شماره n (۱ تا MAX) — قیمت/زمان ساخت/لول لازم"""
+    """مشخصات زمین شماره n (۱ تا MAX)، قیمت/زمان ساخت/لول لازم"""
     n = min(max(plot_number, 1), config.MAX_PLOTS)
     return config.PLOT_CATALOG[n]
 
 
 def plot_price(plots_count: int) -> int:
-    """قیمت زمین بعدی بر اساس تعداد زمین‌های فعلی — هرکی خیلی گرون‌تر"""
+    """قیمت زمین بعدی بر اساس تعداد زمین‌های فعلی، هرکی خیلی گرون‌تر"""
     return plot_info(plots_count + 1)["price"]
 
 
@@ -36,7 +36,7 @@ def plot_build_seconds(plots_count: int) -> int:
 
 
 def upgrade_price(plot_level: int) -> int:
-    """هزینه آپگرید از لول فعلی به لول بعد — جدول رند قیمت"""
+    """هزینه آپگرید از لول فعلی به لول بعد، جدول رند قیمت"""
     lv = min(max(plot_level, 1), config.PLOT_MAX_LEVEL)
     return config.PLOT_UPGRADE_PRICES[lv - 1]
 
@@ -44,12 +44,12 @@ def upgrade_price(plot_level: int) -> int:
 # ───────── بذر و محصول ─────────
 
 def plot_yield_mult(plot_level: int) -> float:
-    """ضریب درآمد زمین تو لولش — هر لول ۲۵٪ بیشتر (×۱٫۲۵)"""
+    """ضریب درآمد زمین تو لولش، هر لول ۲۵٪ بیشتر (×۱٫۲۵)"""
     return config.PLOT_YIELD_PER_LEVEL ** max(0, plot_level - 1)
 
 
 def plot_speed_mult(plot_level: int) -> float:
-    """ضریب سرعت رشد زمین تو لولش — هر لول ۴۰٪ سرعت بیشتر (زمان ÷۱٫۴۰)"""
+    """ضریب سرعت رشد زمین تو لولش، هر لول ۴۰٪ سرعت بیشتر (زمان ÷۱٫۴۰)"""
     return config.PLOT_SPEED_PER_LEVEL ** max(0, plot_level - 1)
 
 
@@ -61,7 +61,7 @@ def crop_yield(seed_key: str, plot_level: int = 1, user_level: int = 1) -> int:
 
 
 def crop_grow_seconds(seed_key: str, plot_level: int = 1) -> int:
-    """مدت آماده شدن با ضریب سرعت لول زمین — هر لول آپ ۴۰٪ سرعت بیشتر"""
+    """مدت آماده شدن با ضریب سرعت لول زمین، هر لول آپ ۴۰٪ سرعت بیشتر"""
     minutes = config.SEEDS[seed_key]["grow_min"]
     return max(30, int(minutes * 60 / plot_speed_mult(plot_level)))
 
@@ -73,7 +73,7 @@ def is_seed_unlocked(seed_key: str, user_level: int) -> bool:
 # ───────── کنده‌کاری ─────────
 
 def mine_roll() -> int:
-    """قرعه روزانه — بازه پایین با وزن بیشتر (۱۰ تا ۱۰۰ پرتکرارتر از ۱۰۰ تا ۱۵۰)"""
+    """قرعه روزانه، بازه پایین با وزن بیشتر (۱۰ تا ۱۰۰ پرتکرارتر از ۱۰۰ تا ۱۵۰)"""
     if random.random() < config.MINE_COMMON_WEIGHT:
         return random.randint(config.MINE_MIN, config.MINE_COMMON_MAX)
     return random.randint(config.MINE_COMMON_MAX + 1, config.MINE_MAX)

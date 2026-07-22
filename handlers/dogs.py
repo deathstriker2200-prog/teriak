@@ -14,7 +14,7 @@ from services import dogs as dog_svc
 from services import users
 from utils import bar, esc, fa_num, money_tp
 
-# عدد به حروف برای زمین شماره n (دکمه noop پلات) — مشترک با کیبوردها
+# عدد به حروف برای زمین شماره n (دکمه noop پلات)، مشترک با کیبوردها
 FA_WORDS = {1: "یکم", 2: "دوم", 3: "سوم", 4: "چهارم", 5: "پنجم"}
 
 
@@ -42,13 +42,13 @@ async def _dogs_text(session, user, dogs: list[Dog]) -> str:
                 entry += f"\n🎖 {esc(d.cfg.get('ability', '—'))}"
             per = dog_svc.personality_of(d)
             if per:
-                entry += f"\n💫 شخصیت {per['emoji']} {esc(per['name'])} — {esc(per['desc'])}"
+                entry += f"\n💫 شخصیت {per['emoji']} {esc(per['name'])}، {esc(per['desc'])}"
             lines.append(entry)
 
     if dogs:
         total_left = sum(dog_svc.feeds_left(d) for d in dogs)
         if total_left:
-            lines.append(f"\n\n🍖 امروز {fa_num(total_left)} غذا مونده — هر سگ روزی {fa_num(config.DOG_FEED_PER_DAY)} تا")
+            lines.append(f"\n\n🍖 امروز {fa_num(total_left)} غذا مونده، هر سگ روزی {fa_num(config.DOG_FEED_PER_DAY)} تا")
         else:
             lines.append("\n\n🍖 امروز دیگه نمی‌تونی به سگ‌هات غذا بدی گرسنشون نیست")
     return "\n".join(lines)
@@ -70,7 +70,7 @@ async def dogs_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await render_my_dogs(update)
 
 
-# ───────── کارت آمار یه سگ — «آمار اصغر» ─────────
+# ───────── کارت آمار یه سگ، «آمار اصغر» ─────────
 
 def _dog_card_text(user, dog: Dog, extra: str | None = None, other_dog: Dog | None = None) -> str:
     need = dog_svc.dog_xp_need(dog.level)
@@ -90,11 +90,11 @@ def _dog_card_text(user, dog: Dog, extra: str | None = None, other_dog: Dog | No
     per = dog_svc.personality_of(dog)
     per_line = ""
     if per:
-        per_line = f"\n💫 شخصیت {per['emoji']} {esc(per['name'])} — {esc(per['desc'])}"
+        per_line = f"\n💫 شخصیت {per['emoji']} {esc(per['name'])}، {esc(per['desc'])}"
 
     left = dog_svc.feeds_left(dog)
     if left > 0:
-        food_line = f"🍖 امروز {fa_num(left)} غذا مونده — از دکمه‌های پایین غذاش بده"
+        food_line = f"🍖 امروز {fa_num(left)} غذا مونده، از دکمه‌های پایین غذاش بده"
     else:
         food_line = dog_svc.full_text(dog)
         if other_dog is not None and dog_svc.feeds_left(other_dog) > 0:
@@ -140,7 +140,7 @@ async def dog_card_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def dog_stats_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """«آمار [اسم سگ]» — کارت سگ با دکمه‌های غذا"""
+    """«آمار [اسم سگ]»، کارت سگ با دکمه‌های غذا"""
     m = re.match(r"^آمار[\s‌]+(.+)$", (update.message.text or "").strip())
     query = m.group(1) if m else ""
 
@@ -152,7 +152,7 @@ async def dog_stats_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     dog = dog_svc.find_my_dog(dogs, query)
     if not dog:
         if not dogs:
-            return await respond(update, "🐕 اصلا سگی نداری که — از شاپ یدونه بخر")
+            return await respond(update, "🐕 اصلا سگی نداری که، از شاپ یدونه بخر")
         names = " | ".join(d.name for d in dogs)
         return await respond(update, f"🤷 سگی با این اسم پیدا نشد\n\nسگ‌هات: {esc(names)}")
     await render_dog_card(update, dog)
@@ -205,7 +205,7 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not ok:
         return await render_dog_card(update, dog, alert=msg)
 
-    # غذا از همون کارت سگ داده میشه — برمی‌گردیم همونجا
+    # غذا از همون کارت سگ داده میشه، برمی‌گردیم همونجا
     extra = f"{msg}\n💵 نقدینگی {fa_num(cash)}TP"
     if notes:
         extra += "\n" + "\n".join(notes)
@@ -229,13 +229,13 @@ async def release_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     text = (
         f"<b>🕊 رها کردن {esc(name)}</b>\n\n"
         f"🐾 نژاد {esc(breed)}\n\n"
-        "برگشتی نداره ها — مطمئنی؟"
+        "برگشتی نداره ها، مطمئنی؟"
     )
     await respond(update, text, kb.release_confirm_kb(dog_id, update.effective_user.id))
 
 
 async def release_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای رها کردن — فقط صاحب سگ"""
+    """اجرای رها کردن، فقط صاحب سگ"""
     _, _, dog_id, owner_tg = parts(update)
     if update.effective_user.id != int(owner_tg):
         await update.callback_query.answer("این سگ مال تو نیس 😅", show_alert=True)

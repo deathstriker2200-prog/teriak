@@ -1,5 +1,5 @@
 """
-گرفتن ورودی معلق کاربر — بعد از «خرید سگ» اسم سگ | بعد از «ساخت تیم» اسم تیم
+گرفتن ورودی معلق کاربر، بعد از «خرید سگ» اسم سگ | بعد از «ساخت تیم» اسم تیم
 تو گروه -1 رجیستر میشه (قبل از دستورهای متنی) و اگه ورودی مال pending بود
 با ApplicationHandlerStop بقیه هندلرها رو متوقف می‌کنه
 """
@@ -39,7 +39,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     is_group = chat is not None and chat.type in ("group", "supergroup")
 
     async with session_scope() as s:
-        # ردیابی فعالیت گروه — برای اعلان آب و هوا و اسپون کاروان
+        # ردیابی فعالیت گروه، برای اعلان آب و هوا و اسپون کاروان
         if is_group:
             from services import world as world_svc
             await world_svc.touch_group(s, chat.id)
@@ -51,7 +51,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         norm = normalize_fa(text)
         if norm != "لغو" and (norm in _KNOWN_TEXTS or norm.startswith(_KNOWN_PREFIXES)):
-            return  # دستوره — بذار بقیه هندلرها بگیرنش
+            return  # دستوره، بذار بقیه هندلرها بگیرنش
 
         action = user.pending_action
 
@@ -80,7 +80,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if action in ("bankdep", "bankwd"):
             amount = parse_amount(text)
             if amount is None:
-                await update.message.reply_html("❌ فقط عددشو بفرست — مثلا 1200\n\n❌ پشیمون شدی بنویس «لغو»")
+                await update.message.reply_html("❌ فقط عددشو بفرست، مثلا 1200\n\n❌ پشیمون شدی بنویس «لغو»")
                 raise ApplicationHandlerStop()
 
             user.pending_action = None
@@ -110,7 +110,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             amount = parse_amount(text)
             if amount is None:
-                await update.message.reply_html("❌ فقط عددشو بفرست — مثلا 5000\n\n❌ پشیمون شدی بنویس «لغو»")
+                await update.message.reply_html("❌ فقط عددشو بفرست، مثلا 5000\n\n❌ پشیمون شدی بنویس «لغو»")
                 raise ApplicationHandlerStop()
 
             target_tg = int(user.pending_value or 0)

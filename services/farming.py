@@ -66,7 +66,7 @@ async def buy_plot(session: AsyncSession, user: User) -> tuple[bool, str]:
     session.add(Plot(user_id=user.id, built_at=built_at))
 
     if build_sec > 0:
-        return True, f"🔨 زمین شماره {fa_num(n)} رفت تو کار ساخت — {fa_dur(build_sec)} دیگه تحویلت میشه"
+        return True, f"🔨 زمین شماره {fa_num(n)} رفت تو کار ساخت، {fa_dur(build_sec)} دیگه تحویلت میشه"
     return True, f"🎉 زمین شماره {fa_num(n)} مالت شد"
 
 
@@ -80,7 +80,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
         return False, "❌ این زمین مال تو نیس"
     state, left = plot.current_status()
     if state == "building":
-        return False, f"🔨 زمینت هنوز داره ساخته میشه — {fa_dur(left)} مونده"
+        return False, f"🔨 زمینت هنوز داره ساخته میشه، {fa_dur(left)} مونده"
     if state != "empty":
         return False, "❌ این زمین الان خالی نیس"
     if not economy.is_seed_unlocked(seed_key, user.level):
@@ -91,7 +91,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
     stock = await get_stock(session, user.id)
     if stock.get(seed_key, 0) <= 0:
-        return False, f"🌾 بذر {seed['name']} نداری — از بخش بذرهای شاپ بخرش"
+        return False, f"🌾 بذر {seed['name']} نداری، از بخش بذرهای شاپ بخرش"
 
     await add_seed_stock(session, user.id, seed_key, -1)
 
@@ -107,10 +107,10 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
     return True, f"🌱 {seed['name']} کاشته شد | {fa_dur(seconds)} دیگه آمادست"
 
 
-# ───────── برداشت (همه آماده‌ها — هر ۲ دقیقه یه بار) ─────────
+# ───────── برداشت (همه آماده‌ها، هر ۲ دقیقه یه بار) ─────────
 
 def harvest_cooldown_left(user: User) -> int:
-    """ثانیه مونده از کولدون برداشت — زمان‌بندی برای هر کاربر جدا ذخیره میشه"""
+    """ثانیه مونده از کولدون برداشت، زمان‌بندی برای هر کاربر جدا ذخیره میشه"""
     if not user.last_harvest_at:
         return 0
     left = config.HARVEST_COOLDOWN_SECONDS - (now_utc() - user.last_harvest_at).total_seconds()
@@ -124,7 +124,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     """
     left = harvest_cooldown_left(user)
     if left:
-        return False, f"⏳ هر 2 دقیقه یه بار میشه برداشت کرد | {fa_dur(left)} مونده", None
+        return False, f"⏳ هر 2 دقیقه یه بار میشه برداشت کرد، {fa_dur(left)} مونده", None
 
     plots = await get_user_plots(session, user.id)
     ready = [p for p in plots if p.current_status()[0] == "ready"]
@@ -143,7 +143,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     item_lines: list[str] = []
     for p in ready:
         if p.crop not in config.SEEDS:
-            # بذر قدیمی (از کاتالوگ حذف شده) — زمین خالی میشه بدون درآمد
+            # بذر قدیمی (از کاتالوگ حذف شده)، زمین خالی میشه بدون درآمد
             p.status = "empty"
             p.crop = None
             p.planted_at = None
@@ -156,7 +156,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         total_gain += gain
         total_xp += config.SEEDS[p.crop]["xp"]
         item_lines.append(
-            f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)} — {money_tp(gain)}"
+            f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)}، {money_tp(gain)}"
         )
         p.status = "empty"
         p.crop = None
@@ -167,7 +167,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     user.last_harvest_at = now_utc()
     notes = users.add_xp(user, total_xp)
 
-    # قلاب کوئست تیم — برداشت هر عضو حساب میشه
+    # قلاب کوئست تیم، برداشت هر عضو حساب میشه
     from services import teams as team_svc
     quest_msg = await team_svc.record_harvest(session, user, len(ready))
 

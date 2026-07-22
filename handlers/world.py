@@ -30,27 +30,27 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     st = res["status"]
     if st == "cooldown":
-        return await respond(update, f"⏳ هر {fa_num(config.SEARCH_COOLDOWN_MINUTES)} دقیقه یه جستجو — {fa_dur(res['left'])} دیگه بیا")
+        return await respond(update, f"⏳ هر {fa_num(config.SEARCH_COOLDOWN_MINUTES)} دقیقه یه جستجو، {fa_dur(res['left'])} دیگه بیا")
 
     o = res["outcome"]
     if st == "money":
         text = (
             "<b>🔍 جستجو</b>\n\n"
-            f"{o['emoji']} {o['text']} — {money(res['amount'])} گیرت اومد\n\n"
+            f"{o['emoji']} {o['text']}، {money(res['amount'])} گیرت اومد\n\n"
             f"💵 نقدینگی {fa_num(cash)}TP"
         )
     elif st == "thief":
         text = (
             "<b>🔍 جستجو</b>\n\n"
             f"{o['emoji']} {o['text']}\n"
-            f"💸 {money(res['lost'])} از جیبت رفت — نقدینگی {fa_num(cash)}TP"
+            f"💸 {money(res['lost'])} از جیبت رفت، نقدینگی {fa_num(cash)}TP"
         )
     else:
         seed_name = config.SEEDS[res["seed"]]["name"]
         text = (
             "<b>🔍 جستجو</b>\n\n"
             f"{o['emoji']} {o['text']} <b>({esc(seed_name)})</b>\n\n"
-            "رفت تو انبارت — بکارش یا نگهش دار 🌾"
+            "رفت تو انبارت، بکارش یا نگهش دار 🌾"
         )
     if luck > 1:
         text += "\n\n🍀 سگ خوش‌شانست شانس خوبت رو بیشتر کرد"
@@ -76,7 +76,7 @@ async def weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "",
     ]
     if key == "normal":
-        lines.append("افکت خاصی فعال نیست — هوا عادیه")
+        lines.append("افکت خاصی فعال نیست، هوا عادیه")
     else:
         lines.append("افکت‌های فعلی:")
         for b in w.get("boosts", []):
@@ -106,13 +106,13 @@ async def _shelter_text(user) -> str:
     lines = [
         "<b>🏚 پناهگاه</b>",
         "",
-        f"⭐ لول {fa_num(user.shelter_level)}" + (f" از {fa_num(config.SHELTER_MAX_LEVEL)}" if user.shelter_level else " — هنوز نداری"),
+        f"⭐ لول {fa_num(user.shelter_level)}" + (f" از {fa_num(config.SHELTER_MAX_LEVEL)}" if user.shelter_level else "، هنوز نداری"),
         "",
         f"🛡 خسارت یورش پلیس {fa_num(int(cut * 100))}٪ کمتره",
         f"🎲 شانس فرار کامل از یورش {fa_num(int(dodge * 100))}٪",
         f"📦 ظرفیت انبار هر بذر {fa_num(cap)} تا",
         "",
-        "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30٪ محصولات انبار رو نابود می‌کنه — پناهگاه جلوته",
+        "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30٪ محصولات انبار رو نابود می‌کنه، پناهگاه جلوته",
     ]
     if user.shelter_level < config.SHELTER_MAX_LEVEL:
         price = world_svc.shelter_price(user.shelter_level + 1)
@@ -141,7 +141,7 @@ async def shelter_up_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await s.commit()
 
     text = (
-        f"<b>🏚 ارتقای پناهگاه — لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
+        f"<b>🏚 ارتقای پناهگاه، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
         f"💸 هزینه {money(price)}\n"
         f"💵 الان {money(cash)} داری\n\n"
         "انجامش بدیم؟"
@@ -178,7 +178,7 @@ async def casino_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if level < config.CASINO_MIN_LEVEL:
         return await respond(update, f"🔒 قمارخانه از لول {fa_num(config.CASINO_MIN_LEVEL)} باز میشه")
     if left:
-        return await respond(update, f"⏳ هر {fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت یه دست می‌تونی بازی کنی — {fa_dur(left)} مونده")
+        return await respond(update, f"⏳ هر {fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت یه دست می‌تونی بازی کنی، {fa_dur(left)} مونده")
 
     text = (
         "<b>🎰 قمارخانه</b>\n\n"
@@ -209,7 +209,7 @@ async def casino_bet_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"بردی → {money(prize)} جیبت میشه\n"
         f"باختی → {money(bet)} میره رو دیلر\n"
         f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}٪\n\n"
-        "قماره ها — بازی کنیم؟"
+        "قماره ها، بازی کنیم؟"
     )
     await respond(update, text, kb.confirm_kb(f"cascf:{bet}"))
 
@@ -232,7 +232,7 @@ async def casino_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if st == "win":
         text = (
             "<b>🎰 وین!</b>\n\n"
-            f"دیلر پاشید — {money(res['prize'])} جیبت شد 😈\n\n"
+            f"دیلر پاشید، {money(res['prize'])} جیبت شد 😈\n\n"
             f"💵 نقدینگی {fa_num(res['cash'])}TP"
         )
     else:
@@ -245,7 +245,7 @@ async def casino_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await respond(update, text, kb.home_kb())
 
 
-# ═════════ کاروان 🚛 — دکمه حمله تو گروه ═════════
+# ═════════ کاروان 🚛، دکمه حمله تو گروه ═════════
 
 async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -258,7 +258,7 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     left = world_svc.caravan_hit_left(chat_id, update.effective_user.id)
     if left:
-        await query.answer(f"⏳ هر 1 دقیقه یه ضربه — {left} ثانیه مونده", show_alert=True)
+        await query.answer(f"⏳ هر 1 دقیقه یه ضربه، {left} ثانیه مونده", show_alert=True)
         return
 
     async with session_scope() as s:
@@ -280,7 +280,7 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.answer(f"⏳ {res['left']} ثانیه مونده", show_alert=True)
         return
 
-    await query.answer(f"⚔️ {fa_num(res['dmg'])} دمیج — 💰 {fa_num(res['cash'])}TP", show_alert=True)
+    await query.answer(f"⚔️ {fa_num(res['dmg'])} دمیج، 💰 {fa_num(res['cash'])}TP", show_alert=True)
 
     # برد کاروان ادیت میشه
     cv_now = world_svc.CARAVANS.get(chat_id)

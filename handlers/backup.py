@@ -1,5 +1,5 @@
 """
-بک‌آپ و ری‌استور دیتابیس — فقط ادمین (مثل /admin به غریبه اصلا جواب نمیده)
+بک‌آپ و ری‌استور دیتابیس، فقط ادمین (مثل /admin به غریبه اصلا جواب نمیده)
 /backup → فایل کامل دی‌بی رو می‌فرسته
 /upload_backup → فایل رو می‌گیره و اگه سالم بود جایگزین می‌کنه (روی ولوم ذخیره میشه)
 """
@@ -28,7 +28,7 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     if not backup.backup_supported():
         return await update.effective_message.reply_html(
-            "❌ دیتابیس SQLite نیس — بک‌آپ فایلی فقط روی SQLite کار می‌کنه"
+            "❌ دیتابیس SQLite نیس، بک‌آپ فایلی فقط روی SQLite کار می‌کنه"
         )
 
     async with session_scope() as s:
@@ -64,7 +64,7 @@ async def upload_backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     if not backup.backup_supported():
         return await update.effective_message.reply_html(
-            "❌ دیتابیس SQLite نیس — بک‌آپ فایلی فقط روی SQLite کار می‌کنه"
+            "❌ دیتابیس SQLite نیس، بک‌آپ فایلی فقط روی SQLite کار می‌کنه"
         )
 
     context.user_data["await_backup"] = True
@@ -77,7 +77,7 @@ async def upload_backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def cancel_upload_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """«لغو بک‌آپ» — کنسل کردن حالت انتظار فایل"""
+    """«لغو بک‌آپ»، کنسل کردن حالت انتظار فایل"""
     if not _is_admin(update):
         return
     if (context.user_data or {}).pop("await_backup", False):
@@ -96,7 +96,7 @@ async def backup_doc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return await update.effective_message.reply_html("❌ فایل نفرستادی که ")
 
     if doc.file_size and doc.file_size > 25 * 1024 * 1024:
-        return await update.effective_message.reply_html("❌ فایل خیلی گنده‌ست — دی‌بی این‌قدری نداریم")
+        return await update.effective_message.reply_html("❌ فایل خیلی گنده‌ست، دی‌بی این‌قدری نداریم")
 
     await update.effective_message.reply_html("⏳ دارم فایل رو بررسی می‌کنم...")
 
@@ -104,7 +104,7 @@ async def backup_doc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         tg_file = await doc.get_file()
         data = await tg_file.download_as_bytearray()
     except Exception:
-        return await update.effective_message.reply_html("❌ دانلود فایل از تلگرام نشد — دوباره بفرست")
+        return await update.effective_message.reply_html("❌ دانلود فایل از تلگرام نشد، دوباره بفرست")
 
     ok, msg = await backup.restore_bytes(bytes(data))
     await update.effective_message.reply_html(f"<b>{msg}</b>")

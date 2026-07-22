@@ -58,14 +58,14 @@ def best_armor_name(item_keys: list[str]) -> str | None:
 
 
 def has_legend_armor(item_keys: list[str]) -> bool:
-    """آیا زره افسانه‌ای داره؟ — سکه دزدیده‌شده ازش نصف میشه"""
+    """آیا زره افسانه‌ای داره؟، سکه دزدیده‌شده ازش نصف میشه"""
     return any(config.ARMORS.get(k, {}).get("legendary") for k in item_keys)
 
 
 # ───────── کولدون و هدف ─────────
 
 def cooldown_left(user: User) -> int:
-    """ثانیه مونده از کولدون حمله — هر ۱ دقیقه یه حمله"""
+    """ثانیه مونده از کولدون حمله، هر ۱ دقیقه یه حمله"""
     if not user.last_attack_at:
         return 0
     cd = config.ATTACK_COOLDOWN_MINUTES * 60
@@ -74,7 +74,7 @@ def cooldown_left(user: User) -> int:
 
 
 async def find_target(session: AsyncSession, user: User) -> User | None:
-    """یه هدف رندوم هم‌لول — برای جستجوی منوی حمله"""
+    """یه هدف رندوم هم‌لول، برای جستجوی منوی حمله"""
     lo = max(1, user.level - config.ATTACK_TARGET_LEVEL_RANGE)
     hi = user.level + config.ATTACK_TARGET_LEVEL_RANGE
     q = (
@@ -128,7 +128,7 @@ def steal_amount(
 
 
 def cash_bucket(cash: int) -> str:
-    """نمایش تقریبی دارایی هدف — عدد دقیق لو نمیره"""
+    """نمایش تقریبی دارایی هدف، عدد دقیق لو نمیره"""
     if cash < 1000:
         return "جیبش خالیه 🕳"
     if cash < 10000:
@@ -143,7 +143,7 @@ def cash_bucket(cash: int) -> str:
 async def execute_attack(session: AsyncSession, user: User, target: User) -> dict:
     """
     همه چک‌ها + محاسبات + تغییرات دیتابیس
-    خروجی: دیکشنری نتیجه برای ساخت پیام — اگه ok نباشه reason داره
+    خروجی: دیکشنری نتیجه برای ساخت پیام، اگه ok نباشه reason داره
     """
     left = cooldown_left(user)
     if left:
@@ -163,7 +163,7 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
     atk, _ = combat_stats(user, user_items, user_dogs)
     _, dfn = combat_stats(target, target_items, target_dogs)
 
-    # بونس ساختمان‌های تیم — حمله مهاجم و دفاع مدافع
+    # بونس ساختمان‌های تیم، حمله مهاجم و دفاع مدافع
     from services import teams as team_svc
     user_team = await team_svc.get_team_of(session, user.id)
     target_team = await team_svc.get_team_of(session, target.id)
@@ -183,7 +183,7 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
     if wdef:
         dfn = max(1, int(dfn * (1 + wdef)))
 
-    # گرگ سیاه دفاع حریف رو خرد می‌کنه — تا ۳۰٪ بسته به لولش
+    # گرگ سیاه دفاع حریف رو خرد می‌کنه، تا ۳۰٪ بسته به لولش
     def_cut = dog_svc.rare_defense_cut(user_dogs)
     if def_cut:
         dfn = max(1, int(dfn * (1 - def_cut)))
@@ -219,7 +219,7 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
         target.losses += 1
         result["notes"] = user_svc.add_xp(user, config.ATTACK_WIN_XP)
 
-        # قلاب کوئست تیم — هر برد تو دعوا حساب میشه
+        # قلاب کوئست تیم، هر برد تو دعوا حساب میشه
         quest_msg = await team_svc.record_kill(session, user)
         if quest_msg:
             result["notes"].append(quest_msg)

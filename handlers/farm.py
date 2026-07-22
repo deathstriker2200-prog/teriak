@@ -27,7 +27,7 @@ async def render_farm(update: Update, extra: str | None = None, alert: str | Non
             seed_name = config.SEEDS.get(p.crop or "", {}).get("name", "؟")
             head = f"زمین {fa_num(i)} (لول {fa_num(p.level)})"
             if state == "building":
-                lines.append(f"🔨 {head} | داره ساخته میشه — {fa_dur(left)} مونده")
+                lines.append(f"🔨 {head} | داره ساخته میشه، {fa_dur(left)} مونده")
             elif state == "empty":
                 lines.append(f"▫️ {head} خالیه")
             elif state == "growing":
@@ -173,7 +173,7 @@ async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await render_farm(update, alert=alert)
 
 
-# ───────── برداشت (همه آماده‌ها — کولدون ۲ دقیقه) ─────────
+# ───────── برداشت (همه آماده‌ها، کولدون ۲ دقیقه) ─────────
 
 async def harvest_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
@@ -204,7 +204,7 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         old_sp = economy.plot_speed_mult(plot.level)
         new_sp = economy.plot_speed_mult(plot.level + 1)
         text = (
-            f"<b>⬆️ لول‌آپ زمین — تا لول {fa_num(config.PLOT_MAX_LEVEL)}</b>\n\n"
+            f"<b>⬆️ لول‌آپ زمین، تا لول {fa_num(config.PLOT_MAX_LEVEL)}</b>\n\n"
             f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n"
             f"💸 هزینه {money(price)}\n"
             f"📈 درآمد 25٪ بهتر میشه (×{old_y:.2f} ← ×{new_y:.2f})\n"

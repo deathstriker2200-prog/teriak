@@ -52,7 +52,7 @@ def parts(update: Update) -> list[str]:
 
 
 def format_attack_result(result: dict, target_name: str) -> str:
-    """متن نتیجه حمله — مشترک بین حمله منویی و حمله ریپلای تو گروه"""
+    """متن نتیجه حمله، مشترک بین حمله منویی و حمله ریپلای تو گروه"""
     roll_line = f"🎲 تو {fa_num(result['a_roll'])} | اون {fa_num(result['d_roll'])}"
 
     mods: list[str] = []

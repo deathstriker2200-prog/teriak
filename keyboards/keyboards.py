@@ -4,7 +4,7 @@ primary = آبی (اکشن‌های اصلی) | success = سبز (تایید) | 
 
 ساختار callback_data یکدسته: «بخش:اکشن:پارتامترها»
 مسیر تایید اکشن‌های مهم با پیشوند cf: اجرا میشه | cl همیشه لغوه
-تایید دستورهای متنی گروه با پیشوند txcf: و id کاربر — فقط خودش بتونه تایید کنه
+تایید دستورهای متنی گروه با پیشوند txcf: و id کاربر، فقط خودش بتونه تایید کنه
 
 menu:home | menu:profile | menu:farm | menu:shop | menu:attack | menu:rank | menu:dogs
 farm:buy                    → cf:farm:buy
@@ -35,7 +35,7 @@ PRIMARY = "primary"
 SUCCESS = "success"
 DANGER = "danger"
 
-# یوزرنیم ربات موقع استارت ست میشه — برای دکمه «افزودن به گروه»
+# یوزرنیم ربات موقع استارت ست میشه، برای دکمه «افزودن به گروه»
 BOT_USERNAME = ""
 
 
@@ -74,7 +74,7 @@ def home_kb() -> InlineKeyboardMarkup:
 
 
 def confirm_kb(confirm_data: str) -> InlineKeyboardMarkup:
-    """کیبورد تایید استاندارد — تایید سبز | لغو قرمز"""
+    """کیبورد تایید استاندارد، تایید سبز | لغو قرمز"""
     return InlineKeyboardMarkup([[
         _btn("✅ تایید", confirm_data, SUCCESS),
         _btn("❌ لغو", "cl", DANGER),
@@ -82,7 +82,7 @@ def confirm_kb(confirm_data: str) -> InlineKeyboardMarkup:
 
 
 def tx_confirm_kb(kind: str, key: str, tg_id: int, dog_name: str | None = None) -> InlineKeyboardMarkup:
-    """تایید خرید دستور متنی — id کاربر داخل دیتا ست میشه که غریبه نتونه بزنه"""
+    """تایید خرید دستور متنی، id کاربر داخل دیتا ست میشه که غریبه نتونه بزنه"""
     data = f"txcf:{kind}:{key}:{tg_id}"
     if dog_name:
         safe = dog_name.replace(":", " ").strip()[:12]  # سقف بایت callback_data
@@ -95,7 +95,7 @@ def tx_confirm_kb(kind: str, key: str, tg_id: int, dog_name: str | None = None) 
 
 
 def tx_attack_kb(target_id: int, owner_tg: int) -> InlineKeyboardMarkup:
-    """تایید حمله با ریپلای — فقط مهاجم می‌تونه تایید یا لغو کنه"""
+    """تایید حمله با ریپلای، فقط مهاجم می‌تونه تایید یا لغو کنه"""
     return InlineKeyboardMarkup([[
         _btn("✅ تایید", f"txatt:{target_id}:{owner_tg}", SUCCESS),
         _btn("❌ لغو", f"txcl:{owner_tg}", DANGER),
@@ -114,7 +114,7 @@ def admin_kb() -> InlineKeyboardMarkup:
 
 
 def admin_users_kb(users: list) -> InlineKeyboardMarkup:
-    """لیست نتایج جستجوی /user — هرکدوم یه دکمه"""
+    """لیست نتایج جستجوی /user، هرکدوم یه دکمه"""
     rows = []
     for u in users:
         name = u.first_name or u.username or f"کاربر {u.telegram_id}"
@@ -133,7 +133,7 @@ def admin_user_kb(tg_id: int) -> InlineKeyboardMarkup:
 
 
 # ───────── آموزشات (هلپ دکمه‌دار) 📖 ─────────
-# key → عنوان دکمه — متن کامل هر بخش تو handlers/start.py (HELP_SECTIONS)
+# key → عنوان دکمه، متن کامل هر بخش تو handlers/start.py (HELP_SECTIONS)
 HELP_MENU = [
     ("farm",   "🌱 کاشت و برداشت"),
     ("shop",   "🛒 شاپ"),
@@ -148,7 +148,7 @@ HELP_MENU = [
 
 
 def help_menu_kb() -> InlineKeyboardMarkup:
-    """منوی بخش‌های آموزشات — هر بخش یه دکمه"""
+    """منوی بخش‌های آموزشات، هر بخش یه دکمه"""
     rows: list[list[InlineKeyboardButton]] = []
     for i in range(0, len(HELP_MENU), 2):
         chunk = HELP_MENU[i:i + 2]
@@ -157,7 +157,7 @@ def help_menu_kb() -> InlineKeyboardMarkup:
 
 
 def help_back_kb() -> InlineKeyboardMarkup:
-    """🔙 آموزشات — برگشت به منوی اصلی هلپ"""
+    """🔙 آموزشات، برگشت به منوی اصلی هلپ"""
     return InlineKeyboardMarkup([
         [_btn("🔙 آموزشات", "help:menu", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
@@ -230,7 +230,7 @@ def seeds_kb(user: User, plot: Plot, stock: dict[str, int]) -> InlineKeyboardMar
         if have <= 0:
             continue
         label = (
-            f"{seed['name']} ×{fa_num(have)}"
+            f"{seed.get('emoji', '🌱')} {seed['name']} ×{fa_num(have)}"
             f" | ⏱ {fa_dur(economy.crop_grow_seconds(key, plot.level))}"
             f" | 💰 {money_tp(economy.crop_yield(key, plot.level, user.level))}"
         )
@@ -289,14 +289,14 @@ def shop_seed_kb(user: User, stock: dict[str, int]) -> InlineKeyboardMarkup:
     rows = []
     for key, s in config.SEEDS.items():
         if s.get("legendary"):
-            continue  # بذر افسانه‌ای تو شاپ نیس — فقط جستجو/کاروان
+            continue  # بذر افسانه‌ای تو شاپ نیس، فقط جستجو/کاروان
         if user.level < s["min_level"]:
             rows.append([_btn(f"🔒 {s['name']} | لول {fa_num(s['min_level'])}", "noop:lock", DANGER)])
         else:
             have = stock.get(key, 0)
             have_txt = f" | 📦 ×{fa_num(have)}" if have else ""
             rows.append([_btn(
-                f"🌱 {s['name']} | {money_tp(s['price'])}{have_txt}",
+                f"{s.get('emoji', '🌱')} {s['name']} | {money_tp(s['price'])}{have_txt}",
                 f"shop:buy:seed:{key}", PRIMARY,
             )])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
@@ -347,7 +347,7 @@ def my_dogs_kb(dogs: list[Dog]) -> InlineKeyboardMarkup:
 
 
 def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
-    """کیبورد کارت آمار یه سگ — از همونجا میشه غذاش داد («آمار اصغر»)"""
+    """کیبورد کارت آمار یه سگ، از همونجا میشه غذاش داد («آمار اصغر»)"""
     rows: list[list[InlineKeyboardButton]] = []
     if dog.level < config.DOG_MAX_LEVEL and feeds_left > 0:
         for key, f in config.DOG_FOODS.items():
@@ -356,7 +356,7 @@ def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
                 f"cf:feed:{dog.id}:{key}", SUCCESS,
             )])
     elif feeds_left <= 0:
-        rows.append([_btn("🍖 سیره — امروز دیگه غذا نمی‌خوره", "noop:feedinfo", DANGER)])
+        rows.append([_btn("🍖 سیره، امروز دیگه غذا نمی‌خوره", "noop:feedinfo", DANGER)])
     rows.append([_btn("🔙 سگ‌های من", "menu:dogs", PRIMARY),
                  _btn("🕊 رهاش کن", f"dog:rel:{dog.id}", DANGER)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
@@ -364,7 +364,7 @@ def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
 
 
 def release_confirm_kb(dog_id: int, tg_id: int) -> InlineKeyboardMarkup:
-    """تایید رها کردن سگ — فقط صاحبش"""
+    """تایید رها کردن سگ، فقط صاحبش"""
     return InlineKeyboardMarkup([[
         _btn("✅ رهاش کن", f"relcf:{dog_id}:{tg_id}", SUCCESS),
         _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
@@ -436,7 +436,7 @@ def team_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
 
 
 def team_bld_kb(team, is_owner: bool, tg_id: int) -> InlineKeyboardMarkup:
-    """کیبورد ساختمان‌های تیم — ارتقا فقط برای رهبره"""
+    """کیبورد ساختمان‌های تیم، ارتقا فقط برای رهبره"""
     rows: list[list[InlineKeyboardButton]] = []
     if is_owner:
         can_atk = team.atk_bld < config.TEAM_BUILDING_MAX_LEVEL
@@ -454,7 +454,7 @@ def team_bld_kb(team, is_owner: bool, tg_id: int) -> InlineKeyboardMarkup:
 
 
 def team_bld_confirm_kb(kind: str, tg_id: int) -> InlineKeyboardMarkup:
-    """تایید ارتقای ساختمان — فقط خود رهبر می‌تونه بزنه"""
+    """تایید ارتقای ساختمان، فقط خود رهبر می‌تونه بزنه"""
     return InlineKeyboardMarkup([[
         _btn("✅ تایید", f"tbcf:{kind}:{tg_id}", SUCCESS),
         _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
@@ -464,7 +464,7 @@ def team_bld_confirm_kb(kind: str, tg_id: int) -> InlineKeyboardMarkup:
 # ───────── بانک شخصی ─────────
 
 def bank_kb(user: User) -> InlineKeyboardMarkup:
-    """کیبورد بانک — واریز و برداشت مبلغ رو با پیام بعدی می‌پرسن"""
+    """کیبورد بانک، واریز و برداشت مبلغ رو با پیام بعدی می‌پرسن"""
     from services.bank import bank_upgrade_price
 
     rows: list[list[InlineKeyboardButton]] = [
@@ -492,14 +492,14 @@ def team_no_kb() -> InlineKeyboardMarkup:
 
 
 def team_confirm_kb(action: str, tg_id: int) -> InlineKeyboardMarkup:
-    """تایید اکشن تیمی (ترک/انحلال) — فقط صاحب دستور می‌تونه بزنه"""
+    """تایید اکشن تیمی (ترک/انحلال)، فقط صاحب دستور می‌تونه بزنه"""
     return InlineKeyboardMarkup([[
         _btn("✅ تایید", f"tmcf:{action}:{tg_id}", SUCCESS),
         _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
     ]])
 
 
-# ───────── صفحات فرعی تیم — برگشت به تیم من + منوی اصلی ─────────
+# ───────── صفحات فرعی تیم، برگشت به تیم من + منوی اصلی ─────────
 
 def team_back_kb(home: bool = True) -> InlineKeyboardMarkup:
     """🔙 تیم من + 🏠 منوی اصلی (تو گروه home با strip_home برمی‌ره)"""
@@ -510,7 +510,7 @@ def team_back_kb(home: bool = True) -> InlineKeyboardMarkup:
 
 
 def team_mine_kb() -> InlineKeyboardMarkup:
-    """دکمه‌های کنده‌کاری تیمی — جوین/رفرش + برگشت"""
+    """دکمه‌های کنده‌کاری تیمی، جوین/رفرش + برگشت"""
     return InlineKeyboardMarkup([
         [_btn("⛏ میام استخراج", "team:mine", SUCCESS)],
         [_btn("🔙 تیم من", "menu:team", PRIMARY)],

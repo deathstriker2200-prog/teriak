@@ -1,5 +1,5 @@
 """
-تیم 🏴 — ساخت (لول ۱۰) | جوین (لول ۵) | آمار با «تیم [اسم]» | بیو | ترک/انحلال
+تیم 🏴، ساخت (لول ۱۰) | جوین (لول ۵) | آمار با «تیم [اسم]» | بیو | ترک/انحلال
 کوئست روزانه گروهی با «کوئست» | کنده‌کاری تیمی با «کنده کاری تیمی» (حداقل ۳ نفر، ۷۰٪ اعضا)
 امتیاز تیمی + لیدربرد هفتگی («تیم لیدربرد») | ساختمان حمله/دفاع با آپگرید رهبر («تیم ساختمان»)
 بانک تیم («تیم بانک») + کمک مالی اعضا («تیم واریز 1200») | لیست اعضا («تیم عضویت»)
@@ -24,8 +24,8 @@ from utils import esc, fa_dur, fa_num, money, money_tp, parse_amount
 def _no_team_text() -> str:
     return (
         "<b>🏴 تیم نداری</b>\n\n"
-        f"👑 ساخت تیم از لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)} و با {money(config.TEAM_CREATE_COST)} — «ساخت تیم» بزن و اسمشو بفرست\n"
-        f"🤝 عضویت تو تیم رفیقات از لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)} — «جوین تیم [اسم]»\n\n"
+        f"👑 ساخت تیم از لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)} و با {money(config.TEAM_CREATE_COST)}، «ساخت تیم» بزن و اسمشو بفرست\n"
+        f"🤝 عضویت تو تیم رفیقات از لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)}، «جوین تیم [اسم]»\n\n"
         "📜 کوئست‌های روزانه جمعی جایزه به همه میدن\n"
         "⛏ کنده‌کاری تیمی هم پول میریزه تو خزانه\n\n"
         "🏆 «تیم» رو بزن تا برترین تیم‌ها رو ببینی"
@@ -82,10 +82,10 @@ def _quest_lines(daily) -> list[str]:
     lines: list[str] = []
     for q in teams.quests_view(daily):
         if q["done"]:
-            state = f"✅ انجام شد — {money(q['reward'])} به همه رسید"
+            state = f"✅ انجام شد، {money(q['reward'])} به همه رسید"
         else:
             state = f"{fa_num(q['progress'])} از {fa_num(q['target'])}"
-        lines.append(f"{q['emoji']} {esc(q['title'])} — {state}")
+        lines.append(f"{q['emoji']} {esc(q['title'])}، {state}")
     return lines
 
 
@@ -101,7 +101,7 @@ def _quests_text(team_name: str, daily) -> str:
         lines.append(f"🎁 جایزه: {money(q['reward'])} برای هر عضو")
         lines.append(f"<i>{esc(q['desc'])}</i>")
         lines.append("")
-    lines.append("🕛 هر روز ریست میشن — استعلام با «کوئست»")
+    lines.append("🕛 هر روز ریست میشن، استعلام با «کوئست»")
     return "\n".join(lines)
 
 
@@ -112,7 +112,7 @@ def _mine_progress_text(res: dict) -> str:
     pct = int(config.TEAM_MINE_JOIN_PCT * 100)
 
     text = (
-        f"<b>⛏ کنده‌کاری تیمی — تیم «{esc(team.name)}»</b>\n\n"
+        f"<b>⛏ کنده‌کاری تیمی، تیم «{esc(team.name)}»</b>\n\n"
         f"لازمه {fa_num(pct)}٪ اعضا ({fa_num(needed)} نفر از {fa_num(m_count)}) دستور رو بزنن\n\n"
         f"{fa_num(joined)} نفر از {fa_num(m_count)} نفر به کنده‌کاری پیوستند\n"
     )
@@ -157,7 +157,7 @@ async def team_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """«تیم» «تیم من» «تیم [اسم]» — آمار تیم با دستور خاص"""
+    """«تیم» «تیم من» «تیم [اسم]»، آمار تیم با دستور خاص"""
     arg = ""
     txt = (update.message.text or "").strip()
     p = txt.split(None, 1)
@@ -165,7 +165,7 @@ async def team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         arg = p[1].strip()
 
     if not arg:
-        # بدون اسم — اگه تیمی دارم مال خودم، وگرنه برترین‌ها
+        # بدون اسم، اگه تیمی دارم مال خودم، وگرنه برترین‌ها
         async with session_scope() as s:
             user, _ = await users.get_or_create(s, update.effective_user)
             membership = await teams.get_membership(s, user.id)
@@ -182,7 +182,7 @@ async def team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         team = await teams.get_team_by_name(s, arg)
         if not team:
             await s.commit()
-            return await respond(update, f"🤷 تیمی با اسم «{esc(arg)}» پیدا نشد\n\nآمار هر تیم با «تیم [اسم]» — مثلا «تیم فوتبالیست‌ها»")
+            return await respond(update, f"🤷 تیمی با اسم «{esc(arg)}» پیدا نشد\n\nآمار هر تیم با «تیم [اسم]»، مثلا «تیم فوتبالیست‌ها»")
         data = await teams.team_stats_data(s, team)
         text = _team_stats_text(data)
         await s.commit()
@@ -191,7 +191,7 @@ async def team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _announce_winners(context: ContextTypes.DEFAULT_TYPE, winners: list[dict]) -> None:
-    """پیام خصوصی جایزه هفتگی به اعضای تیم‌های برنده — بیشترین تلاش، بی‌صدا رد میشه"""
+    """پیام خصوصی جایزه هفتگی به اعضای تیم‌های برنده، بیشترین تلاش، بی‌صدا رد میشه"""
     if context is None or not winners:
         return
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
@@ -207,17 +207,17 @@ async def _announce_winners(context: ContextTypes.DEFAULT_TYPE, winners: list[di
             f"<b>{medals[w['rank']]} تیم «{esc(w['team'].name)}» مقام {fa_num(w['rank'])} هفته رو گرفت</b>\n\n"
             f"💎 با {fa_num(w['points'])} امتیاز هفتگی\n"
             f"🎁 {money(w['prize'])} به بانک تیم واریز شد\n\n"
-            "هفته جدید شروع شده — دوباره بجنگین 💪"
+            "هفته جدید شروع شده، دوباره بجنگین 💪"
         )
         for tg in tg_ids:
             try:
                 await context.bot.send_message(tg, text, parse_mode="HTML")
             except Exception:
-                pass  # بلاک یا ریستارت — مهم نیس
+                pass  # بلاک یا ریستارت، مهم نیس
 
 
 async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🏆 لیدربرد تیم‌ها — امتیاز کلی + رقابت این هفته + قهرمانای هفته پیش («تیم لیدربرد»)"""
+    """🏆 لیدربرد تیم‌ها، امتیاز کلی + رقابت این هفته + قهرمانای هفته پیش («تیم لیدربرد»)"""
     async with session_scope() as s:
         winners = await teams.maybe_weekly_rollover(s)
         tops = await teams.top_teams_by_points(s, config.RANK_LIMIT)
@@ -250,7 +250,7 @@ async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         lines.append(f"{medal} «{esc(t.name)}» | 💎 {fa_num(t.week_points)}")
     p1, p2, p3 = (config.TEAM_WEEKLY_PRIZES.get(i, 0) for i in (1, 2, 3))
     lines.append(
-        f"🏁 آخر هفته: 🥇 {money_tp(p1)} | 🥈 {money_tp(p2)} | 🥉 {money_tp(p3)} — به بانک تیم"
+        f"🏁 آخر هفته: 🥇 {money_tp(p1)} | 🥈 {money_tp(p2)} | 🥉 {money_tp(p3)}، به بانک تیم"
     )
 
     if last_week:
@@ -260,7 +260,7 @@ async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     lines.append("")
     lines.append("💎 امتیاز با برد تو حمله و برداشت محصول جمع میشه")
-    lines.append("💡 آمار هر تیم با «تیم [اسم]» — مثلا «تیم فوتبالیست‌ها»")
+    lines.append("💡 آمار هر تیم با «تیم [اسم]»، مثلا «تیم فوتبالیست‌ها»")
     text = "\n".join(lines)
     await respond(update, text, kb.team_back_kb())
 
@@ -286,7 +286,7 @@ async def create_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         update,
         "<b>🏴 اسم تیمت رو بفرست</b>\n\n"
         f"💸 ساخت تیم {money(config.TEAM_CREATE_COST)} هزینه داره\n"
-        "هر اسمی دوست داری همینجا بنویس و بفرست — مثلا «فوتبالیست‌ها»\n\n"
+        "هر اسمی دوست داری همینجا بنویس و بفرست، مثلا «فوتبالیست‌ها»\n\n"
         "❌ پشیمون شدی بنویس «لغو»",
     )
 
@@ -295,7 +295,7 @@ async def create_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def join_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     txt = (update.message.text or "").strip()
-    # «جوین تیم فوتبالیست‌ها» — اسم میتونه چندکلمه‌ای باشه
+    # «جوین تیم فوتبالیست‌ها»، اسم میتونه چندکلمه‌ای باشه
     m = re.match(r"^جوین[\s‌]+تیم[\s‌]+(.+)$", txt)
     arg = m.group(1) if m else ""
 
@@ -334,7 +334,7 @@ async def leave_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if role == "owner":
         return await respond(
             update,
-            "<b>👑 تو رهبر تیمی</b>\n\nنمی‌تونی بری — باید تیم رو منحل کنی\nاگه تصمیمت قطعیه «انحلال تیم» رو بزن",
+            "<b>👑 تو رهبر تیمی</b>\n\nنمی‌تونی بری، باید تیم رو منحل کنی\nاگه تصمیمت قطعیه «انحلال تیم» رو بزن",
         )
 
     text = (
@@ -368,7 +368,7 @@ async def disband_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای ترک/انحلال — فقط صاحب دستور"""
+    """اجرای ترک/انحلال، فقط صاحب دستور"""
     _, action, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):
@@ -382,7 +382,7 @@ async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             msg = f"🚪 از تیم «{res}» رفتی برو بیرون 😅" if ok else res
         else:
             ok, res = await teams.disband_team(s, user)
-            msg = f"💥 تیم «{res}» منحل شد — همه آزادن" if ok else res
+            msg = f"💥 تیم «{res}» منحل شد، همه آزادن" if ok else res
         await s.commit()
 
     if not ok:
@@ -422,7 +422,7 @@ async def quests_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return await respond(
                 update,
                 "<b>📜 کوئست‌های گروهی</b>\n\n"
-                "کوئست‌ها مال تیم‌ان — اول عضو یه تیم شو\n"
+                "کوئست‌ها مال تیم‌ان، اول عضو یه تیم شو\n"
                 f"«جوین تیم [اسم]» (لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)}+) یا «ساخت تیم» (لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)}+)",
             )
 
@@ -436,22 +436,22 @@ async def quests_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # ───────── کنده‌کاری تیمی ─────────
 
 async def _push_mine_state(update: Update, context: ContextTypes.DEFAULT_TYPE, res: dict) -> None:
-    """نمایش وضعیت کنده‌کاری — تکست جدید می‌فرسته یا پیام قدیمی رو ادیت می‌کنه"""
+    """نمایش وضعیت کنده‌کاری، تکست جدید می‌فرسته یا پیام قدیمی رو ادیت می‌کنه"""
     status = res["status"]
 
     if status == "no_team":
-        return await respond(update, "🏴 کنده‌کاری تیمی مال تیم‌ست — اول عضو یه تیم شو 😅")
+        return await respond(update, "🏴 کنده‌کاری تیمی مال تیم‌ست، اول عضو یه تیم شو 😅")
     if status == "too_few":
-        return await respond(update, "⛏ کنده‌کاری تیمی حداقل 3 نفره می‌خواد — اول تیمتو بزرگ کن 😅")
+        return await respond(update, "⛏ کنده‌کاری تیمی حداقل 3 نفره می‌خواد، اول تیمتو بزرگ کن 😅")
     if status == "cooldown":
-        return await respond(update, f"⏳ کنده‌کاری تیمی هر {fa_num(config.TEAM_MINE_COOLDOWN_MINUTES)} دقیقه یه باره — {fa_dur(res['left'])} مونده")
+        return await respond(update, f"⏳ کنده‌کاری تیمی هر {fa_num(config.TEAM_MINE_COOLDOWN_MINUTES)} دقیقه یه باره، {fa_dur(res['left'])} مونده")
 
     if status == "completed":
         return await respond(update, _mine_complete_text(res), kb.team_back_kb())
 
     text = _mine_progress_text(res)
     if res.get("restart"):
-        text = "⏰ دفعه قبل به " + fa_num(int(config.TEAM_MINE_JOIN_PCT * 100)) + "٪ نرسید — پایین دوباره استارتش کردیم 👇\n\n" + text
+        text = "⏰ دفعه قبل به " + fa_num(int(config.TEAM_MINE_JOIN_PCT * 100)) + "٪ نرسید، پایین دوباره استارتش کردیم 👇\n\n" + text
 
     if update.callback_query:
         return await respond(update, text, kb.team_mine_kb())
@@ -464,7 +464,7 @@ async def _push_mine_state(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         teams.bind_mine_message(team.id, msg.chat_id, msg.message_id)
         return
 
-    # پیوستن توسط نفر بعدی — پیام قبلی رو ادیت کن + به خودش جواب کوتاه بده
+    # پیوستن توسط نفر بعدی، پیام قبلی رو ادیت کن + به خودش جواب کوتاه بده
     try:
         await context.bot.edit_message_text(
             chat_id=sess["chat_id"], message_id=sess["message_id"],
@@ -472,14 +472,14 @@ async def _push_mine_state(update: Update, context: ContextTypes.DEFAULT_TYPE, r
             reply_markup=strip_home(update, kb.team_mine_kb()),
         )
     except BadRequest:
-        # پیام قبلی دیگه نیس — همینجا تازه بفرست و بایند کن
+        # پیام قبلی دیگه نیس، همینجا تازه بفرست و بایند کن
         msg = await update.message.reply_html(text)
         teams.bind_mine_message(team.id, msg.chat_id, msg.message_id)
         return
 
     joined, needed, m_count = res["joined"], res["needed"], res["member_count"]
     remaining = max(0, needed - joined)
-    ack = f"✔ پیوستی — {fa_num(joined)} نفر از {fa_num(m_count)} نفره"
+    ack = f"✔ پیوستی، {fa_num(joined)} نفر از {fa_num(m_count)} نفره"
     if remaining:
         ack += f" | {fa_num(remaining)} نفر تا تکمیل"
     await update.message.reply_html(ack)
@@ -498,14 +498,14 @@ async def team_mine_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 def _buildings_text(team) -> str:
     def _line(kind_emoji: str, title: str, level: int, per_level: float) -> list[str]:
         pct_now = int(per_level * level * 100)
-        out = [f"{kind_emoji} <b>{title}</b> — لول {fa_num(level)}"]
+        out = [f"{kind_emoji} <b>{title}</b>، لول {fa_num(level)}"]
         out.append(f"قدرت فعلی: +{fa_num(pct_now)}٪ برای همه اعضا")
         if level >= config.TEAM_BUILDING_MAX_LEVEL:
             out.append("⭐ مکس لوله")
         else:
             cost = teams.building_cost(level + 1)
             pct_next = int(per_level * (level + 1) * 100)
-            out.append(f"⬆️ لول {fa_num(level + 1)} (+{fa_num(pct_next)}٪) — هزینه {money(cost)}")
+            out.append(f"⬆️ لول {fa_num(level + 1)} (+{fa_num(pct_next)}٪)، هزینه {money(cost)}")
         return out
 
     lines = [f"<b>🏗 ساختمان‌های تیم «{esc(team.name)}»</b>", ""]
@@ -515,7 +515,7 @@ def _buildings_text(team) -> str:
     lines.append("")
     lines.append(f"🏦 بانک تیم: {money(team.bank)}")
     lines.append("")
-    lines.append("👑 ارتقا فقط با رهبره — دستورش: «تیم ارتقا حمله» / «تیم ارتقا دفاع»")
+    lines.append("👑 ارتقا فقط با رهبره، دستورش: «تیم ارتقا حمله» / «تیم ارتقا دفاع»")
     lines.append("💰 کمک مالی اعضا: «تیم واریز 1200»")
     return "\n".join(lines)
 
@@ -556,7 +556,7 @@ async def roster_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         data = await teams.team_stats_data(s, team)
         await s.commit()
 
-    lines = [f"<b>👥 اعضای تیم «{esc(team.name)}» — {fa_num(data['count'])} نفر</b>", ""]
+    lines = [f"<b>👥 اعضای تیم «{esc(team.name)}»، {fa_num(data['count'])} نفر</b>", ""]
     by_id = {u.id: u for u in data["users"]}
     for m in data["members"]:
         u = by_id.get(m.user_id)
@@ -602,7 +602,7 @@ async def team_deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     m = re.match(r"^تیم[\s‌]+واریز[\s‌]+(.+)$", txt)
     amount = parse_amount(m.group(1)) if m else None
     if amount is None:
-        return await respond(update, "❌ مبلغو درست بگو — مثلا «تیم واریز 1200»")
+        return await respond(update, "❌ مبلغو درست بگو، مثلا «تیم واریز 1200»")
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -619,7 +619,7 @@ async def team_deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ───────── ارتقای ساختمان («تیم ارتقا حمله/دفاع» + دکمه‌ها) ─────────
 
 async def _building_confirm_payload(update: Update, kind: str) -> tuple[str, object] | None:
-    """متن صفحه تایید ارتقا + کیبورد — یا پیام خطا"""
+    """متن صفحه تایید ارتقا + کیبورد، یا پیام خطا"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         membership = await teams.get_membership(s, user.id)
@@ -647,7 +647,7 @@ async def _building_confirm_payload(update: Update, kind: str) -> tuple[str, obj
     pct_next = int(per * (level + 1) * 100)
     effect = "قدرت حمله" if kind == "atk" else "دفاع"
     text = (
-        f"<b>🏗 ارتقای {title} — لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
+        f"<b>🏗 ارتقای {title}، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
         f"💸 هزینه {money(cost)} از بانک تیم\n"
         f"📈 {effect} همه اعضا +{fa_num(pct_next)}٪ میشه\n"
         f"🏦 موجودی بانک تیم {money(team.bank)}\n\n"
@@ -657,7 +657,7 @@ async def _building_confirm_payload(update: Update, kind: str) -> tuple[str, obj
 
 
 async def team_upgrade_text(update: Update, context: ContextTypes.DEFAULT_TYPE, kind: str | None = None) -> None:
-    """«تیم ارتقا حمله» / «تیم ارتقا دفاع» — صفحه تایید"""
+    """«تیم ارتقا حمله» / «تیم ارتقا دفاع»، صفحه تایید"""
     if kind is None:
         kind = "atk" if "حمله" in (update.message.text or "") else "def"
     payload = await _building_confirm_payload(update, kind)
@@ -666,7 +666,7 @@ async def team_upgrade_text(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
 
 async def team_upgrade_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """دکمه ارتقا از صفحه ساختمان‌ها (tbup) — فقط خود رهبر"""
+    """دکمه ارتقا از صفحه ساختمان‌ها (tbup)، فقط خود رهبر"""
     _, kind, owner_tg = parts(update)
     if update.effective_user.id != int(owner_tg):
         await update.callback_query.answer("این کار مال رهبره 😅", show_alert=True)
@@ -677,7 +677,7 @@ async def team_upgrade_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def team_upgrade_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای ارتقا بعد از تایید (tbcf) — فقط خود رهبر"""
+    """اجرای ارتقا بعد از تایید (tbcf)، فقط خود رهبر"""
     _, kind, owner_tg = parts(update)
     if update.effective_user.id != int(owner_tg):
         await update.callback_query.answer("این کار مال رهبره 😅", show_alert=True)
@@ -694,5 +694,5 @@ async def team_upgrade_execute(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def team_profile_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """«تیم پروفایل» — همون آمار کامل تیم خودم با لول ساختمان‌ها و قدرتشون"""
+    """«تیم پروفایل»، همون آمار کامل تیم خودم با لول ساختمان‌ها و قدرتشون"""
     await render_my_team(update)
