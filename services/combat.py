@@ -266,7 +266,10 @@ async def execute_attack(
         "defcut": def_cut,
         "tbuff": tbuff,
         "weather": wkey,
-        "xp": config.ATTACK_WIN_XP if win else config.ATTACK_LOSE_XP,
+        "xp": (
+            random.randint(config.ATTACK_WIN_XP_MIN, config.ATTACK_WIN_XP_MAX) if win
+            else random.randint(config.ATTACK_LOSE_XP_MIN, config.ATTACK_LOSE_XP_MAX)
+        ),
         "penalty": 0 if win else config.ATTACK_LOSE_ENERGY,
         "notes": [],
     }
@@ -284,7 +287,7 @@ async def execute_attack(
         user.cash += amount
         user.wins += 1
         target.losses += 1
-        result["notes"] = user_svc.add_xp(user, config.ATTACK_WIN_XP)
+        result["notes"] = user_svc.add_xp(user, result["xp"])
 
         # قلاب کوئست تیم، هر برد تو دعوا حساب میشه
         quest_msg = await team_svc.record_kill(session, user)
@@ -295,6 +298,6 @@ async def execute_attack(
         user.losses += 1
         target.wins += 1
         user.energy = max(0, user.energy - config.ATTACK_LOSE_ENERGY)
-        result["notes"] = user_svc.add_xp(user, config.ATTACK_LOSE_XP)
+        result["notes"] = user_svc.add_xp(user, result["xp"])
 
     return result

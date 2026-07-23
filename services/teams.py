@@ -66,7 +66,7 @@ async def can_create_team(session: AsyncSession, user: User) -> tuple[bool, str]
     if user.level < config.TEAM_CREATE_MIN_LEVEL:
         return False, f"🔒 ساخت تیم لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
-        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی، اول «تریاکی ترک تیم» رو بزن"
+        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی، اول «ترک تیم» رو بزن"
     if user.cash < config.TEAM_CREATE_COST:
         return False, f"❌ ساخت تیم {money(config.TEAM_CREATE_COST)} هزینه داره و پولت کمه"
     return True, ""
@@ -111,7 +111,7 @@ async def join_team(session: AsyncSession, user: User, name: str) -> tuple[bool,
     if user.level < config.TEAM_JOIN_MIN_LEVEL:
         return False, f"🔒 عضویت تو تیم لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
-        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی، اول «تریاکی ترک تیم» رو بزن"
+        return False, "🏴 عزیز خودت تو یه تیمی نمی‌تونی توی تیم دیگری عضو بشی، اول «ترک تیم» رو بزن"
 
     team = await get_team_by_name(session, name)
     if not team:
@@ -131,7 +131,7 @@ async def leave_team(session: AsyncSession, user: User) -> tuple[bool, str]:
     if not m:
         return False, "🏴 اصلا تو تیمی نیستی که"
     if m.role == "owner":
-        return False, "👑 تو رهبری، یا تیم رو با «تریاکی انحلال تیم» منحل کن یا اول جانشین بذار ندارم 😅"
+        return False, "👑 تو رهبری، یا تیم رو با «انحلال تیم» منحل کن یا اول جانشین بذار ندارم 😅"
     team = await session.get(Team, m.team_id)
     name = team.name if team else "؟"
     await session.delete(m)
@@ -526,7 +526,7 @@ async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tupl
     if team.bank < cost:
         return False, (
             f"❌ ارتقا {money(cost)} می‌خواد ولی بانک تیم {money(team.bank)} ـه\n"
-            "اعضا با «تریاکی تیم واریز 1200» کمک کنن یا کنده‌کاری تیمی بزنین"
+            "اعضا با «تیم واریز 1200» کمک کنن یا کنده‌کاری تیمی بزنین"
         )
 
     team.bank -= cost
@@ -544,9 +544,9 @@ async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tupl
 
 
 async def team_deposit(session: AsyncSession, user: User, amount: int) -> tuple[bool, str]:
-    """واریز کمک مالی عضو به بانک تیم، «تریاکی تیم واریز 1200»"""
+    """واریز کمک مالی عضو به بانک تیم، «تیم واریز 1200»"""
     if amount <= 0:
-        return False, "❌ مبلغو درست بگو، مثلا «تریاکی تیم واریز 1200»"
+        return False, "❌ مبلغو درست بگو، مثلا «تیم واریز 1200»"
     team = await get_team_of(session, user.id)
     if not team:
         return False, "🏴 تو تیمی نیستی که بخوای بهش کمک کنی"

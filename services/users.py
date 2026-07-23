@@ -119,9 +119,9 @@ def add_xp(user: User, amount: int) -> list[str]:
         user.energy_updated_at = now_utc()
 
         note = (
-            f"🎉 <b>تبریک رفیق، لول {fa_num(user.level)} شدی!</b>\n"
-            f"💰 جایزه {money(reward)}\n"
-            f"⚡ انرژیت فول شارژ شد"
+            f"🎉 <b>تبریک، لول {fa_num(user.level)} شدی</b>\n\n"
+            f"💰 {money(reward)} جایزه\n"
+            f"⚡ انرژی کاملا شارژ شد"
         )
 
         # چیزایی که با این لول باز میشن
@@ -139,7 +139,7 @@ def add_xp(user: User, amount: int) -> list[str]:
         if user.level == config.TEAM_CREATE_MIN_LEVEL:
             unlocks.append("🏴 ساخت تیم")
         if unlocks:
-            note += "\n🔓 باز شد: " + " | ".join(unlocks)
+            note += "\n\n🔓 آیتم های جدید باز شدن\n\n" + "\n".join(unlocks)
 
         notes.append(note)
 

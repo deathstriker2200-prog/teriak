@@ -393,6 +393,7 @@ async def main() -> None:
 
         results = {"win": 0, "lose": 0, "halved_count": 0, "bonus_count": 0}
         chance_sum, chance_n = 0.0, 0
+        xp_win_seen, xp_lose_seen = [], []
         for _ in range(300):
             u1.energy = config.MAX_ENERGY
             u1.last_attack_at = None
@@ -404,12 +405,14 @@ async def main() -> None:
             chance_n += 1
             if res["win"]:
                 results["win"] += 1
+                xp_win_seen.append(res["xp"])
                 if res["halved"]:
                     results["halved_count"] += 1
                 if res["bonus"]:
                     results["bonus_count"] += 1
             else:
                 results["lose"] += 1
+                xp_lose_seen.append(res["xp"])
         check("تو فلو کامل هم برد هم باخت دیده میشه", results["win"] > 0 and results["lose"] > 0, str(results))
         check("زره افسانه‌ای قربانی همیشه نصف می‌کنه", results["halved_count"] == results["win"],
               f"halved={results['halved_count']} win={results['win']}")
@@ -417,6 +420,14 @@ async def main() -> None:
         check("شانس نبرد تو محدوده قانونیه",
               config.ATTACK_WIN_MIN_CHANCE <= chance_sum / chance_n <= config.ATTACK_WIN_MAX_CHANCE,
               f"{chance_sum / chance_n:.2%}")
+        check("تجربه برد بین 12 تا 35 و باخت بین 3 تا 7",
+              xp_win_seen and xp_lose_seen
+              and min(xp_win_seen) >= 12 and max(xp_win_seen) <= 35
+              and min(xp_lose_seen) >= 3 and max(xp_lose_seen) <= 7,
+              f"{min(xp_win_seen)}..{max(xp_win_seen)} / {min(xp_lose_seen)}..{max(xp_lose_seen)}")
+        check("کانفیگ تجربه حمله",
+          config.ATTACK_WIN_XP_MIN == 12 and config.ATTACK_WIN_XP_MAX == 35
+              and config.ATTACK_LOSE_XP_MIN == 3 and config.ATTACK_LOSE_XP_MAX == 7)
         u1.energy = config.MAX_ENERGY
         u1.last_attack_at = None
         u2.shield_until = None
@@ -530,9 +541,22 @@ async def main() -> None:
     upd = _text_update("کنده کاری")
     await mine_h.mine_cmd(upd, None)
     mine_text = upd.message.calls[-1][1]
-    check("متن کنده‌کاری قالب دقیق داره",
-          all(x in mine_text for x in ["⛏ کنده‌کاری", "گیرت اومد", "الان", "تی‌پوینت داری", "ارزشش رو داشت", "پول حاصل از کار خلاف بیشتره"]),
-          mine_text.replace("\n", " | ")[:100])
+    check("متن کنده‌کاری قالب دقیق جدید داره",
+          all(x in mine_text for x in ["⛏ کنده‌کاری", "تی‌پوینت به دست آوردی", "تجربه گرفتی", "🪙 موجودی:",
+                                       "خستت شده نیاز به 30ثانیه استراحت داری برای کنده کاری بعدی"]),
+          mine_text.replace("\n", " | ")[:130])
+    import re as _re_mine
+    m_xp = _re_mine.search(r"✨ (\d+) تجربه گرفتی", mine_text)
+    check("تجربه کنده‌کاری بین 1 تا 5 رندومه",
+          m_xp is not None and 1 <= int(m_xp.group(1)) <= 5, m_xp.group(0) if m_xp else "-")
+    check("کانفیگ تجربه کنده‌کاری 1 تا 5",
+          config.MINE_XP_MIN == 1 and config.MINE_XP_MAX == 5)
+    upd2 = _text_update("کنده کاری")
+    await mine_h.mine_cmd(upd2, None)
+    cd_text = upd2.message.calls[-1][1]
+    check("متن کولدون کنده‌کاری هم قالب جدیده",
+          "⛏ کنده‌کاری" in cd_text and "خستت شده نیاز به" in cd_text and "استراحت داری برای کنده کاری بعدی" in cd_text,
+          cd_text.replace("\n", " | ")[:120])
 
     # ═══ هندلر pending، اسم سگ بعد از «خرید سگ» (قبل از فاکتور و پرداخت) ═══
     from handlers import pending as pending_h
@@ -1109,20 +1133,22 @@ async def main() -> None:
     check("پارس ادمین‌ها", 1001 in config.ADMIN_IDS and 1003 in config.ADMIN_IDS and 1002 not in config.ADMIN_IDS,
           str(sorted(config.ADMIN_IDS)))
 
-    # ═══ فرمت نتیجه حمله (قدرت‌محور + دمیج + شانس + بحرانی) ═══
+    # ═══ فرمت نتیجه حمله (قالب جدید: 🎯 حمله موفق / 💀 حمله ناموفق) ═══
     from handlers.common import format_attack_result
     txt = format_attack_result(
         {"ok": True, "win": True, "a_pow": 180, "d_pow": 120, "chance": 0.75, "dmg": 64, "crit": False,
          "amount": 5000, "bonus": 0.06, "halved": True, "defcut": 0.06, "xp": 30, "penalty": 0, "notes": []},
         "سارا",
     )
-    check("متن برد جدید",
-          "آخ آخ سارا شکار شد" in txt and "تو هم 5,000 تی‌پوینت جایزه گرفتی" in txt
-          and "غرامت +6%" in txt and "دفاعش -6% خرد شد" in txt and "زره افسانه‌ای" in txt and "30 تجربه گرفتی" in txt,
-          txt.replace("\n", " | ")[:200])
-    check("متن برد دمیج و قدرت و شانس رو نشون میده",
-          "💥 64 دمیج زدی بهش" in txt and "💪 قدرت تو 180 | قدرتش 120" in txt and "🎯 شانس بردت 75% بود" in txt
-          and "ضربه بحرانی" not in txt, txt.replace("\n", " | ")[-200:])
+    check("متن برد قالب جدید",
+          "<b>🎯 حمله موفق</b>" in txt and "💥 هههه سارا از پس حملت برنیومد" in txt
+          and "💰 5,000 تی‌پوینت غارت کردی" in txt and "🩸 64 دمیج وارد کردی" in txt
+          and "⚔️ قدرت تو: 180" in txt and "🛡 قدرت حریف: 120" in txt and "🎲 شانس پیروزی: 75%" in txt
+          and "✨ 30 تجربه به دست آوردی" in txt,
+          txt.replace("\n", " | ")[:240])
+    check("مادیفایرها سر جاشن",
+          "غرامت +6%" in txt and "دفاعش -6% خرد شد" in txt and "زره افسانه‌ای" in txt
+          and "ضربه بحرانی" not in txt, txt.replace("\n", " | ")[-220:])
 
     txt_crit = format_attack_result(
         {"ok": True, "win": True, "a_pow": 200, "d_pow": 100, "chance": 0.92, "dmg": 96, "crit": True,
@@ -1130,18 +1156,25 @@ async def main() -> None:
         "ممد",
     )
     check("ضربه بحرانی توی متن میاد",
-          "💣 ضربه بحرانی!" in txt_crit and "96 دمیج" in txt_crit, txt_crit.replace("\n", " | ")[:160])
+          "🩸 96 دمیج وارد کردی 💣 ضربه بحرانی!" in txt_crit, txt_crit.replace("\n", " | ")[:160])
 
     txt_lose = format_attack_result(
         {"ok": True, "win": False, "a_pow": 110, "d_pow": 220, "chance": 0.25, "dmg": 41, "crit": True,
          "amount": 0, "bonus": 0, "halved": False, "xp": 8, "penalty": 15, "notes": []},
         "𝑅𝒶𝓅𝒾𝓉",
     )
-    check("متن باخت جدید",
-          "ایبابا 𝑅𝒶𝓅𝒾𝓉 حسابت رو رسوند" in txt_lose and "15 انرژی جریمه شدی" in txt_lose
-          and "8 تجربت به چوخ رفت" in txt_lose)
-    check("متن باخت دمیج خورده‌شده و شانس کم",
-          "41 دمیج ازش خوردی" in txt_lose and "شانس بردت 25% بود" in txt_lose, txt_lose.replace("\n", " | ")[:200])
+    check("متن باخت قالب جدید",
+          "<b>💀 حمله ناموفق</b>" in txt_lose and "💥 آخ آخ 𝑅𝒶𝓅𝒾𝓉 دهنت رو سرویس کرد" in txt_lose
+          and "🩸 41 دمیج خوردی" in txt_lose and "🎲 شانس پیروزی: 25%" in txt_lose
+          and "⚡ 15 انرژی جریمه شدی" in txt_lose and "✨ 8 تجربه به دست آوردی" in txt_lose,
+          txt_lose.replace("\n", " | ")[:240])
+
+    txt_broke = format_attack_result(
+        {"ok": True, "win": True, "a_pow": 180, "d_pow": 120, "chance": 0.75, "dmg": 10, "crit": False,
+         "amount": 0, "bonus": 0, "halved": False, "defcut": 0, "xp": 12, "penalty": 0, "notes": []},
+        "ممد",
+    )
+    check("جیب خالی هم قالب داره", "💰 جیبش خالی بود بدبخت 🕳" in txt_broke)
 
     # ═══ دکمه‌های قفل قرمز + افزودن به گروه ═══
     from keyboards import keyboards as kb2
@@ -1333,8 +1366,9 @@ async def main() -> None:
 
     from handlers import jobs as jobs_h  # noqa: E402
     jobs_h.register_jobs(app)
-    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|پلیس)",
-          app.job_queue is not None and len(app.job_queue.jobs()) == 4,
+    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|پلیس)",
+          app.job_queue is not None and len(app.job_queue.jobs()) == 5
+          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "police"},
           str([j.name for j in (app.job_queue.jobs() if app.job_queue else [])]))
 
     # regex دستورهای متنی، از خود TEXT_HANDLERS رجیستری — پیشوند «تریاکی » اجباریه
@@ -1344,20 +1378,7 @@ async def main() -> None:
     check("پترن خرید با پیشوند", pats["buy"].match("تریاکی خرید چاقو").group(1) == "چاقو" and pats["buy"].match("خرید چاقو") is None)
     check("پترن خرید سگ با پیشوند", pats["buy_dog"].match("تریاکی خرید سگ دوبرمن").group(1) == "دوبرمن")
     check("پترن کاشت با پیشوند", pats["plant"].match("تریاکی کاشت تریاک").group(1) == "تریاک")
-    check("تیم با اسم و پیشوند",
-          pats["team"].match("تریاکی تیم فوتبالیست‌ها").group(1) == "فوتبالیست‌ها"
-          and pats["team"].match("تریاکی تیم").group(1) is None)
-    check("«تریاکی تیم من» آرگومان «من» میده", pats["team"].match("تریاکی تیم من").group(1) == "من")
-    check("«تریاکی جوین تیم» اسم چندکلمه‌ای", pats["team_join"].match("تریاکی جوین تیم فوتبالیست‌های ایران").group(1) == "فوتبالیست‌های ایران")
     check("«تریاکی آمار اصغر»", pats["dogstats"].match("تریاکی آمار اصغر").group(1) == "اصغر")
-    check("استخراج تیمی هم پیشوند می‌خواد",
-          pats["team_mine"].match("تریاکی استخراج تیمی") and pats["team_mine"].match("استخراج تیمی") is None)
-    check("کوئست‌های پیشونددار", pats["quests"].match("تریاکی کوئست") and pats["quests"].match("تریاکی کوئست تیم"))
-    check("ست بیو با پیشوند", pats["team_bio"].match("تریاکی ست بیو تیم بهترینیم").group(1) == "بهترینیم")
-    check("تیم ساختمان/ساخت با پیشوند", pats["team_bld"].match("تریاکی تیم ساختمان") and pats["team_bld"].match("تریاکی تیم ساخت"))
-    check("«تریاکی تیم واریز 1200»", pats["team_dep"].match("تریاکی تیم واریز 1200").group(1) == "1200"
-          and pats["team_dep"].match("تریاکی تیم واریز").group(1) is None)
-    check("«تریاکی تیم ارتقا حمله/دفاع»", pats["team_up"].match("تریاکی تیم ارتقا حمله") and pats["team_up"].match("تریاکی تیم ارتقا دفاع"))
     check("«تریاکی واریز/برداشت 1200»", pats["bankdep"].match("تریاکی واریز 1200") and pats["bankwd"].match("تریاکی برداشت ۱۲۰۰"))
     check("«تریاکی برداشت محصول» به بانک نمیره", pats["bankwd"].match("تریاکی برداشت محصول") is None
           and pats["harvest"].match("تریاکی برداشت محصول") is not None)
@@ -1365,12 +1386,63 @@ async def main() -> None:
     check("«تریاکی وضعیت هوا» و خواهر برادراش",
           pats["weather"].match("تریاکی وضعیت هوا") and pats["weather"].match("تریاکی وضعیت هواشناسی")
           and pats["weather"].match("تریاکی وضعیت آب و هوا") and pats["weather"].match("تریاکی آب و هوا"))
+    check("«تریاکی هواشناسی» هم مستقیم هوا رو میاره", pats["weather"].match("تریاکی هواشناسی"))
+    check("«تریاکی بازار» هم مستقیم بازار رو میاره",
+          pats["market"].match("تریاکی بازار") and pats["market"].match("تریاکی وضعیت بازار")
+          and pats["market"].match("تریاکی بازار سیاه"))
     check("«تریاکی مزرعه» و «تریاکی سگ‌های من»", pats["farm"].match("تریاکی مزرعه") and pats["mydogs"].match("تریاکی سگ‌های من"))
     check("«تریاکی زمین» وصله ولی «زمین» لخت دیگه دستور نیس",
           pats["farm"].match("تریاکی زمین") is not None and pats["farm"].match("زمین") is None)
-    check("تنها استثنا «کنده کاری»، بقیش تریاکی می‌خوان",
-          pats["mine"].match("کنده کاری") is not None and pats["mine"].match("تریاکی کنده کاری") is None
-          and not any(p.match(t) for t in ("زمین", "شاپ", "حمله", "تیم پروفایل", "تیم بانک", "برداشت", "پناهگاه", "قمار", "جستجو", "راهنما") for p in pats.values()))
+
+    # ─── سه پیشوند «تریاکی | تریاک | تی» برای همه دستورهای پیشوندی ───
+    check("پیشوند «تریاک» (بدون ی) هم همه‌جا قبوله",
+          pats["shop"].match("تریاک شاپ") and pats["farm"].match("تریاک زمین")
+          and pats["buy"].match("تریاک خرید چاقو").group(1) == "چاقو"
+          and pats["rank"].match("تریاک رتبه"))
+    check("پیشوند «تی» هم همه‌جا قبوله",
+          pats["shop"].match("تی شاپ") and pats["farm"].match("تی مزرعه")
+          and pats["bankdep"].match("تی واریز 1200")
+          and pats["weather"].match("تی هواشناسی"))
+
+    # ─── «کنده کاری» و «حمله» با و بدون پیشوند ───
+    check("«کنده کاری» لخت و پیشونددار هر دو",
+          pats["mine"].match("کنده کاری") and pats["mine"].match("تریاکی کنده کاری")
+          and pats["mine"].match("تریاک کنده کاری") and pats["mine"].match("تی کنده کاری"))
+    check("«حمله» لخت و پیشونددار هر دو",
+          pats["attack"].match("حمله") and pats["attack"].match("تریاکی حمله")
+          and pats["attack"].match("تریاک حمله") and pats["attack"].match("تی حمله"))
+
+    # ─── دستورهای تیم با و بدون پیشوند ───
+    check("تیم با اسم لخت و پیشونددار",
+          pats["team"].match("تریاکی تیم فوتبالیست‌ها").group(1) == "فوتبالیست‌ها"
+          and pats["team"].match("تیم فوتبالیست‌ها").group(1) == "فوتبالیست‌ها"
+          and pats["team"].match("تیم").group(1) is None
+          and pats["team"].match("تریاکی تیم من").group(1) == "من"
+          and pats["team"].match("تیم من").group(1) == "من")
+    check("«جوین تیم» لخت و پیشونددار با اسم چندکلمه‌ای",
+          pats["team_join"].match("تریاکی جوین تیم فوتبالیست‌های ایران").group(1) == "فوتبالیست‌های ایران"
+          and pats["team_join"].match("جوین تیم فوتبالیست‌ها").group(1) == "فوتبالیست‌ها")
+    check("«ساخت تیم» لخت و پیشونددار",
+          pats["team_create"].match("ساخت تیم") and pats["team_create"].match("تریاکی ساخت تیم"))
+    check("«تیم ست بیو» فرم جدید، لخت و پیشونددار",
+          pats["team_bio"].match("تیم ست بیو بهترینیم").group(1) == "بهترینیم"
+          and pats["team_bio"].match("تریاکی تیم ست بیو بهترینیم").group(1) == "بهترینیم"
+          and pats["team_bio"].match("تریاکی ست بیو تیم بهترینیم") is None)
+    check("بقیه دستورهای تیم لخت و پیشونددار",
+          pats["team_bld"].match("تیم ساختمان") and pats["team_bld"].match("تریاکی تیم ساخت")
+          and pats["team_profile"].match("تیم پروفایل") and pats["roster"].match("تیم عضویت")
+          and pats["team_top"].match("تیم لیدربرد") and pats["team_bank"].match("تیم بانک")
+          and pats["team_up"].match("تیم ارتقا حمله") and pats["team_up"].match("تیم ارتقا دفاع")
+          and pats["team_leave"].match("ترک تیم") and pats["team_disband"].match("انحلال تیم")
+          and pats["team_quests"].match("تیم کوئست") and pats["quests"].match("کوئست")
+          and pats["team_mine"].match("کنده کاری تیمی") and pats["team_mine"].match("تریاکی استخراج تیمی"))
+    check("«تیم واریز» لخت و پیشونددار",
+          pats["team_dep"].match("تیم واریز 1200").group(1) == "1200"
+          and pats["team_dep"].match("تریاکی تیم واریز 1200").group(1) == "1200"
+          and pats["team_dep"].match("تیم واریز").group(1) is None)
+
+    check("دستورهای معمولی هنوز پیشوند می‌خوان",
+          not any(p.match(t) for t in ("زمین", "شاپ", "برداشت", "پناهگاه", "قمار", "جستجو", "راهنما", "مزرعه", "رتبه") for p in pats.values()))
 
     # ═══ سیستم‌های جهان: بذر افسانه‌ای | جستجو | کیفیت | آب‌وهوا | بازار | قمار | پناهگاه | پلیس | کاروان ═══
 
@@ -1699,11 +1771,143 @@ async def main() -> None:
         check("تسویه به شرکت‌کننده‌هاس و نفر اول مشخصه",
               len(rewards) == 2 and rewards[0]["top"] and rewards[0]["user_id"] == atk1.id,
               str([(x["user_id"], x["dmg"], x["top"]) for x in rewards]))
-        check("نفر اول بذر جایزه گرفت", rewards[0]["seed"] is not None, str(rewards[0]["seed"]))
+        check("نفر اول بذر جایزه ویژه گرفت", len(rewards[0]["seeds"]) >= 1, str(rewards[0]["seeds"]))
         check("برد کاروان بعد کیل پاک شد", world_svc.caravan_active(chat_id) is None)
         end_txt = world_svc.caravan_end_text(rewards, killed=True)
-        check("متن پایان کاروان", "کاروان غارت شد" in end_txt and "🏆" in end_txt)
+        check("متن پایان کاروان با قالب جدیده",
+              "💀 کاروان غارت شد" in end_txt and "🏆" in end_txt
+              and "⚔️ دمیج:" in end_txt and "💰 پاداش:" in end_txt and "🎁 جایزه ویژه:" in end_txt
+              and f"🏆 نفر اول {rewards[0]['name']} بیشترین جایزه رو گرفت" in end_txt
+              and "📢 فقط 5 نفر برتر جایزه دریافت می‌کنن" in end_txt, end_txt[:100])
         await s.commit()
+
+    # ── کاروان 🚛: نکته آپدیت 2 دقیقه‌ای + متن رد شد + قانون 5 نفر برتر ──
+    world_svc.CARAVANS.clear()
+    world_svc.CARAVAN_HITS.clear()
+    async with session_scope() as s:
+        esc_u, _ = await users.get_or_create(s, tg(8830, "cvx", "دیررس"))
+        esc_uid = esc_u.id
+        await s.commit()
+    cv_b = world_svc.caravan_spawn(940001)
+    cv_b["damages"][esc_uid] = 40
+    cv_b["names"][esc_uid] = "دیررس"
+    btxt = world_svc.caravan_board_text(cv_b)
+    check("برد کاروان نکته آپدیت 2 دقیقه‌ای رو جلوی دمیج‌ها داره",
+          "هر 2 دقیقه یک بار آپدیت میشه" in btxt, btxt[-120:])
+
+    cv_b["expires_at"] = now_utc() - timedelta(seconds=5)
+    async with session_scope() as s:
+        res = await world_svc.caravan_expire(s, 940001)
+        await s.commit()
+    esc_txt = world_svc.caravan_end_text(res["rewards"], killed=False)
+    check("متن رد شد هم همون قالبو داره با تیتر متفاوت",
+          "🚛 کاروان از محله رد شد" in esc_txt and "⚔️ دمیج: 40" in esc_txt
+          and "💰 پاداش:" in esc_txt and "🎁 جایزه ویژه:" in esc_txt
+          and "📢 فقط 5 نفر برتر" in esc_txt and "🏆 نفر اول" not in esc_txt, esc_txt[:90])
+    check("رد شد بدون هیچ ضربه‌ای متن ساده داره",
+          "بدون اینکه کسی بهش برسه" in world_svc.caravan_end_text([], killed=False))
+
+    # قانون 5 نفر برتر: 7 نفر بزنن فقط 5 تای اول جایزه می‌گیرن
+    world_svc.CARAVANS.clear()
+    cv_t = world_svc.caravan_spawn(940002)
+    async with session_scope() as s:
+        for i in range(7):
+            tu, _ = await users.get_or_create(s, tg(8840 + i, f"top{i}", f"نفر{i}"))
+            cv_t["damages"][tu.id] = 100 - i
+            cv_t["names"][tu.id] = f"نفر{i}"
+        await s.commit()
+    cv_t["expires_at"] = now_utc() - timedelta(seconds=5)
+    async with session_scope() as s:
+        res = await world_svc.caravan_expire(s, 940002)
+        await s.commit()
+    check("فقط 5 نفر برتر جایزه تسویه می‌گیرن",
+          res is not None and len(res["rewards"]) == 5
+          and res["rewards"][0]["dmg"] == 100 and res["rewards"][-1]["dmg"] == 96,
+          str(len(res["rewards"]) if res else "-"))
+
+    # ── کاروان 🚛: کیل و انقضا با پیام واقعی، برد پاک میشه و پیام تازه میاد ──
+    class _CvBot:
+        def __init__(self):
+            self.deleted = []
+            self.sent = []
+            self.edited = []
+
+        async def delete_message(self, chat_id, message_id):
+            self.deleted.append((chat_id, message_id))
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            self.sent.append(text)
+            return SimpleNamespace(message_id=len(self.sent))
+
+        async def edit_message_text(self, chat_id, message_id, text, parse_mode=None, reply_markup=None):
+            self.edited.append((chat_id, message_id, text))
+
+    world_svc.CARAVANS.clear()
+    world_svc.CARAVAN_HITS.clear()
+    chat_k = 940003
+    async with session_scope() as s:
+        await users.get_or_create(s, tg(8831, "cvk", "غارتگر"))
+        await s.commit()
+    kcv = world_svc.caravan_spawn(chat_k)
+    kcv["hp"] = 1
+    kcv["message_id"] = 888
+    botk = _CvBot()
+
+    class _CvQ:
+        def __init__(self, chat_id, mid):
+            self.message = SimpleNamespace(chat_id=chat_id, message_id=mid)
+            self.answers = []
+
+        async def answer(self, text, show_alert=False):
+            self.answers.append(text)
+
+    upd_k = SimpleNamespace(
+        callback_query=_CvQ(chat_k, 888),
+        effective_user=tg(8831, "cvk", "غارتگر"),
+        effective_chat=SimpleNamespace(id=chat_k, type="group"),
+        message=None,
+    )
+    await world_h.caravan_hit_cb(upd_k, SimpleNamespace(bot=botk))
+    check("کیل کاروان: برد پاک شد و «غارت شد» تازه اومد، ادیت بعد ضربه نداریم",
+          (chat_k, 888) in botk.deleted
+          and any("💀 کاروان غارت شد" in t for t in botk.sent)
+          and any("🏆 نفر اول" in t for t in botk.sent)
+          and not botk.edited, str(botk.sent[0][:60] if botk.sent else "-"))
+
+    # انقضا: جاب تیک برد رو پاک می‌کنه و «رد شد» تازه می‌فرسته
+    world_svc.CARAVANS.clear()
+    world_svc.CARAVAN_HITS.clear()
+    cvx = world_svc.caravan_spawn(940004)
+    cvx["expires_at"] = now_utc() - timedelta(seconds=5)
+    cvx["damages"][esc_uid] = 70
+    cvx["names"][esc_uid] = "دیررس"
+    cvx["message_id"] = 999
+    botx = _CvBot()
+    old_chance = config.CARAVAN_SPAWN_CHANCE
+    config.CARAVAN_SPAWN_CHANCE = 0  # اسپون تصادفی تو تیک این تست خاموشه
+    try:
+        await jobs_h.caravan_job(SimpleNamespace(bot=botx))
+    finally:
+        config.CARAVAN_SPAWN_CHANCE = old_chance
+    check("انقضای کاروان: برد پاک شد و «رد شد» تازه اومد",
+          (940004, 999) in botx.deleted
+          and any("🚛 کاروان از محله رد شد" in t for t in botx.sent)
+          and any("⚔️ دمیج: 70" in t for t in botx.sent), str(botx.deleted))
+
+    # تایمر رفرش: برد فعال هر 2 دقیقه ادیت میشه
+    world_svc.CARAVANS.clear()
+    world_svc.CARAVAN_HITS.clear()
+    cvr = world_svc.caravan_spawn(940005)
+    cvr["message_id"] = 4321
+    cvr["damages"][esc_uid] = 33
+    cvr["names"][esc_uid] = "دیررس"
+    botr = _CvBot()
+    await jobs_h.caravan_refresh_job(SimpleNamespace(bot=botr))
+    check("تایمر 2 دقیقه‌ای برد کاروان رو با دمیج تازه ادیت می‌کنه",
+          any(mid == 4321 and "⚔️ دمیج‌ها (هر 2 دقیقه یک بار آپدیت میشه)" in t
+              and "33" in t for _, mid, t in botr.edited), str(botr.edited))
+    world_svc.CARAVANS.clear()
+    world_svc.CARAVAN_HITS.clear()
 
     # ── شخصیت سگ‌ها 💫 ──
     check("۵ شخصیت تعریف شدن",
@@ -2042,10 +2246,17 @@ async def main() -> None:
                                           "15 دقیقه سپر محافظ", "قدرت سلاحت محاسبه میشه"]))
     check("هلپ سگ‌ها",
           all(x in HS["dogs"] for x in ["🐕 پیتبول", "👑 گرگ سیاه شخصیت نداره", "12 به وقت ایران"]))
-    check("هلپ تیم",
-          all(x in HS["team"] for x in ["حداکثر 10 عضو", "تریاکی ست بیو تیم [متن]", "3 تیم برتر",
-                                        "70% اعضا", "تریاکی تیم واریز [مبلغ]",
-                                        "فاکتورش میاد و با تایید ✅ تیم ساخته میشه"]))
+    check("هلپ تیم (بدون پیشوند + تیم ست بیو)",
+          all(x in HS["team"] for x in ["حداکثر 10 عضو", "تیم ست بیو [متن]", "3 تیم برتر",
+                                        "70% اعضا", "تیم واریز [مبلغ]", "بدون پیشوند",
+                                        "ساخت تیم", "جوین تیم [نام تیم]", "تیم من", "تیم پروفایل",
+                                        "تیم کوئست", "کنده‌کاری تیمی", "تیم ساختمان",
+                                        "فاکتورش میاد و با تایید ✅ تیم ساخته میشه"])
+          and "تریاکی ست بیو" not in HS["team"] and "تریاکی تیم واریز" not in HS["team"])
+    check("هلپ حمله هر دو شکل دستور رو داره",
+          "«حمله» یا «تریاکی حمله»" in HS["attack"])
+    check("هلپ کنده‌کاری شکل پیشونددارش رو هم داره",
+          "«تریاکی کنده کاری» هم کار می‌کنه" in HS["mine"] and "«حمله»" in HS["mine"])
     check("هلپ بانک",
           all(x in HS["bank"] for x in ["25,000 سکه", "لول بازیکنت", "تریاکی واریز [مبلغ]", "تریاکی برداشت [مبلغ]"]))
     check("هلپ کنده‌کاری",
@@ -2181,11 +2392,12 @@ async def main() -> None:
           and any("مزرعه من" in t for t in seed_names),
           str(seed_names[-3:]))
 
-    # ── همه کوتیشن‌های هلپ با پیشوند تریاکی میان (جز کنده کاری) ──
+    # ── کوتیشن‌های هلپ: یا پیشوند تریاکی دارن یا دستور بدون‌پیشوند مجازن (تیمی/حمله/کنده کاری) ──
+    BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی")
     for key, body in start_h2.HELP_SECTIONS.items():
         for snip in re.findall("«(.+?)»", body):
-            check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره",
-                  snip.startswith("تریاکی") or snip in ("کنده کاری", "مزرعه من"), snip)
+            check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره یا بدون‌پیشوند مجازه",
+                  snip.startswith(("تریاکی", "تیم", "ساخت تیم", "جوین تیم")) or snip in BARE_OK, snip)
 
     # ── متن استارت پیوی دستورها رو با تریاکی یاد میده ──
     upd = _text_update("/start", uid=8814, uname="nwb", fname="تازه")
@@ -2204,7 +2416,88 @@ async def main() -> None:
     check("خانه حمله «تریاکی حمله» رو یاد میده", "«تریاکی حمله»" in atx)
     check("متن بانک دستورها رو با تریاکی می‌گه",
           "«تریاکی واریز 1200»" in btx and "«تریاکی برداشت 1200»" in btx)
-    check("noop واریز تیم هم تریاکی‌دار شد", "«تریاکی تیم واریز 1200»" in start_h2._NOOP_ANSWERS["depinfo"])
+    check("noop واریز تیم بدون پیشونده", "«تیم واریز 1200»" in start_h2._NOOP_ANSWERS["depinfo"]
+          and "تریاکی" not in start_h2._NOOP_ANSWERS["depinfo"], start_h2._NOOP_ANSWERS["depinfo"][:80])
+
+    # ═══ این دور: لول مکس 👑 توی کیبوردها | پیشوندهای تریاک/تی | کامندهای منوی «/» ═══
+
+    # ── زمین لول مکس: تایتل و دکمه هر دو 👑 لول مکس ──
+    maxplot_sn = SimpleNamespace(id=901, level=config.PLOT_MAX_LEVEL,
+                                 current_status=lambda: ("empty", 0))
+    mk = kb2.farm_kb(SimpleNamespace(level=1), [maxplot_sn], 999999, 0)
+    mtexts = [b.text for row in mk.inline_keyboard for b in row]
+    mdatas = [b.callback_data for row in mk.inline_keyboard for b in row]
+    check("زمین لول مکس تو کیبورد مزرعه با 👑 نشون داده میشه",
+          f"🗺 زمین {fa_num(1)} | 👑 لول مکس" in mtexts and "noop:maxplot" in mdatas
+          and not any(d.startswith("farm:up:") for d in mdatas), str(mtexts[:5]))
+
+    # ── سگ لول مکس: غذاها جاشون رو به 👑 لول مکس میدن ──
+    dk = kb2.dog_card_kb(SimpleNamespace(id=902, level=config.DOG_MAX_LEVEL), 3)
+    dtexts = [b.text for row in dk.inline_keyboard for b in row]
+    ddatas = [b.callback_data for row in dk.inline_keyboard for b in row]
+    check("سگ لول مکس به جای غذاها 👑 لول مکس می‌گیره",
+          "noop:maxdog" in ddatas and not any(d.startswith("cf:feed:") for d in ddatas)
+          and any("👑 لول مکس" in t for t in dtexts), str(dtexts[:5]))
+
+    # ── ساختمان تیم لول مکس: هر دو طرف حمله و دفاع 👑 لول مکس ──
+    tb_k = kb2.team_bld_kb(SimpleNamespace(atk_bld=config.TEAM_BUILDING_MAX_LEVEL,
+                                           def_bld=config.TEAM_BUILDING_MAX_LEVEL), True, 424242)
+    tbtexts = [b.text for row in tb_k.inline_keyboard for b in row]
+    tbdatas = [b.callback_data for row in tb_k.inline_keyboard for b in row]
+    check("ساختمان تیم لول مکس هر دو طرفش 👑 لول مکسه",
+          tbdatas.count("noop:maxbld") == 2
+          and "⚔️ حمله 👑 لول مکس" in tbtexts and "🛡 دفاع 👑 لول مکس" in tbtexts,
+          str(tbtexts[:5]))
+
+    # ── جواب noopهای لول مکس با متن «بهتر از این نمیشه» ست شدن ──
+    NA = start_h2._NOOP_ANSWERS
+    check("جواب‌های 5 تا noop لول مکس دقیقن",
+          NA["maxplot"] == "🌱 این زمین لول مکس، بهتر از این نمیشه"
+          and NA["maxbank"] == "🏦 این بانک لول مکس، بهتر از این نمیشه"
+          and NA["maxshelter"] == "🏚 این پناهگاه لول مکس، بهتر از این نمیشه"
+          and NA["maxdog"] == "🐕 این سگ لول مکس، بهتر از این نمیشه"
+          and NA["maxbld"] == "🏗 این ساختمان لول مکس، بهتر از این نمیشه")
+
+    # ── «تی شاپ» وسط اسم‌گذاری سگ قورت داده نمیشه (پیشوند سه‌تایی) ──
+    async with session_scope() as s:
+        pg3, _ = await users.get_or_create(s, tg(8816, "ppfx3", "پریفکس سوم"))
+        pg3.level = 15
+        pg3.cash = 50000
+        ok, _ = await dog_svc.hold_dog(s, pg3, "doberman")
+        assert ok
+        await s.commit()
+    upd = _text_update("تی شاپ", uid=8816, uname="ppfx3", fname="پریفکس سوم")
+    try:
+        await pending_h.capture(upd, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        pg3 = await users.get_by_tg(s, 8816)
+        pdgs3 = await dog_svc.get_user_dogs(s, pg3.id)
+    check("«تی شاپ» به جای اسم سگ قورت داده نشد",
+          not upd.message.calls and pg3.pending_action == "dogname" and not pdgs3)
+
+    # ── کامندهای منوی «/» تلگرام موقع بالا اومدن ربات ست میشن ──
+    import bot as bot_mod
+    from telegram import BotCommand as _BC
+
+    class _SlashBot:
+        def __init__(self):
+            self.cmds = None
+
+        async def get_me(self):
+            return SimpleNamespace(username="teriaky_test_bot")
+
+        async def set_my_commands(self, cmds):
+            self.cmds = cmds
+
+    slash_bot = _SlashBot()
+    await bot_mod.on_start(SimpleNamespace(bot=slash_bot))
+    check("set_my_commands با start و help و menu و profile صدا زده میشه",
+          slash_bot.cmds is not None
+          and {c.command for c in slash_bot.cmds} == {"start", "help", "menu", "profile"}
+          and all(isinstance(c, _BC) for c in slash_bot.cmds),
+          str([c.command for c in (slash_bot.cmds or [])]))
 
     # ═══ این دور: کوئست‌های روزانه 📅 | سپر ۱۵ دقیقه و نبرد قدرت‌محور | رگرسیون باگ رها کردن سگ ═══
 
@@ -2371,7 +2664,7 @@ async def main() -> None:
     await attack_h3.attack_execute(upd, None)
     ed = next((c for c in upd.callback_query.calls if c[0] == "edit"), None)
     check("حمله منویی انجام شد و نتیجه دمیج و شانس داره",
-          ed is not None and "دمیج" in ed[1] and "شانس بردت" in ed[1], ed[1][:120] if ed else "-")
+          ed is not None and "دمیج" in ed[1] and "شانس پیروزی" in ed[1], ed[1][:120] if ed else "-")
     async with session_scope() as s:
         sh_a = await users.get_by_tg(s, 8880)
         sh_b = await users.get_by_tg(s, 8881)

@@ -2,7 +2,7 @@
 
 import logging
 
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import Application
 
 import config
@@ -26,6 +26,14 @@ async def on_start(app: Application) -> None:
 
     me = await app.bot.get_me()
     keyboards.BOT_USERNAME = me.username or ""
+
+    # کامندهای منوی «/» تلگرام
+    await app.bot.set_my_commands([
+        BotCommand("start", "شروع بازی و منوی اصلی"),
+        BotCommand("menu", "منوی اصلی"),
+        BotCommand("profile", "پروفایلت"),
+        BotCommand("help", "آموزشات بازی"),
+    ])
 
     logger.info("دیتابیس آماده شد ✅ | DB: %s", _safe_db())
     logger.info("یوزرنیم ربات: @%s | دکمه افزودن به گروه فعاله", keyboards.BOT_USERNAME)

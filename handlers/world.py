@@ -289,26 +289,13 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await query.answer(f"⚔️ {fa_num(res['dmg'])} دمیج، 💰 {fa_num(res['cash'])}TP", show_alert=True)
 
-    # برد کاروان ادیت میشه
-    cv_now = world_svc.CARAVANS.get(chat_id)
-    try:
-        if cv_now:
-            await context.bot.edit_message_text(
-                chat_id=chat_id, message_id=query.message.message_id,
-                text=world_svc.caravan_board_text(cv_now), parse_mode="HTML",
-                reply_markup=kb.caravan_kb(),
-            )
-    except BadRequest:
-        pass
+    # برد کاروان بعد هر ضربه ادیت نمیشه، جاب 2 دقیقه‌ای خودش رفرشش می‌کنه
 
     if res["status"] == "killed":
-        end_text = world_svc.caravan_end_text(res.get("rewards", []), killed=True)
+        # غارت کامل، برد پاک میشه و پیام پایانی تازه ارسال میشه
         try:
-            if cv_now is None:
-                await context.bot.edit_message_text(
-                    chat_id=chat_id, message_id=query.message.message_id,
-                    text=end_text, parse_mode="HTML",
-                )
+            await context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
         except BadRequest:
             pass
+        end_text = world_svc.caravan_end_text(res.get("rewards", []), killed=True)
         await context.bot.send_message(chat_id, end_text, parse_mode="HTML")

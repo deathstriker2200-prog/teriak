@@ -1,9 +1,9 @@
 """
 سیم‌کشی هندلرها به اپلیکیشن، دستورهای متنی هم PV هم گروه جواب میدن
 
-همه دستورهای متنی با پیشوند «تریاکی » میان، مثلا:
-«تریاکی زمین» «تریاکی شاپ» «تریاکی حمله» «تریاکی تیم پروفایل» «تریاکی تیم بانک»
-تنها استثنا «کنده کاری» ـه که بدون پیشوند کار می‌کنه
+دستورهای متنی با پیشوند «تریاکی | تریاک | تی » میان، مثلا:
+«تریاکی زمین» «تریاک شاپ» «تی حمله» «تریاکی تیم پروفایل» «تریاکی تیم بانک»
+«کنده کاری» و «حمله» و دستورهای تیم بدون پیشوند هم کار می‌کنن
 
 قفل مالکیت دکمه‌ها: پیام دکمه‌داری که از دستور یه نفر تو گروه ساخته شده
 فقط خودش می‌تونه بزنه، بقیه هیچ واکنشی نمی‌بینن (handlers/common.owner_guard)
@@ -15,17 +15,18 @@ from handlers import admin, attack, backup, bank, common, dogs, dquests, farm, m
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
-T = rf"^تریاکی{S}+"  # پیشوند اجباری همه دستورها
+T = rf"^(?:تریاکی|تریاک|تی){S}+"   # پیشوند دستورها، هر سه شکل قبوله
+TP = rf"^(?:(?:تریاکی|تریاک|تی){S}+)?"  # پیشوند اختیاری، برای دستورهای تیم
 
 # ── دستورهای متنی فارسی (PV و گروه) ──
 # ترتیب مهمه: الگوهای اختصاصی بالاترن (مثلا «تریاکی تیم بانک» قبل از «تریاکی تیم [اسم]»)
 # فرمت: (اسم، الگو، هندلر)، تست‌ها روی همین جدول پترن‌ها رو چک می‌کنن
 TEXT_HANDLERS: list[tuple[str, str, object]] = [
-    ("team_mine", rf"{T}کنده{S}*کاری{S}*تیمی!?$|{T}استخراج{S}*تیمی!?$", team.team_mine_text),
-    ("mine", r"^کنده[\s‌]*کاری!?$", mine.mine_cmd),  # تنها دستور بدون پیشوند تریاکی
+    ("team_mine", rf"{TP}کنده{S}*کاری{S}*تیمی!?$|{TP}استخراج{S}*تیمی!?$", team.team_mine_text),
+    ("mine", rf"^کنده[\s‌]*کاری!?$|{T}کنده{S}*کاری!?$", mine.mine_cmd),  # با و بدون پیشوند
     ("shop", rf"{T}شاپ!?$|{T}فروشگاه!?$", textcmd.shop_text),
     ("profile", rf"{T}پروفایل!?$", textcmd.profile_text),
-    ("attack", rf"{T}حمله!?$", textcmd.attack_text),
+    ("attack", rf"^حمله!?$|{T}حمله!?$", textcmd.attack_text),  # با و بدون پیشوند
     ("harvest", rf"{T}برداشت{S}*محصول!?$|{T}برداشت!?$", textcmd.harvest_text),
     ("buy_dog", rf"{T}خرید{S}+سگ{S}+(.+)$", textcmd.buy_dog_text),
     ("buy", rf"{T}خرید{S}+(.+)$", textcmd.buy_text),
@@ -35,26 +36,26 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("rank", rf"{T}رتبه!?$|{T}رتبه{S}*بندی!?$|{T}لیدربرد!?$|{T}لیدر{S}*برد!?$", rank.rank_cb),
     ("dogstats", rf"{T}آمار{S}+(.+)$", dogs.dog_stats_text),
     # ── تیم ──
-    ("team_bld", rf"{T}تیم{S}+ساختمان(?:{S}*ها)?!?$|{T}تیم{S}+ساخت!?$", team.buildings_text),
-    ("team_profile", rf"{T}تیم{S}+پروفایل!?$", team.team_profile_text),
-    ("roster", rf"{T}تیم{S}+عضویت!?$", team.roster_text),
-    ("team_top", rf"{T}تیم{S}+لیدربرد!?$|{T}تیم{S}+لیدر{S}*برد!?$", team.top_teams_text),
-    ("team_quests", rf"{T}تیم{S}+(?:کوئست|چالش)!?$", team.quests_text),
-    ("team_bank", rf"{T}تیم{S}+بانک!?$", team.team_bank_text),
-    ("team_dep", rf"{T}تیم{S}+واریز(?:{S}+(.+))?!?$", team.team_deposit_text),
-    ("team_up", rf"{T}تیم{S}+ارتقا{S}+(?:حمله|دفاع)!?$", team.team_upgrade_text),
-    ("team_create", rf"{T}ساخت{S}+تیم!?$", team.create_team_text),
-    ("team_join", rf"{T}جوین{S}+تیم{S}+(.+)$", team.join_team_text),
-    ("team_leave", rf"{T}ترک{S}+تیم!?$", team.leave_confirm),
-    ("team_disband", rf"{T}انحلال{S}+تیم!?$", team.disband_confirm),
-    ("team_bio", rf"{T}(?:ست{S}+)?بیو{S}+تیم{S}+(.+)$", team.set_bio_text),
-    ("quests", rf"{T}کوئست{S}*تیم!?$|{T}کوئست!?$|{T}استعلام{S}*کوئست!?$", team.quests_text),
-    ("team", rf"{T}تیم(?:{S}+(.+))?!?$", team.team_text),
+    ("team_bld", rf"{TP}تیم{S}+ساختمان(?:{S}*ها)?!?$|{TP}تیم{S}+ساخت!?$", team.buildings_text),
+    ("team_profile", rf"{TP}تیم{S}+پروفایل!?$", team.team_profile_text),
+    ("roster", rf"{TP}تیم{S}+عضویت!?$", team.roster_text),
+    ("team_top", rf"{TP}تیم{S}+لیدربرد!?$|{TP}تیم{S}+لیدر{S}*برد!?$", team.top_teams_text),
+    ("team_quests", rf"{TP}تیم{S}+(?:کوئست|چالش)!?$", team.quests_text),
+    ("team_bank", rf"{TP}تیم{S}+بانک!?$", team.team_bank_text),
+    ("team_dep", rf"{TP}تیم{S}+واریز(?:{S}+(.+))?!?$", team.team_deposit_text),
+    ("team_up", rf"{TP}تیم{S}+ارتقا{S}+(?:حمله|دفاع)!?$", team.team_upgrade_text),
+    ("team_create", rf"{TP}ساخت{S}+تیم!?$", team.create_team_text),
+    ("team_join", rf"{TP}جوین{S}+تیم{S}+(.+)$", team.join_team_text),
+    ("team_leave", rf"{TP}ترک{S}+تیم!?$", team.leave_confirm),
+    ("team_disband", rf"{TP}انحلال{S}+تیم!?$", team.disband_confirm),
+    ("team_bio", rf"{TP}تیم{S}+ست{S}+بیو{S}+(.+)$", team.set_bio_text),
+    ("quests", rf"{TP}کوئست{S}*تیم!?$|{TP}کوئست!?$|{TP}استعلام{S}*کوئست!?$", team.quests_text),
+    ("team", rf"{TP}تیم(?:{S}+(.+))?!?$", team.team_text),
     ("backup_cancel", rf"{T}لغو{S}*بک{S}*آپ!?$", backup.cancel_upload_text),
     # ── سیستم‌های جهان ──
     ("search", rf"{T}جستجو!?$|{T}جست{S}*و{S}*جو!?$", world.search_cmd),
-    ("weather", rf"{T}وضعیت{S}+آب{S}+و{S}+هوا!?$|{T}آب{S}*و{S}*هوا!?$|{T}وضعیت{S}+هواشناسی!?$|{T}وضعیت{S}+هوا!?$", world.weather_cmd),
-    ("market", rf"{T}وضعیت{S}+بازار!?$|{T}بازار{S}*سیاه!?$", world.market_cmd),
+    ("weather", rf"{T}وضعیت{S}+آب{S}+و{S}+هوا!?$|{T}آب{S}*و{S}*هوا!?$|{T}وضعیت{S}+هواشناسی!?$|{T}هواشناسی!?$|{T}وضعیت{S}+هوا!?$", world.weather_cmd),
+    ("market", rf"{T}وضعیت{S}+بازار!?$|{T}بازار{S}*سیاه!?$|{T}بازار!?$", world.market_cmd),
     ("shelter", rf"{T}پناهگاه!?$", world.shelter_cmd),
     ("casino", rf"{T}قمارخانه!?$|{T}قمار!?$", world.casino_cmd),
     # ── بانک شخصی ──

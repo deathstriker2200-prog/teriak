@@ -1,7 +1,7 @@
 """
 جاب‌های زمان‌دار بازی (JobQueue):
 آب و هوا هر ۲ ساعت + اعلان به گروه‌های فعال ۱ ساعت اخیر 🌦
-بازار سیاه هر ۴ ساعت 📈 | کاروان برای گروه‌های فعال ۲۴ ساعت اخیر 🚛
+بازار سیاه هر ۴ ساعت 📈 | کاروان برای گروه‌های فعال ۲۴ ساعت اخیر 🚛 (بردش هر ۲ دقیقه رفرش میشه)
 یورش پلیس هر ۲ ساعت به بازیکنان فعال ۲۴ ساعت اخیر 🚔
 """
 
@@ -22,14 +22,15 @@ from utils import now_utc
 logger = logging.getLogger("teriaky.jobs")
 
 
-async def _send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, markup=None) -> None:
-    """ارسال امن، گروه ریمووشده/بلاک بی‌صدا رد میشه"""
+async def _send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, markup=None):
+    """ارسال امن، پیام فرستاده‌شده رو برمی‌گردونه (گروه ریموو/بلاک None)"""
     try:
-        await context.bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
+        return await context.bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
     except (BadRequest, Forbidden):
-        pass
+        return None
     except Exception as e:
         logger.warning("send to %s failed: %s", chat_id, e)
+        return None
 
 
 # ───────── آب و هوا 🌦 ─────────
@@ -58,14 +59,20 @@ async def market_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 # ───────── کاروان 🚛 ─────────
 
 async def caravan_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    # ۱) کاروانهای منقضی رو تسویه کن
+    # ۱) کاروانهای منقضی رو تسویه کن، بردشون پاک میشه و پیام «رد شد» تازه میاد
     for chat_id in list(world_svc.CARAVANS.keys()):
+        cv = world_svc.CARAVANS.get(chat_id)
+        mid = cv.get("message_id") if cv else None
         async with session_scope() as s:
             res = await world_svc.caravan_expire(s, chat_id)
-            rewards = res["rewards"] if res else None
             await s.commit()
-        if rewards:
-            await _send(context, chat_id, world_svc.caravan_end_text(rewards, killed=False))
+        if res is not None:
+            if mid:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+                except (BadRequest, Forbidden):
+                    pass
+            await _send(context, chat_id, world_svc.caravan_end_text(res["rewards"], killed=False))
 
     # ۲) اسپون جدید برای گروه‌های فعال ۲۴ ساعت اخیر
     async with session_scope() as s:
@@ -91,7 +98,29 @@ async def caravan_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     for gid in spawns:
         cv = world_svc.caravan_spawn(gid)
-        await _send(context, gid, world_svc.caravan_board_text(cv), kb.caravan_kb())
+        msg = await _send(context, gid, world_svc.caravan_board_text(cv), kb.caravan_kb())
+        if msg:
+            cv["message_id"] = msg.message_id
+
+
+async def caravan_refresh_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """برد کاروان فقط با این تایمر رفرش میشه (نه بعد هر ضربه)، دمیج‌ها رو تازه می‌کنه"""
+    for chat_id, cv in list(world_svc.CARAVANS.items()):
+        if world_svc.caravan_active(chat_id) is None:
+            continue
+        mid = cv.get("message_id")
+        if not mid:
+            continue
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id, message_id=mid,
+                text=world_svc.caravan_board_text(cv), parse_mode="HTML",
+                reply_markup=kb.caravan_kb(),
+            )
+        except BadRequest:
+            pass
+        except Exception as e:
+            logger.debug("رفرش برد کاروان %s خطا: %s", chat_id, e)
 
 
 # ───────── یورش پلیس 🚔 ─────────
@@ -118,5 +147,6 @@ def register_jobs(app) -> None:
     jq.run_repeating(weather_job, interval=config.WEATHER_ROLL_SECONDS, first=60, name="weather")
     jq.run_repeating(market_job, interval=config.MARKET_ROLL_SECONDS, first=90, name="market")
     jq.run_repeating(caravan_job, interval=config.CARAVAN_TICK_SECONDS, first=30, name="caravan")
+    jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
     jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
-    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | پلیس")
+    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس")

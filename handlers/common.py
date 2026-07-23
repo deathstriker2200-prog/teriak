@@ -77,11 +77,16 @@ async def owner_guard(update: Update, context) -> None:
     raise ApplicationHandlerStop()
 
 
-_CMD_PREFIX_RE = re.compile(r"^تریاکی[\s\u200c]+([\s\S]+)$")
+_CMD_PREFIX_RE = re.compile(r"^(?:تریاکی|تریاک|تی)[\s\u200c]+([\s\S]+)$")
+
+
+def has_prefix(text: str) -> bool:
+    """متن با یکی از پیشوندهای تریاکی/تریاک/تی شروع شده؟"""
+    return bool(_CMD_PREFIX_RE.match((text or "").strip()))
 
 
 def strip_bot_cmd(text: str) -> str:
-    """پیشوند «تریاکی » رو از روی متن دستور برمی‌داره، خود متن اگه پیشوند نداشت دست نمی‌خوره"""
+    """پیشوند «تریاکی | تریاک | تی » رو از روی متن دستور برمی‌داره، خود متن اگه پیشوند نداشت دست نمی‌خوره"""
     m = _CMD_PREFIX_RE.match((text or "").strip())
     return m.group(1).strip() if m else (text or "").strip()
 
@@ -133,11 +138,7 @@ def parts(update: Update) -> list[str]:
 
 def format_attack_result(result: dict, target_name: str) -> str:
     """متن نتیجه حمله، مشترک بین حمله منویی و حمله ریپلای تو گروه"""
-    chance_line = ""
-    if result.get("chance") is not None:
-        pct = int(round(result["chance"] * 100))
-        chance_line = f"\n🎯 شانس بردت {fa_num(pct)}% بود"
-
+    pct = int(round(result.get("chance", 0.5) * 100))
     crit_txt = " 💣 ضربه بحرانی!" if result.get("crit") else ""
 
     mods: list[str] = []
@@ -154,29 +155,37 @@ def format_attack_result(result: dict, target_name: str) -> str:
         mods.append(f"🐺 غرامت +{fa_num(int(result['bonus'] * 100))}%")
     if result.get("halved"):
         mods.append("🛡 زره افسانه‌ایش نصفش کرد")
-    mods_line = ("\n" + " | ".join(mods)) if mods else ""
+    mods_lines = ("\n".join(mods) + "\n") if mods else ""
+
+    stats_block = (
+        f"\n⚔️ قدرت تو: {fa_num(result.get('a_pow', 0))}\n"
+        f"🛡 قدرت حریف: {fa_num(result.get('d_pow', 0))}\n"
+        f"🎲 شانس پیروزی: {fa_num(pct)}%\n"
+        f"{mods_lines}"
+        f"\n"
+    )
 
     if result["win"]:
         prize_line = (
-            f"تو هم {money(result['amount'])} جایزه گرفتی"
-            if result["amount"] else "ولی جیبش خالی بود بدبخت 🕳"
+            f"💰 {money(result['amount'])} غارت کردی"
+            if result["amount"] else "💰 جیبش خالی بود بدبخت 🕳"
         )
         text = (
-            "<b>✅ زدی تو خال</b>\n\n"
-            f"آخ آخ {target_name} شکار شد\n"
+            "<b>🎯 حمله موفق</b>\n\n"
+            f"💥 هههه {target_name} از پس حملت برنیومد\n\n"
             f"{prize_line}\n"
-            f"💥 {fa_num(result.get('dmg', 0))} دمیج زدی بهش{crit_txt}\n"
-            f"💪 قدرت تو {fa_num(result.get('a_pow', 0))} | قدرتش {fa_num(result.get('d_pow', 0))}{chance_line}{mods_line}\n"
-            f"✨ {fa_num(result.get('xp', 0))} تجربه گرفتی"
+            f"🩸 {fa_num(result.get('dmg', 0))} دمیج وارد کردی{crit_txt}\n"
+            f"{stats_block}"
+            f"✨ {fa_num(result.get('xp', 0))} تجربه به دست آوردی"
         )
     else:
         text = (
-            "<b>❌ له شدی</b>\n\n"
-            f"ایبابا {target_name} حسابت رو رسوند\n"
-            f"💥 {fa_num(result.get('dmg', 0))} دمیج ازش خوردی{crit_txt}\n"
-            f"💪 قدرت تو {fa_num(result.get('a_pow', 0))} | قدرتش {fa_num(result.get('d_pow', 0))}{chance_line}{mods_line}\n"
+            "<b>💀 حمله ناموفق</b>\n\n"
+            f"💥 آخ آخ {target_name} دهنت رو سرویس کرد\n\n"
+            f"🩸 {fa_num(result.get('dmg', 0))} دمیج خوردی{crit_txt}\n"
+            f"{stats_block}"
             f"⚡ {fa_num(result.get('penalty', 0))} انرژی جریمه شدی\n"
-            f"✨ {fa_num(result.get('xp', 0))} تجربت به چوخ رفت"
+            f"✨ {fa_num(result.get('xp', 0))} تجربه به دست آوردی"
         )
 
     notes = result.get("notes") or []

@@ -1,5 +1,6 @@
 """کنده‌کاری، درآمد روزانه با قرعه وزن‌دار"""
 
+import random
 from datetime import timedelta
 
 from telegram import Update
@@ -9,7 +10,7 @@ import config
 from database import session_scope
 from handlers.common import respond
 from services import economy, users
-from utils import fa_dur, money, now_utc
+from utils import fa_dur, fa_num, money, now_utc
 
 
 async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -23,14 +24,15 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if user.last_mine_at and now - user.last_mine_at < cooldown:
             left = cooldown - (now - user.last_mine_at)
             text = (
-                "<b>⏳ هول نکن</b>\n\n"
-                f"{fa_dur(left.total_seconds())} دیگه بیا"
+                "<b>⛏ کنده‌کاری</b>\n\n"
+                f"خستت شده نیاز به {fa_dur(left.total_seconds())} استراحت داری برای کنده کاری بعدی"
             )
         else:
             amount = economy.mine_roll()
+            xp = random.randint(config.MINE_XP_MIN, config.MINE_XP_MAX)
             user.cash += amount
             user.last_mine_at = now
-            notes = users.add_xp(user, config.MINE_XP)
+            notes = users.add_xp(user, xp)
 
             from services import quests as dq_svc
             dq_done, dq_left = await dq_svc.track(s, user, "mine")
@@ -38,10 +40,10 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             text = (
                 "<b>⛏ کنده‌کاری</b>\n\n"
-                f"{money(amount)} گیرت اومد\n"
-                f"الان {money(user.cash)} داری\n"
-                "ارزشش رو داشت\n\n"
-                "💡 پول حاصل از کار خلاف بیشتره عزیز، میتونی از پی‌وی مواد بکاری پولش خوبه🤫"
+                f"💰 {money(amount)} به دست آوردی\n"
+                f"✨ {fa_num(xp)} تجربه گرفتی\n"
+                f"🪙 موجودی: {money(user.cash)}\n\n"
+                f"خستت شده نیاز به {fa_num(config.MINE_COOLDOWN_SECONDS)}ثانیه استراحت داری برای کنده کاری بعدی"
             )
             if notes:
                 text += "\n\n" + "\n".join(notes)

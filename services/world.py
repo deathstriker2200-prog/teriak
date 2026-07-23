@@ -16,7 +16,7 @@ import config
 from models import GameMeta, GroupActivity, Plot, SeedStock, User
 from services.farming import get_stock, add_seed_stock
 from services.users import add_xp
-from utils import fa_dur, fa_num, money, now_utc
+from utils import esc, fa_dur, fa_num, money, now_utc
 
 
 # ═════════ فعالیت گروه‌ها ═════════
@@ -589,8 +589,9 @@ async def caravan_expire(session: AsyncSession, chat_id: int) -> dict | None:
 
 async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> list[dict]:
     """
-    تسویه کاروان، بذر به هر شرکت‌کننده (قرعه) + نفر اول بیشترین جایزه
-    خروجی: [{user_id, name, dmg, seed(seed name or None), top(bool), money}]
+    تسویه کاروان: فقط 5 نفر برتر دمیج جایزه می‌گیرن (اسکناس + جایزه ویژه بذر)
+    نفر اول موقع غارت 3 تا جایزه ویژه می‌گیره و پاداش نقدیش 3 برابره
+    خروجی: [{user_id, name, dmg, seeds(list[str]), top(bool), money}]
     """
     cv = CARAVANS.pop(chat_id, None)
     if not cv:
@@ -600,25 +601,27 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
     if not damages:
         return []
 
-    top_uid = max(damages, key=damages.get)
+    ranked = sorted(damages.items(), key=lambda kv: -kv[1])[: config.CARAVAN_TOP_REWARDS]
     out: list[dict] = []
-    for uid, dmg in sorted(damages.items(), key=lambda kv: -kv[1]):
+    for idx, (uid, dmg) in enumerate(ranked):
         user = await session.get(User, uid)
         if not user:
             continue
-        is_top = uid == top_uid
-        # نفر اول حتماً بذر می‌گیره (کشته‌شده: معمولاً درجه بالا | فرار کرده: معمولی)
-        if is_top:
-            seed_key = caravan_loot_key() if killed else random.choice(config.CARAVAN_LOOT[0]["pool"])
-        elif killed:
-            seed_key = caravan_loot_key() if random.random() < 0.75 else None
-        else:
-            seed_key = random.choice(config.CARAVAN_LOOT[0]["pool"]) if random.random() < 0.4 else None
+        is_top = idx == 0
 
-        seed_name = None
-        if seed_key:
+        # جایزه ویژه (بذر)، فرار کرده کم‌رنگ‌تره
+        if killed:
+            rolls = 3 if is_top else (1 if random.random() < 0.75 else 0)
+            roll_key = caravan_loot_key
+        else:
+            rolls = 1 if (is_top or random.random() < 0.4) else 0
+            roll_key = lambda: random.choice(config.CARAVAN_LOOT[0]["pool"])  # noqa: E731
+
+        seed_names: list[str] = []
+        for _ in range(rolls):
+            seed_key = roll_key()
             await add_seed_stock(session, uid, seed_key, 1)
-            seed_name = config.SEEDS[seed_key]["name"]
+            seed_names.append(config.SEEDS[seed_key]["name"])
 
         money_prize = dmg * config.CARAVAN_MONEY_PER_DMG * (3 if (killed and is_top) else 1)
         user.cash += money_prize
@@ -627,7 +630,7 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
             "user_id": uid,
             "name": cv["names"].get(uid, "؟"),
             "dmg": dmg,
-            "seed": seed_name,
+            "seeds": seed_names,
             "top": is_top,
             "money": money_prize,
         })
@@ -649,15 +652,16 @@ def caravan_board_text(cv: dict) -> str:
         "",
         "هرکی هر 1 دقیقه یه ضربه می‌تونه بزنه، دمیجت = قدرت حمله‌ته",
         "🏆 نفر اول بیشترین جایزه رو می‌گیره، شاید بذر جهنم 🔥 یا ابلیس 😈",
+        f"📢 فقط {fa_num(config.CARAVAN_TOP_REWARDS)} نفر برتر دمیج جایزه دریافت می‌کنن",
         "",
     ]
-    top = sorted(cv["damages"].items(), key=lambda kv: -kv[1])[:5]
+    top = sorted(cv["damages"].items(), key=lambda kv: -kv[1])[: config.CARAVAN_TOP_REWARDS]
     if top:
-        lines.append("⚔️ دمیج‌ها:")
+        lines.append(f"⚔️ دمیج‌ها (هر {fa_num(config.CARAVAN_BOARD_REFRESH_SECONDS // 60)} دقیقه یک بار آپدیت میشه):")
         medals = ["🥇", "🥈", "🥉"]
         for i, (uid, dmg) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i + 1}."
-            lines.append(f"{medal} {cv['names'].get(uid, '؟')}، {fa_num(dmg)}")
+            lines.append(f"{medal} {esc(str(cv['names'].get(uid, '؟')))}، {fa_num(dmg)}")
     return "\n".join(lines)
 
 
@@ -672,18 +676,19 @@ def caravan_result_text(cv: dict, res: dict) -> str:
 
 
 def caravan_end_text(rewards: list[dict], killed: bool) -> str:
-    """متن پایان کاروان (کشته‌شده یا فرارکرده)"""
+    """متن پایان کاروان (غارت شده یا رد شده)، هر نفر: اسم/دمیج/پاداش/جایزه ویژه، فقط 5 نفر برتر"""
     if not rewards:
-        return "🚛 کاروان بدون اینکه کسی برسه رد شد و رفت 💨"
-    head = "💀 <b>کاروان غارت شد!</b>" if killed else "🚛 <b>کاروان از محله رد شد</b>"
+        return "<b>🚛 کاروان از محله رد شد</b>\n\nبدون اینکه کسی بهش برسه رفت 💨"
+    head = "<b>💀 کاروان غارت شد</b>" if killed else "<b>🚛 کاروان از محله رد شد</b>"
     lines = [head, ""]
     for r in rewards:
-        tag = "🏆 " if r["top"] else "▫️ "
-        part = f"{tag}{r['name']}، {fa_num(r['dmg'])} دمیج | 💰 {fa_num(r['money'])}TP"
-        if r["seed"]:
-            part += f" | 🎁 {r['seed']}"
-        lines.append(part)
-    if killed:
-        lines.append("")
-        lines.append("🏆 نفر اول بیشترین جایزه رو گرفت 😈")
+        prize = "، ".join(r["seeds"]) if r["seeds"] else "هیچی"
+        lines.append(f"{'🏆' if r['top'] else '▫️'} {esc(str(r['name']))}")
+        lines.append(f"⚔️ دمیج: {fa_num(r['dmg'])}")
+        lines.append(f"💰 پاداش: {fa_num(r['money'])}TP")
+        lines.append(f"🎁 جایزه ویژه: {prize}")
+    lines.append("")
+    if killed and rewards[0]["top"]:
+        lines.append(f"🏆 نفر اول {esc(str(rewards[0]['name']))} بیشترین جایزه رو گرفت")
+    lines.append(f"📢 فقط {fa_num(config.CARAVAN_TOP_REWARDS)} نفر برتر جایزه دریافت می‌کنن")
     return "\n".join(lines)

@@ -26,7 +26,7 @@ async def _attack_home_text(session, user) -> str:
         f"💪 حمله تو {fa_num(atk)}"
         + (f" (🐕 {fa_num(dog_power)} از سگ‌ها)" if dog_power else "")
         + f"\n🛡 دفاع تو {fa_num(dfn)}\n\n"
-        f"🎯 تو گروه: ریپلای روی پیام طرف و بنویس «تریاکی حمله»\n"
+        f"🎯 تو گروه: ریپلای روی پیام طرف و بنویس «حمله» یا «تریاکی حمله»\n"
         f"🎲 اینجا: هدف رندوم تو بازه {fa_num(config.ATTACK_TARGET_LEVEL_RANGE)} لول بالا و پایین خودت\n\n"
         "💪 شانس برد از اختلاف قدرت دو طرف حساب میشه، قدرت مساوی یعنی 50/50 و هیچ بردی 100% تضمینی نیس\n"
         f"💣 {fa_num(int(config.ATTACK_CRIT_CHANCE * 100))}% مواقع ضربه بحرانی میزنی، دمیج و غارتت بیشتر میشه\n"

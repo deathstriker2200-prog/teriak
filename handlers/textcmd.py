@@ -204,7 +204,7 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return await respond(
             update,
             "<b>⚔️ حمله</b>\n\n"
-            "روی پیام هدفت ریپلای کن و بنویس «تریاکی حمله»\n"
+            "روی پیام هدفت ریپلای کن و بنویس «حمله» یا «تریاکی حمله»\n"
             "یا از منوی ⚔️ حمله هدف رندوم پیدا کن",
             kb.home_kb(),
         )

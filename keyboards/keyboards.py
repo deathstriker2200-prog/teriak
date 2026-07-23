@@ -182,7 +182,8 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
 
     for i, plot in enumerate(plots, 1):
         state, left = plot.current_status()
-        rows.append([_btn(f"🗺 زمین {fa_num(i)} | لول {fa_num(plot.level)}", f"noop:plot:{i}")])
+        lvl_label = "👑 لول مکس" if plot.level >= config.PLOT_MAX_LEVEL else f"لول {fa_num(plot.level)}"
+        rows.append([_btn(f"🗺 زمین {fa_num(i)} | {lvl_label}", f"noop:plot:{i}")])
 
         actions: list[InlineKeyboardButton] = []
         if state == "building":
@@ -198,7 +199,7 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
             if plot.level < config.PLOT_MAX_LEVEL:
                 actions.append(_btn(f"⬆️ آپگرید | {money_tp(economy.upgrade_price(plot.level))}", f"farm:up:{plot.id}", PRIMARY))
             else:
-                actions.append(_btn("⭐ مکس لول", "noop:maxplot"))
+                actions.append(_btn("👑 لول مکس", "noop:maxplot"))
         rows.append(actions)
 
     if ready_count:
@@ -352,13 +353,15 @@ def my_dogs_kb(dogs: list[Dog]) -> InlineKeyboardMarkup:
 def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
     """کیبورد کارت آمار یه سگ، از همونجا میشه غذاش داد («آمار اصغر»)"""
     rows: list[list[InlineKeyboardButton]] = []
-    if dog.level < config.DOG_MAX_LEVEL and feeds_left > 0:
+    if dog.level >= config.DOG_MAX_LEVEL:
+        rows.append([_btn("👑 لول مکس", "noop:maxdog")])
+    elif feeds_left > 0:
         for key, f in config.DOG_FOODS.items():
             rows.append([_btn(
                 f"🍖 {f['name']} | +{fa_num(f['xp'])} XP | {money_tp(f['price'])}",
                 f"cf:feed:{dog.id}:{key}", SUCCESS,
             )])
-    elif feeds_left <= 0:
+    else:
         rows.append([_btn("🍖 سیر شده", "noop:feedinfo", DANGER)])
     rows.append([_btn("🔙 سگ‌های من", "menu:dogs", PRIMARY),
                  _btn("🕊 رهاش کن", f"dog:rel:{dog.id}", DANGER)])
@@ -462,8 +465,12 @@ def team_bld_kb(team, is_owner: bool, tg_id: int) -> InlineKeyboardMarkup:
         row: list[InlineKeyboardButton] = []
         if can_atk:
             row.append(_btn("⚔️ ارتقا حمله", f"tbup:atk:{tg_id}", SUCCESS))
+        else:
+            row.append(_btn("⚔️ حمله 👑 لول مکس", "noop:maxbld"))
         if can_def:
             row.append(_btn("🛡 ارتقا دفاع", f"tbup:def:{tg_id}", SUCCESS))
+        else:
+            row.append(_btn("🛡 دفاع 👑 لول مکس", "noop:maxbld"))
         if row:
             rows.append(row)
     rows.append([_btn("🔃 رفرش", "team:bld", PRIMARY)])
@@ -496,7 +503,7 @@ def bank_kb(user: User) -> InlineKeyboardMarkup:
             "bank:up", PRIMARY,
         )])
     else:
-        rows.append([_btn("⭐ بانک مکس لوله", "noop:maxbank")])
+        rows.append([_btn("🏦 بانک 👑 لول مکس", "noop:maxbank")])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -538,7 +545,7 @@ def team_mine_kb() -> InlineKeyboardMarkup:
 
 def team_bank_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [_btn("💰 واریز به بانک تیم | آموزش: «تریاکی تیم واریز 1200»", "noop:depinfo", PRIMARY)],
+        [_btn("💰 واریز به بانک تیم | آموزش: «تیم واریز 1200»", "noop:depinfo", PRIMARY)],
         [_btn("🔙 تیم من", "menu:team", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
@@ -556,7 +563,7 @@ def shelter_kb(user: User) -> InlineKeyboardMarkup:
             "shelter:up", PRIMARY,
         )])
     else:
-        rows.append([_btn("⭐ پناهگاه مکس لوله", "noop:maxshelter")])
+        rows.append([_btn("🏚 پناهگاه 👑 لول مکس", "noop:maxshelter")])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 

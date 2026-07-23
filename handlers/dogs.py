@@ -42,10 +42,11 @@ async def _dogs_text(session, user, dogs: list[Dog]) -> str:
             crown = "👑 " if d.cfg.get("rare") else ""
             need = dog_svc.dog_xp_need(d.level)
             atk = dog_svc.dog_attack(d)
+            lvl_txt = "👑 لول مکس" if d.level >= config.DOG_MAX_LEVEL else f"⭐ لول {fa_num(d.level)} | ✨ {fa_num(d.xp)} از {fa_num(need)}"
             entry = (
                 f"\n{crown}<b>{esc(d.name)}</b>"
                 f"\n🐾 نژاد {esc(d.breed)}"
-                f"\n⭐ لول {fa_num(d.level)} | ✨ {fa_num(d.xp)} از {fa_num(need)}"
+                f"\n{lvl_txt}"
                 f"\n💪 قدرت حمله {fa_num(atk)}"
             )
             rare_lines = dog_svc.rare_ability_lines(d)
@@ -102,10 +103,11 @@ def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
 
     food_line = dog_svc.hunger_text(dog)
 
+    lvl_line = "👑 لول مکس" if maxed else f"⭐ لول {fa_num(dog.level)}"
     text = (
         f"<b>🐕 آمار {esc(dog.name)}</b>\n\n"
         f"🐾 نژاد {esc(dog.breed)}{crown}\n"
-        f"⭐ لول {fa_num(dog.level)}\n"
+        f"{lvl_line}\n"
         f"{xp_line}\n"
         f"💪 قدرت حمله {fa_num(atk)}\n"
         f"{ability_block}{per_line}\n\n"
