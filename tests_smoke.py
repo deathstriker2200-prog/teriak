@@ -112,6 +112,9 @@ async def main() -> None:
     guns = sum(1 for w in config.WEAPONS.values() if w.get("gun"))
     check("هشت تفنگ اضافه شده", guns >= 8, str(guns))
     check("کلاش و آرپی‌جی هست", "ak47" in config.WEAPONS and "rpg" in config.WEAPONS)
+    _k47, _ = find_by_name(config.WEAPONS, "کلاشنیکف")
+    check("ak47 اسمش کلاشنیکفه و با اسم فارسی پیدا میشه",
+          _k47 == "ak47" and config.WEAPONS["ak47"]["name"] == "کلاشنیکف 🔫")
     check("8 تا زره داریم", len(config.ARMORS) == 8, str(len(config.ARMORS)))
     check("کِولار و تیتانیومی هست", "kevlar" in config.ARMORS and "titan" in config.ARMORS)
     check("شوکر از کلت ضعیف‌تر و ارزون‌تره (اسلحه قوی‌تره)",
@@ -1794,7 +1797,7 @@ async def main() -> None:
     cv_b["names"][esc_uid] = "دیررس"
     btxt = world_svc.caravan_board_text(cv_b)
     check("برد کاروان قالب دقیق جدید رو داره (جان/تایمر/قوانین/جدول)",
-          all(x in btxt for x in ["❤️ جان کاروان", "⏳ تا خروج کاروان",
+          all(x in btxt for x in ["❤️ جان کاروان", "دقیقه تا خروج کاروان",
                                   "🔄 این پیام هر 2 دقیقه به‌روزرسانی میشه",
                                   "⚔️ هر بازیکن هر 1 دقیقه فقط یک بار می‌تونه حمله کنه",
                                   "💥 قدرت هر ضربه بر اساس قدرت حمله بازیکنه",
@@ -1813,8 +1816,8 @@ async def main() -> None:
     world_svc.CARAVANS.pop(940008, None)
     world_svc.CARAVANS.pop(940009, None)
     check("تایمر پلکان 2 دقیقه‌ایه و ثانیه نشون نمیده (8:06→8 | 10:00→10)",
-          "⏳ تا خروج کاروان\n8 دقیقه" in t8 and "⏳ تا خروج کاروان\n10 دقیقه" in t10
-          and "ثانیه" not in t8, t8.split("\n")[7] if len(t8.split("\n")) > 7 else t8[:60])
+          "⏳ 8 دقیقه تا خروج کاروان" in t8 and "⏳ 10 دقیقه تا خروج کاروان" in t10
+          and "ثانیه" not in t8, t8.split("\n")[6] if len(t8.split("\n")) > 6 else t8[:60])
 
     cv_b["expires_at"] = now_utc() - timedelta(seconds=5)
     async with session_scope() as s:
@@ -2304,6 +2307,11 @@ async def main() -> None:
     h_datas = [b.callback_data for row in hkb.inline_keyboard for b in row]
     check("دکمه‌های هلپ برای هر بخش ساخته میشن",
           all(f"help:sec:{k}" in h_datas for k in menu_keys), str(h_datas))
+    h_texts = [b.text for row in hkb.inline_keyboard for b in row]
+    check("منوی هلپ دکمه 🏠 منوی اصلی هم داره",
+          "menu:home" in h_datas and any("منوی اصلی" in t for t in h_texts), str(h_texts[-2:]))
+    check("دکمه هوم هلپ ته کیبورده",
+          hkb.inline_keyboard[-1][-1].callback_data == "menu:home")
     bkb = kb2.help_back_kb()
     b_datas = [b.callback_data for row in bkb.inline_keyboard for b in row]
     b_texts = [b.text for row in bkb.inline_keyboard for b in row]
@@ -2339,6 +2347,17 @@ async def main() -> None:
     check("خروجی «راهنما» منوی دکمه‌دار میاره",
           "انتخاب کن" in hmsg and hk is not None
           and any(b.callback_data == "help:sec:farm" for row in hk.inline_keyboard for b in row))
+    check("«راهنما» تو پی‌وی دکمه 🏠 منوی اصلی میاره",
+          any(b.callback_data == "menu:home" for row in hk.inline_keyboard for b in row))
+
+    # تو گروه دکمه هوم strip میشه ولی بخش‌های هلپ سر جاشونن
+    upd_hg = _text_update("تریاکی راهنما", uid=8811, uname="helpr", fname="هلپر")
+    upd_hg.effective_chat = SimpleNamespace(id=-100222, type="supergroup")
+    await start_h2.help_cmd(upd_hg, None)
+    hkg = upd_hg.message.calls[-1][2].get("reply_markup")
+    hg_datas = [b.callback_data for row in hkg.inline_keyboard for b in row] if hkg else []
+    check("«راهنما» تو گروه هوم strip میشه ولی بخش‌ها میمونن",
+          "menu:home" not in hg_datas and "help:sec:farm" in hg_datas, str(hg_datas[-3:]))
 
     # رفتن تو یه بخش و برگشت با فیک کالبک
     upd = _fake_update("help:sec:team", uid=8811)
@@ -2394,6 +2413,40 @@ async def main() -> None:
     updx = await _run_admin_cmd(admin_h.addtp_cmd, ["8812", "5000"], 1002)  # غیرادمین
     check("addtp برای غیرادمین کاملاً بی‌صداس", not updx.message.calls)
 
+    # /detp و /dexp، کم کردن مستقیم سکه و تجربه (فقط ادمین)
+    updx = await _run_admin_cmd(admin_h.detp_cmd, ["8812", "1500"], 1001)
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        check("/detp مستقیم سکه کم کرد",
+              t.cash == 4500 and "کم شد" in updx.message.calls[-1][1] and "4,500" in updx.message.calls[-1][1],
+              updx.message.calls[-1][1][:100])
+    updx = await _run_admin_cmd(admin_h.detp_cmd, ["8812", "999999"], 1001)
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        check("detp بیشتر از موجودی، صفر می‌کنه نه منفی",
+              t.cash == 0 and "کم شد" in updx.message.calls[-1][1])
+
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        t.xp = 500
+        await s.commit()
+    updx = await _run_admin_cmd(admin_h.dexp_cmd, ["8812", "200"], 1001)
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        check("/dexp مستقیم تجربه کم کرد",
+              t.xp == 300 and "تجربه از" in updx.message.calls[-1][1] and "کم شد" in updx.message.calls[-1][1],
+              updx.message.calls[-1][1][:100])
+    updx = await _run_admin_cmd(admin_h.dexp_cmd, ["8812", "100"], 1002)  # غیرادمین
+    check("dexp برای غیرادمین کاملاً بی‌صداس", not updx.message.calls)
+    updx = await _run_admin_cmd(admin_h.detp_cmd, ["999999999", "10"], 1001)
+    check("detp به طرف ناموجود خطا میده", "نیس" in updx.message.calls[-1][1])
+    updx = await _run_admin_cmd(admin_h.dexp_cmd, ["8812"], 1001)
+    check("dexp ناقص راهنما میده", "فرم درست" in updx.message.calls[-1][1])
+    async with session_scope() as s:
+        t = await users.get_by_tg(s, 8812)
+        t.cash = 6000  # بالانس رو به حالت قبل از تست‌های detp برگردون (تست pending پایینش روش حساسه)
+        await s.commit()
+
     # /user با یه نتیجه → کارت + دکمه‌ها
     updx = await _run_admin_cmd(admin_h.user_cmd, ["@silktoch"], 1001)
     card_text, card_mk = updx.message.calls[-1][1], updx.message.calls[-1][2].get("reply_markup")
@@ -2436,10 +2489,12 @@ async def main() -> None:
 
     # ── متن خوش‌آمد گروه (اد شدن ربات) ──
     gtxt = start_h2.group_welcome_text("TeriakyBot", is_admin=False)
-    check("متن اد گروه هدر و آموزش‌ها رو داره",
-          "🔥 سلام رفقا تریاکی اومد وسط این گروه" in gtxt
-          and "/start@TeriakyBot" in gtxt and "با 500 تی‌پوینت" in gtxt
-          and "«تریاکی حمله»" in gtxt and "«کنده کاری»" in gtxt and "«تریاکی شاپ»" in gtxt)
+    check("متن اد گروه قالب دقیق جدید رو داره",
+          "🔥 تریاکی بات وارد گروه شد" in gtxt
+          and "/start@TeriakyBot" in gtxt and f"{money(config.START_CASH)} جایزه بگیر" in gtxt
+          and "⚔️ برای حمله روی پیام حریف ریپلای کن و بنویس\nحمله" in gtxt
+          and "⛏️ برای کسب تی‌پوینت بنویس\nکنده کاری" in gtxt
+          and "«تی راهنما» یا /help@TeriakyBot استفاده کنید" in gtxt, gtxt[:100])
     check("هشدار ادمین فقط وقتی ادمین نیستیم میاد",
           "⚠️ من هنوز تو این گروه ادمین نیستم" in gtxt
           and "⚠️" not in start_h2.group_welcome_text("TeriakyBot", is_admin=True))
@@ -2713,6 +2768,18 @@ async def main() -> None:
           tbdatas.count("noop:maxbld") == 2
           and "⚔️ حمله 👑 لول مکس" in tbtexts and "🛡 دفاع 👑 لول مکس" in tbtexts,
           str(tbtexts[:5]))
+
+    # ── کیبورد ساختمان تیم: 🔙 تیم من + 🏠 منوی اصلی (هوم تو گروه strip میشه) ──
+    tb2 = kb2.team_bld_kb(SimpleNamespace(atk_bld=1, def_bld=1), False, 424242)
+    tb2datas = [b.callback_data for row in tb2.inline_keyboard for b in row]
+    tb2texts = [b.text for row in tb2.inline_keyboard for b in row]
+    check("کیبورد ساختمان تیم 🔙 تیم من و 🏠 منوی اصلی داره",
+          "team:bld" in tb2datas and "menu:team" in tb2datas and "menu:home" in tb2datas
+          and any("منوی اصلی" in t for t in tb2texts)
+          and tb2.inline_keyboard[-1][-1].callback_data == "menu:home", str(tb2texts[-3:]))
+    tb2o = kb2.team_bld_kb(SimpleNamespace(atk_bld=1, def_bld=1), True, 424242)
+    check("نسخه رهبر ساختمان هم دکمه هوم داره",
+          any(b.callback_data == "menu:home" for row in tb2o.inline_keyboard for b in row))
 
     # ── جواب noopهای لول مکس با متن «بهتر از این نمیشه» ست شدن ──
     NA = start_h2._NOOP_ANSWERS

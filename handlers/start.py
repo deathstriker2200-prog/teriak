@@ -260,12 +260,13 @@ async def help_section_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def group_welcome_text(bot_username: str, is_admin: bool) -> str:
     """متن خوش‌آمد گروهی، موقع اد شدن یا /start گروهی (هشدار فقط وقتی ادمین نیستیم)"""
     text = (
-        "🔥 سلام رفقا تریاکی اومد وسط این گروه\n\n"
-        f"از الان هرکی دستور /start@{bot_username} رو بزنه با {money(config.START_CASH)} می‌تونه شروع کنه\n\n"
-        "⚔️ برای حمله ریپلای بزن و بنویس «تریاکی حمله»\n"
-        "⛏ برای درآمد خرد بنویس «کنده کاری»\n"
-        "🛒 برای خرید بنویس «تریاکی شاپ»\n\n"
-        "بقیه کارای مدیریتی تو پیوی منه، برو اونجا /start بزن 🛒"
+        "<b>🔥 تریاکی بات وارد گروه شد</b>\n\n"
+        f"🎁 با دستور /start@{bot_username} بازی رو شروع کن و {money(config.START_CASH)} جایزه بگیر\n\n"
+        "⚔️ برای حمله روی پیام حریف ریپلای کن و بنویس\n"
+        "حمله\n"
+        "⛏️ برای کسب تی‌پوینت بنویس\n"
+        "کنده کاری\n\n"
+        f"جهت مشاهده مابقی دستورات و قابلیت‌ها از دستور «تی راهنما» یا /help@{bot_username} استفاده کنید"
     )
     if not is_admin:
         text += (

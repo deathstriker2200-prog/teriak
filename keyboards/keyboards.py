@@ -181,11 +181,12 @@ HELP_MENU = [
 
 
 def help_menu_kb() -> InlineKeyboardMarkup:
-    """منوی بخش‌های آموزشات، هر بخش یه دکمه"""
+    """منوی بخش‌های آموزشات، هر بخش یه دکمه + دکمه منوی اصلی تهش"""
     rows: list[list[InlineKeyboardButton]] = []
     for i in range(0, len(HELP_MENU), 2):
         chunk = HELP_MENU[i:i + 2]
         rows.append([_btn(title, f"help:sec:{key}", PRIMARY) for key, title in chunk])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -506,6 +507,7 @@ def team_bld_kb(team, is_owner: bool, tg_id: int) -> InlineKeyboardMarkup:
             rows.append(row)
     rows.append([_btn("🔃 رفرش", "team:bld", PRIMARY)])
     rows.append([_btn("🔙 تیم من", "menu:team", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
 

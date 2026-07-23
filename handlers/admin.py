@@ -33,6 +33,7 @@ def _panel_text(user, extra: str | None = None) -> str:
         "▫️ <code>/user @username</code> یا <code>/user 123456789</code> یا بخشی از اسم، پیداش کن، پروفایلش رو ببین و از همونجا پول/XP بده\n"
         "▫️ <code>/addtp 123456789 5000</code>، واریز مستقیم تی‌پوینت\n"
         "▫️ <code>/addxp 123456789 100</code>، دادن مستقیم تجربه\n"
+        "▫️ <code>/detp 123456789 5000</code> و <code>/dexp 123456789 100</code>، کم کردن مستقیم سکه و تجربه\n"
         "▫️ /backup و /upload_backup، بک‌آپ و ری‌استور"
     )
     if extra:
@@ -161,6 +162,64 @@ async def addxp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if notes:
         text += "\n\n" + "\n".join(notes)
     await update.message.reply_html(text)
+
+
+# ───────── /detp و /dexp، کم کردن مستقیم ─────────
+
+async def detp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_admin(update):
+        return
+    args = context.args or []
+    if len(args) < 2 or not args[0].lstrip("-").isdigit() or parse_amount(args[1]) is None:
+        return await update.message.reply_html(
+            "❌ فرم درست: <code>/detp 123456789 5000</code>\n"
+            "آیدی عددی طرف + مبلغ"
+        )
+
+    tg_id = int(args[0])
+    amount = parse_amount(args[1])
+    async with session_scope() as s:
+        target = await users.get_by_tg(s, tg_id)
+        if target is None:
+            await s.commit()
+            return await update.message.reply_html("❌ کاربری با این آیدی تو بازی نیس")
+        target.cash = max(0, target.cash - amount)
+        name = esc(users.display_name(target))
+        cash = target.cash
+        await s.commit()
+
+    await update.message.reply_html(
+        f"<b>💸 {money(amount)} از {name} کم شد</b>\n\n"
+        f"موجودی جدیدش {money(cash)}"
+    )
+
+
+async def dexp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_admin(update):
+        return
+    args = context.args or []
+    if len(args) < 2 or not args[0].lstrip("-").isdigit() or parse_amount(args[1]) is None:
+        return await update.message.reply_html(
+            "❌ فرم درست: <code>/dexp 123456789 100</code>\n"
+            "آیدی عددی طرف + مقدار تجربه"
+        )
+
+    tg_id = int(args[0])
+    amount = parse_amount(args[1])
+    async with session_scope() as s:
+        target = await users.get_by_tg(s, tg_id)
+        if target is None:
+            await s.commit()
+            return await update.message.reply_html("❌ کاربری با این آیدی تو بازی نیس")
+        target.xp = max(0, target.xp - amount)
+        name = esc(users.display_name(target))
+        xp = target.xp
+        await s.commit()
+
+    await update.message.reply_html(
+        f"<b>✨ {fa_num(amount)} تجربه از {name} کم شد</b>\n\n"
+        f"⭐ الان ✨ {fa_num(xp)} تجربه داره"
+    )
 
 
 # ───────── دکمه‌های پنل (خودی + کارت کاربر) ─────────

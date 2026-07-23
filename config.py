@@ -160,7 +160,7 @@ WEAPONS = {
     "uzi":     {"name": "اوزی 🔫",            "price": 5500,  "attack": 42,  "min_level": 6,  "desc": "رگباری و پرسرعت", "gun": True},
     "shotgun": {"name": "شات‌گان 🔫",         "price": 7500,  "attack": 52,  "min_level": 7,  "desc": "از نزدیک ویرانه", "gun": True},
     "deagle":  {"name": "کلت نقره‌ای 🔫",      "price": 10000, "attack": 60,  "min_level": 8,  "desc": "خشن و پرسرعت", "gun": True},
-    "ak47":    {"name": "AK-47 🔫",           "price": 16000, "attack": 85,  "min_level": 10, "desc": "کلاش افسانه‌ای محله", "gun": True},
+    "ak47":    {"name": "کلاشنیکف 🔫",           "price": 16000, "attack": 85,  "min_level": 10, "desc": "کلاش افسانه‌ای محله", "gun": True},
     "svd":     {"name": "دراگونوف 🔫",        "price": 22000, "attack": 105, "min_level": 11, "desc": "تک‌تیرانداز از پشت بوم", "gun": True},
     "plasma":  {"name": "شلیک‌کن پلاسما",     "price": 30000, "attack": 130, "min_level": 12, "desc": "آینده‌گرایانه و کشنده", "gun": True},
     "minigun": {"name": "گاتلینگ 🔫",         "price": 45000, "attack": 175, "min_level": 14, "desc": "رگبار تموم‌نشدنی", "gun": True},

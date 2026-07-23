@@ -98,6 +98,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("user", admin.user_cmd))
     app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
+    app.add_handler(CommandHandler("detp", admin.detp_cmd))
+    app.add_handler(CommandHandler("dexp", admin.dexp_cmd))
 
     # ── اد شدن ربات به گروه، خودش متن خوش‌آمد می‌فرسته ──
     app.add_handler(ChatMemberHandler(start.bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
