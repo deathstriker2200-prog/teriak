@@ -2751,6 +2751,32 @@ async def main() -> None:
           f"🗺 زمین {fa_num(1)} | 👑 لول مکس" in mtexts and "noop:maxplot" in mdatas
           and not any(d.startswith("farm:up:") for d in mdatas), str(mtexts[:5]))
 
+    # ── دکمه ساخت زمین: قالب دقیق «🔨 ساخت زمین 4 | 🪙 20,000 TP» ──
+    e_plot = SimpleNamespace(id=903, level=1, current_status=lambda: ("empty", 0))
+    fk = kb2.farm_kb(SimpleNamespace(level=8), [e_plot, e_plot, e_plot], 20000, 0)
+    ftexts = [b.text for row in fk.inline_keyboard for b in row]
+    fdatas = [b.callback_data for row in fk.inline_keyboard for b in row]
+    check("دکمه ساخت زمین قالب دقیق جدید رو داره",
+          "farm:buy" in fdatas and "🔨 ساخت زمین 4 | 🪙 20,000 TP" in ftexts, str(ftexts[-3:]))
+    fb_btn = next(b for row in fk.inline_keyboard for b in row if b.callback_data == "farm:buy")
+    check("دکمه ساخت زمین آبی (primary) مونده", fb_btn.style == "primary")
+
+    # ── دکمه قفل ساخت زمین هم همون قالب با 🔒 و قرمز ──
+    fk2 = kb2.farm_kb(SimpleNamespace(level=1), [e_plot, e_plot, e_plot], 20000, 0)
+    lock_btn = next(b for row in fk2.inline_keyboard for b in row if b.callback_data == "noop:lock")
+    check("قفل ساخت زمین قالب جدید + قرمزه",
+          lock_btn.text == f"🔒 ساخت زمین 4 | 🪙 20,000 TP | لول {fa_num(6)}"
+          and lock_btn.style == "danger", lock_btn.text)
+
+    # ── تایمرهای مزرعه (ساخت + رشد) قرمزن ──
+    b_plot = SimpleNamespace(id=904, level=1, current_status=lambda: ("building", 300))
+    g_plot = SimpleNamespace(id=905, level=1, current_status=lambda: ("growing", 120))
+    tk3 = kb2.farm_kb(SimpleNamespace(level=1), [b_plot, g_plot], 10000, 0)
+    b_style = next(b.style for row in tk3.inline_keyboard for b in row if b.callback_data == "noop:build")
+    g_style = next(b.style for row in tk3.inline_keyboard for b in row if b.callback_data == "noop:grow")
+    check("تایمر ساخت و رشد زمین قرمزن",
+          b_style == "danger" and g_style == "danger", f"{b_style}/{g_style}")
+
     # ── سگ لول مکس: غذاها جاشون رو به 👑 لول مکس میدن ──
     dk = kb2.dog_card_kb(SimpleNamespace(id=902, level=config.DOG_MAX_LEVEL), 3)
     dtexts = [b.text for row in dk.inline_keyboard for b in row]

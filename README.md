@@ -21,7 +21,7 @@ python bot.py
 تست آفلاین منطق بازی (بدون تلگرام):
 
 ```bash
-python tests_smoke.py    # 572 تست
+python tests_smoke.py    # 576 تست
 ```
 
 ---
@@ -312,7 +312,7 @@ teriaky/
 │   ├── pending.py         # گرفتن اسم سگ/تیم و مبلغ واریز/برداشت + کانال فورس جوین + ثبت فعالیت گروه
 │   ├── backup.py          # /backup و /upload_backup (بی‌صدا برای غریبه)
 │   └── بقیه هندلرها
-└── tests_smoke.py         # 572 تست آفلاین
+└── tests_smoke.py         # 576 تست آفلاین
 ```
 
 ## توسعه

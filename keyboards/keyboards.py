@@ -219,11 +219,11 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
 
         actions: list[InlineKeyboardButton] = []
         if state == "building":
-            actions.append(_btn(f"🔨 ساخت: {fa_dur(left)}", "noop:build"))
+            actions.append(_btn(f"🔨 ساخت: {fa_dur(left)}", "noop:build", DANGER))
         elif state == "empty":
             actions.append(_btn("🌱 کاشت", f"farm:plant:{plot.id}"))
         elif state == "growing":
-            actions.append(_btn(f"⏳ {fa_dur(left)}", "noop:grow"))
+            actions.append(_btn(f"⏳ {fa_dur(left)}", "noop:grow", DANGER))
         else:
             actions.append(_btn("✅ آماده", "noop:ready"))
 
@@ -239,15 +239,15 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
 
     if len(plots) < config.MAX_PLOTS:
         req = economy.plot_required_level(len(plots))
-        build = economy.plot_build_seconds(len(plots))
         n_next = len(plots) + 1
         if user.level >= req:
-            label = f"🛒 زمین {fa_num(n_next)} | {money_tp(next_price)}"
-            label += f" | 🔨 {fa_dur(build)}" if build else ""
-            rows.append([_btn(label, "farm:buy", PRIMARY)])
+            rows.append([_btn(
+                f"🔨 ساخت زمین {fa_num(n_next)} | 🪙 {money_tp(next_price)}",
+                "farm:buy", PRIMARY,
+            )])
         else:
             rows.append([_btn(
-                f"🔒 زمین {fa_num(n_next)} | {money_tp(next_price)} | لول {fa_num(req)}",
+                f"🔒 ساخت زمین {fa_num(n_next)} | 🪙 {money_tp(next_price)} | لول {fa_num(req)}",
                 "noop:lock", DANGER,
             )])
     else:
