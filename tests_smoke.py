@@ -1793,13 +1793,28 @@ async def main() -> None:
     cv_b["damages"][esc_uid] = 40
     cv_b["names"][esc_uid] = "دیررس"
     btxt = world_svc.caravan_board_text(cv_b)
-    check("برد کاروان نکته آپدیت 2 دقیقه‌ای رو بالای متن داره",
-          "⏱ جدول دمیج هر 2 دقیقه به‌روز میشه" in btxt.split("\n")[4], btxt.split("\n")[4])
-    check("جدول دمیج از اول خالی هم نمایش داده میشه",
-          "⚔️ جدول دمیج:" in world_svc.caravan_board_text(world_svc.caravan_spawn(940006))
-          and "هنوز کسی به کاروان ضربه نزده" in world_svc.caravan_board_text(world_svc.caravan_spawn(940007)))
+    check("برد کاروان قالب دقیق جدید رو داره (جان/تایمر/قوانین/جدول)",
+          all(x in btxt for x in ["❤️ جان کاروان", "⏳ تا خروج کاروان",
+                                  "🔄 این پیام هر 2 دقیقه به‌روزرسانی میشه",
+                                  "⚔️ هر بازیکن هر 1 دقیقه فقط یک بار می‌تونه حمله کنه",
+                                  "💥 قدرت هر ضربه بر اساس قدرت حمله بازیکنه",
+                                  "🏆 فقط 5 نفر برتر جایزه می‌گیرن",
+                                  "📊 جدول دمیج"]), btxt[:80])
+    cv_e = world_svc.caravan_spawn(940006)
+    etxt = world_svc.caravan_board_text(cv_e)
     world_svc.CARAVANS.pop(940006, None)
-    world_svc.CARAVANS.pop(940007, None)
+    check("جدول دمیج از اول خالی هم نمایش داده میشه",
+          "▫️ هنوز کسی به کاروان حمله نکرده" in etxt and "اولین نفری باش که ضربه می‌زنه" in etxt)
+    cv_t8 = world_svc.caravan_spawn(940008)
+    cv_t8["expires_at"] = now_utc() + timedelta(minutes=8, seconds=6)
+    t8 = world_svc.caravan_board_text(cv_t8)
+    cv_t10 = world_svc.caravan_spawn(940009)
+    t10 = world_svc.caravan_board_text(cv_t10)
+    world_svc.CARAVANS.pop(940008, None)
+    world_svc.CARAVANS.pop(940009, None)
+    check("تایمر پلکان 2 دقیقه‌ایه و ثانیه نشون نمیده (8:06→8 | 10:00→10)",
+          "⏳ تا خروج کاروان\n8 دقیقه" in t8 and "⏳ تا خروج کاروان\n10 دقیقه" in t10
+          and "ثانیه" not in t8, t8.split("\n")[7] if len(t8.split("\n")) > 7 else t8[:60])
 
     cv_b["expires_at"] = now_utc() - timedelta(seconds=5)
     async with session_scope() as s:
@@ -1910,7 +1925,7 @@ async def main() -> None:
     botr = _CvBot()
     await jobs_h.caravan_refresh_job(SimpleNamespace(bot=botr))
     check("تایمر 2 دقیقه‌ای برد کاروان رو با دمیج تازه ادیت می‌کنه",
-          any(mid == 4321 and "⚔️ جدول دمیج:" in t
+          any(mid == 4321 and "📊 جدول دمیج" in t
               and "33 دمیج" in t for _, mid, t in botr.edited), str(botr.edited))
     world_svc.CARAVANS.clear()
     world_svc.CARAVAN_HITS.clear()
@@ -2052,11 +2067,11 @@ async def main() -> None:
         async def edit_message_text(self, text, parse_mode=None):
             self.edited.append(text)
 
-    def _fj_upd(uid=8860):
+    def _fj_upd(uid=8860, ctype="private"):
         return SimpleNamespace(
             callback_query=None,
             effective_user=SimpleNamespace(id=uid, username="gate1", first_name="گیت‌خور", is_bot=False),
-            effective_chat=SimpleNamespace(id=-1008860, type="group"),
+            effective_chat=SimpleNamespace(id=-1008860, type=ctype),
             message=None,
         )
 
@@ -2082,6 +2097,19 @@ async def main() -> None:
     upd2 = _text_update("تریاکی شاپ", uid=8860, uname="gate1", fname="گیت‌خور")
     await gate_h.gate_messages(upd2, ctx_g)
     check("عضو شده دیگه گیت نمی‌خوره", not upd2.message.calls)
+
+    # ── گیت فقط پی‌وی‌ـه، تو گروه همه‌چی مثل قبل عادیه ──
+    bot_g.member_flag = False
+    upd_grp = _text_update("تریاکی شاپ", uid=8860, uname="gate1", fname="گیت‌خور")
+    upd_grp.effective_chat = SimpleNamespace(id=-100111, type="supergroup")
+    await gate_h.gate_messages(upd_grp, ctx_g)
+    check("غیرعضو تو گروه دستور می‌زنه، گیت نمیاد", not upd_grp.message.calls and 8860 not in gate_h.PENDING)
+
+    q_grp = _FjQ(8860)
+    upd_gc = _fj_upd(ctype="supergroup")
+    upd_gc.callback_query = q_grp
+    await gate_h.gate_callbacks(upd_gc, ctx_g)
+    check("دکمه غیرعضو تو گروه هم آزاده", not q_grp.answers and not gate_h.PENDING.get(8860))
 
     bot_g.member_flag = False
     qc = _FjQ(8860)

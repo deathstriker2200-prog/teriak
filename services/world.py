@@ -641,31 +641,41 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
 
 
 def caravan_board_text(cv: dict) -> str:
-    """متن برد کاروان برای گروه، جدول دمیج از همون اول نمایش داده میشه"""
+    """
+    متن برد کاروان برای گروه
+    جدول دمیج از همون اول نمایش داده میشه و تایمر فقط پلکان 2 دقیقه‌ای (10-8-6-4-2)
+    چون پیام هر 2 دقیقه ادیت میشه، ثانیه نمایش داده نمیشه
+    """
     pct = max(0, cv["hp"]) / cv["max_hp"]
     filled = round(pct * 10)
     bar = "🟥" * filled + "⬜" * (10 - filled)
     left = max(0, int((cv["expires_at"] - now_utc()).total_seconds()))
-    refresh_min = fa_num(config.CARAVAN_BOARD_REFRESH_SECONDS // 60)
-    var_pct = fa_num(round(config.CARAVAN_DMG_VARIANCE * 100))
+    step = config.CARAVAN_BOARD_REFRESH_SECONDS
+    # پلکان 2 دقیقه‌ای: 8 دقیقه و 6 ثانیه → 8 دقیقه، لحظه اسپون → 10 دقیقه
+    left_min = max(1, round(left / step)) * (step // 60)
 
     lines = [
         "<b>🚛 کاروان وارد محله شد</b>",
         "",
-        f"❤️ جان کاروان: {bar} {fa_num(max(0, cv['hp']))}/{fa_num(cv['max_hp'])}",
-        f"⏳ {fa_dur(left)} دیگه از محله خارج میشه",
-        f"⏱ جدول دمیج هر {refresh_min} دقیقه به‌روز میشه",
+        "❤️ جان کاروان",
+        bar,
+        f"{fa_num(max(0, cv['hp']))} / {fa_num(cv['max_hp'])}",
         "",
-        "هر نفر هر 1 دقیقه فقط یه ضربه می‌تونه بزنه",
-        f"قدرت هر ضربه بر اساس قدرت حملت می‌چرخه، تا {var_pct}% بیشتر یا کمتر",
-        "🏆 بزرگ‌ترین جایزه به نفر اول می‌رسه، شاید بذر جهنم 🔥 یا بذر ابلیس 😈",
-        f"📢 فقط {fa_num(config.CARAVAN_TOP_REWARDS)} نفر برتر جدول جایزه دریافت می‌کنن",
+        "⏳ تا خروج کاروان",
+        f"{fa_num(left_min)} دقیقه",
         "",
-        "⚔️ جدول دمیج:",
+        f"🔄 این پیام هر {fa_num(step // 60)} دقیقه به‌روزرسانی میشه",
+        "",
+        "⚔️ هر بازیکن هر 1 دقیقه فقط یک بار می‌تونه حمله کنه",
+        "💥 قدرت هر ضربه بر اساس قدرت حمله بازیکنه",
+        f"🏆 فقط {fa_num(config.CARAVAN_TOP_REWARDS)} نفر برتر جایزه می‌گیرن",
+        "",
+        "📊 جدول دمیج",
     ]
     top = sorted(cv["damages"].items(), key=lambda kv: -kv[1])[: config.CARAVAN_TOP_REWARDS]
     if not top:
-        lines.append("▫️ هنوز کسی به کاروان ضربه نزده، اولین نفر باش 😈")
+        lines.append("▫️ هنوز کسی به کاروان حمله نکرده")
+        lines.append("اولین نفری باش که ضربه می‌زنه")
     else:
         medals = ["🥇", "🥈", "🥉"]
         for i, (uid, dmg) in enumerate(top):

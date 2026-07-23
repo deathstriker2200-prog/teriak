@@ -1,7 +1,8 @@
 """
 گیت عضویت اجباری 🔒
-توی گروه -3 رجیستر میشه (قبل از قفل مالکیت و همه دستورها)
-کاربر عضو کانال نباشه دستورش بلاک میشه و پیام گیت با دکمه‌های عضویت/تایید می‌گیره
+توی گروه -3 رجیستر میشه (قبل از قفل مالکیت و همه دستورها) ولی فقط روی پی‌وی ربات
+داخل گروه همه‌چی مثل قبل عادی کار می‌کنه و چک عضویت انجام نمیشه
+کاربر عضو کانال نباشه دستور پی‌وی‌اش بلاک میشه و پیام گیت با دکمه‌های عضویت/تایید می‌گیره
 آپدیت بلاک‌شده توی حافظه نگه داشته میشه تا بعد «تایید عضویت» خودشش ادامه پیدا کنه
 """
 
@@ -29,6 +30,12 @@ def _skip(update: Update) -> bool:
     return u is None or getattr(u, "is_bot", False) or u.id in config.ADMIN_IDS
 
 
+def _in_pv(update: Update) -> bool:
+    """گیت فقط توی پی‌وی ربات اعمال میشه، گروه‌ها آزادن"""
+    chat = update.effective_chat
+    return chat is not None and chat.type == "private"
+
+
 async def _settings_and_member(context, user_id: int) -> tuple[dict, bool]:
     """ستینگ فعال + عضویت، غیرفعال باشه (False, {}) نیس همیشه pass"""
     async with session_scope() as s:
@@ -40,8 +47,8 @@ async def _settings_and_member(context, user_id: int) -> tuple[dict, bool]:
 
 
 async def gate_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """همه متن‌ها و کامندها قبل از هر هندلری از اینجا رد میشن"""
-    if _skip(update):
+    """متن‌ها و کامندهای پی‌وی قبل از هر هندلری از اینجا رد میشن"""
+    if _skip(update) or not _in_pv(update):
         return
     st, member = await _settings_and_member(context, update.effective_user.id)
     if member:
@@ -54,8 +61,8 @@ async def gate_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def gate_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """دکمه‌ها هم گیت میشن (بجز خود دکمه تایید که هندلر جدا داره و زودتر رجیستر شده)"""
-    if not update.callback_query or _skip(update):
+    """دکمه‌های پی‌وی هم گیت میشن (بجز خود دکمه تایید که هندلر جدا داره و زودتر رجیستر شده)"""
+    if not update.callback_query or _skip(update) or not _in_pv(update):
         return
     st, member = await _settings_and_member(context, update.effective_user.id)
     if member:
