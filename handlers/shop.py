@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
+from handlers import dogs as dogs_h
 from handlers.common import parts, respond
 from keyboards import keyboards as kb
 from services import combat, dogs as dog_svc, farming, shop_svc, users
@@ -32,14 +33,14 @@ async def _section_text(session, user, kind: str) -> str:
             "<b>🔪 بخش سلاح‌ها</b>\n\n"
             "هر سلاح یه Attack مشخص داره\n"
             "فقط بهترین سلاحت رو استت حساب میشه\n\n"
-            "💡 برای خرید روی جنس کلیک کنید یا از دستور «خرید [اسم سلاح]» مثلا «خرید چاقو» استفاده کنید"
+            "💡 برای خرید روی جنس کلیک کنید یا از دستور «تریاکی خرید [اسم سلاح]» مثلا «تریاکی خرید چاقو» استفاده کنید"
         )
     if kind == "arm":
         return (
             "<b>🛡 بخش زره‌ها</b>\n\n"
             "زره خسارت وارده رو کم می‌کنه\n"
             "فقط بهترین زرهت رو استت حساب میشه\n\n"
-            "💡 برای خرید روی جنس کلیک کنید یا از دستور «خرید [اسم زره]» مثلا «خرید جلیقه سنگین» استفاده کنید\n\n"
+            "💡 برای خرید روی جنس کلیک کنید یا از دستور «تریاکی خرید [اسم زره]» مثلا «تریاکی خرید جلیقه سنگین» استفاده کنید\n\n"
             f"👑 {config.ARMORS['legend']['name']}:\n"
             f"{esc(config.ARMORS['legend']['desc'])}"
         )
@@ -53,15 +54,15 @@ async def _section_text(session, user, kind: str) -> str:
             "<b>🌱 بخش بذرها</b>\n\n"
             "صبر کن تا بذرها رشد کنن، بعدش میتونی برداشت کنی\n\n"
             f"📦 انبارت:\n{have or '▫️ خالیه'}\n\n"
-            "💡 کاشت با دستور «کاشت ماری جوانا» هم میشه"
+            "💡 کاشت با دستور «تریاکی کاشت ماری جوانا» هم میشه"
         )
     if kind == "dog":
         return (
             "<b>🐕 بخش سگ‌ها</b>\n\n"
             "سگ‌ها به قدرت حمله تو اضافه میشن\n"
             f"حداکثر {fa_num(config.MAX_DOGS)} سگ می‌تونی داشته باشی\n\n"
-            "برای خرید روی سگ مورد نظر کلیک کنید یا از دستور «خرید سگ [نژاد] [اسم موردنظر]» استفاده کنید\n\n"
-            "👑 گرگ سیاه شبح می‌تواند تا 30٪ از دفاع حریف را کاهش دهد و تا 10٪ غرامت بیشتری از حریف دریافت کند، با هر لول‌آپ به این مقدار نزدیک‌تر می‌شه"
+            "برای خرید روی سگ مورد نظر کلیک کنید یا از دستور «تریاکی خرید سگ [نژاد] [اسم موردنظر]» استفاده کنید\n\n"
+            "👑 گرگ سیاه شبح می‌تواند تا 30% از دفاع حریف را کاهش دهد و تا 10% غرامت بیشتری از حریف دریافت کند، با هر لول‌آپ به این مقدار نزدیک‌تر می‌شه"
         )
     if kind == "food":
         return (
@@ -69,7 +70,7 @@ async def _section_text(session, user, kind: str) -> str:
             f"هر سگ روزی فقط {fa_num(config.DOG_FEED_PER_DAY)} بار می‌تونه غذا دریافت کنه\n"
             "هر غذا مقدار مشخص XP به سگ میده و سگت رو لول آپ میکنه\n\n"
             "غذا همون لحظه خریده و خورده میشه\n"
-            "برو تو «سگ‌های من» و دکمه 🍖 رو بزن"
+            "بنویس «تریاکی سگ‌های من» و دکمه 🍖 زیر سگت رو بزن"
         )
     return "❌ همچین بخشی نیس"
 
@@ -121,6 +122,16 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not item:
         return await shop_cb(update, context)
 
+    # خرید سگ فاکتور نداره، اول اسمش پرسیده میشه و بعد فاکتور تایید میاد
+    if kind == "dog":
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            ok, alert = await dog_svc.hold_dog(s, user, key)
+            await s.commit()
+        if not ok:
+            return await render_section(update, kind, alert=alert)
+        return await respond(update, dogs_h.dog_name_question_text(item))
+
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         cash = user.cash
@@ -136,13 +147,6 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         stat_lines = (
             f"⏱ رشد {fa_num(item['grow_min'])} دقیقه\n"
             f"💰 فروش {money_tp(item['sell'])}\n"
-        )
-    elif kind == "dog":
-        stat_lines = (
-            f"🐾 نژاد {esc(item['breed'])}\n"
-            f"💪 قدرت حمله {fa_num(item['attack'])}\n"
-            f"🎖 {esc(item['ability'])}\n"
-            f"📛 بعد از پرداخت اسمشو ازت می‌پرسم\n"
         )
 
     text = (

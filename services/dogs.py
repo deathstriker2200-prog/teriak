@@ -37,7 +37,7 @@ def roll_personality(dog_key: str) -> str | None:
 
 
 def dog_attack(dog: Dog) -> int:
-    """قدرت حمله سگ با لول و شخصیتش (وفادار +۵٪ | جنگجو +۱۰٪)"""
+    """قدرت حمله سگ با لول و شخصیتش (وفادار +۵% | جنگجو +۱۰%)"""
     cfg = config.DOGS.get(dog.dog_key)
     if not cfg:
         return 0
@@ -49,7 +49,7 @@ def dog_attack(dog: Dog) -> int:
 
 
 def personality_steal_bonus(dogs: list[Dog]) -> float:
-    """شکارچی 💰، غرامت جنگی ۸٪+"""
+    """شکارچی 💰، غرامت جنگی ۸%+"""
     best = 0.0
     for d in dogs:
         per = personality_of(d)
@@ -59,7 +59,7 @@ def personality_steal_bonus(dogs: list[Dog]) -> float:
 
 
 def personality_steal_cut(dogs: list[Dog]) -> float:
-    """نگهبان 🛡، دزدی از جیبت ۱۰٪−"""
+    """نگهبان 🛡، دزدی از جیبت ۱۰%−"""
     best = 0.0
     for d in dogs:
         per = personality_of(d)
@@ -79,7 +79,7 @@ def search_luck(dogs: list[Dog]) -> float:
 
 
 def rare_steal_bonus(dogs: list[Dog]) -> float:
-    """غرامت بیشتر بهترین گرگ سیاه، تا RARE_DOG_STEAL_MAX (۱۰٪) بر اساس لول"""
+    """غرامت بیشتر بهترین گرگ سیاه، تا RARE_DOG_STEAL_MAX (۱۰%) بر اساس لول"""
     best = 0.0
     for d in dogs:
         if config.DOGS.get(d.dog_key, {}).get("rare"):
@@ -89,7 +89,7 @@ def rare_steal_bonus(dogs: list[Dog]) -> float:
 
 
 def rare_defense_cut(dogs: list[Dog]) -> float:
-    """کاهش دفاع حریف توسط گرگ سیاه، تا RARE_DOG_DEF_CUT_MAX (۳۰٪) بر اساس لول"""
+    """کاهش دفاع حریف توسط گرگ سیاه، تا RARE_DOG_DEF_CUT_MAX (۳۰%) بر اساس لول"""
     best = 0.0
     for d in dogs:
         if config.DOGS.get(d.dog_key, {}).get("rare"):
@@ -99,15 +99,15 @@ def rare_defense_cut(dogs: list[Dog]) -> float:
 
 
 def rare_ability_lines(dog: Dog) -> list[str]:
-    """متن قابلیت گرگ سیاه با اعداد مقیاس لولش، مثل «دفاع حریف رو 18٪ کاهش میده»"""
+    """متن قابلیت گرگ سیاه با اعداد مقیاس لولش، مثل «دفاع حریف رو 18% کاهش میده»"""
     if not config.DOGS.get(dog.dog_key, {}).get("rare"):
         return []
     ratio = min(1.0, dog.level / config.DOG_MAX_LEVEL)
     cut = round(ratio * config.RARE_DOG_DEF_CUT_MAX * 100)
     steal = round(ratio * config.RARE_DOG_STEAL_MAX * 100)
     return [
-        f"🎖 دفاع حریف رو {fa_num(cut)}٪ کاهش میده",
-        f"🪙 غرامت جنگی رو {fa_num(steal)}٪ افزایش میده",
+        f"🎖 دفاع حریف رو {fa_num(cut)}% کاهش میده",
+        f"🪙 غرامت جنگی رو {fa_num(steal)}% افزایش میده",
     ]
 
 
@@ -135,19 +135,34 @@ def _check_buyable(user: User, dogs: list[Dog], dog_key: str) -> tuple[bool, str
     return True, ""
 
 
+def check_dog_name(dogs: list[Dog], name: str) -> tuple[bool, str, str]:
+    """ولیدیشن اسم سگ، خروجی: (اوکی, اسم تمیز برای نمایش, دلیل رد)"""
+    clean = normalize_fa(name)
+    if not clean or len(clean) < 2:
+        return False, "", "❌ اسم خیلی کوتاهه، یه اسم درست بفرست"
+    display = " ".join(str(name).split())  # نیم‌فاصله‌های کاربر حفظ میشه
+    if len(display) > 24:
+        return False, "", "❌ اسم حداکثر 24 حرف می‌تونه باشه"
+    if ":" in clean or "<" in clean or ">" in clean:
+        return False, "", "❌ تو اسم کاراکتر عجیب نذار"
+    if any(normalize_fa(d.name) == clean for d in dogs):
+        return False, "", f"❌ یه سگ دیگه اسمش «{display}» ـه، یه اسم دیگه بفرست"
+    return True, display, ""
+
+
 async def buy_dog(
     session: AsyncSession, user: User, dog_key: str, custom_name: str | None = None
 ) -> tuple[bool, str]:
-    """خرید مستقیم سگ با اسم مشخص، وقتی اسمشو تو همون دستور داده"""
+    """خرید سگ با اسم مشخص، بعد از تایید فاکتور، پول همینجا کم میشه و سگ ساخته میشه"""
     dogs = await get_user_dogs(session, user.id)
     ok, alert = _check_buyable(user, dogs, dog_key)
     if not ok:
         return False, alert
 
     cfg = config.DOGS[dog_key]
-    name = (custom_name or cfg["name"])[:32]
-    if any(normalize_fa(d.name) == normalize_fa(name) for d in dogs):
-        return False, f"❌ یه سگ دیگه اسمش «{name}» ـه، یه اسم دیگه بردار"
+    ok_name, name, why = check_dog_name(dogs, custom_name or cfg["name"])
+    if not ok_name:
+        return False, why
 
     user.cash -= cfg["price"]
     session.add(Dog(
@@ -160,10 +175,13 @@ async def buy_dog(
     return True, f"🐕 {name} شد رفیق جدیدت"
 
 
-# ───────── فلو دو مرحله‌ای: پرداخت → پرسیدن اسم ─────────
+# ───────── فلو جدید خرید سگ: اول اسم می‌پرسه → فاکتور تایید → پرداخت ─────────
 
 async def hold_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[bool, str]:
-    """پرداخت می‌کنه و منتظر اسم می‌مونه، اسم با پیام بعدی کاربر ثبت میشه"""
+    """
+    شروع فلو خرید سگ، فقط اکشن معلق می‌ذاره و اسم می‌خواد
+    هیچ پولی اینجا کم نمیشه، پرداخت بعد از تایید فاکتوره (buy_dog)
+    """
     if user.pending_action:
         return False, "⏳ اول کار قبلیتو تموم کن یا «لغو» بزن"
 
@@ -173,60 +191,21 @@ async def hold_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[boo
         return False, alert
 
     cfg = config.DOGS[dog_key]
-    user.cash -= cfg["price"]
     user.pending_action = "dogname"
     user.pending_value = dog_key
-    return True, f"🐕 {cfg['breed']} رو خریدی، حالا اسمشو بفرست"
-
-
-async def finalize_dog(session: AsyncSession, user: User, name: str) -> tuple[bool, str]:
-    """ثبت اسم سگ بعد از پرداخت، سگ با همون اسم ساخته میشه و باهاش صداش می‌زنی"""
-    if user.pending_action != "dogname" or not user.pending_value:
-        return False, "🤷 خرید سگی در جریان نیس"
-
-    dog_key = user.pending_value
-    cfg = config.DOGS.get(dog_key)
-    if not cfg:  # محتمل نیس ولی امنیت خوبه
-        user.pending_action = None
-        user.pending_value = None
-        return False, "❌ مشکلی پیش اومد، پولت برگشت"
-
-    clean = normalize_fa(name)
-    if not clean or len(clean) < 2:
-        return False, "❌ اسم خیلی کوتاهه، یه اسم درست بفرست"
-    display = " ".join(str(name).split())  # نیم‌فاصله‌های کاربر حفظ میشه
-    if len(display) > 24:
-        return False, "❌ اسم حداکثر 24 حرف می‌تونه باشه"
-    if ":" in clean or "<" in clean or ">" in clean:
-        return False, "❌ تو اسم کاراکتر عجیب نذار"
-
-    dogs = await get_user_dogs(session, user.id)
-    if any(normalize_fa(d.name) == clean for d in dogs):
-        return False, f"❌ یه سگ دیگه اسمش «{display}» ـه، یه اسم دیگه بفرست"
-
-    user.pending_action = None
-    user.pending_value = None
-    session.add(Dog(
-        user_id=user.id, dog_key=dog_key, name=display, breed=cfg["breed"],
-        personality=roll_personality(dog_key),
-    ))
-    return True, display
+    return True, f"🐕 اسم {cfg['breed']} چی باشه؟ اسمشو بفرست"
 
 
 async def cancel_pending(session: AsyncSession, user: User) -> str:
-    """لغو کار معلق، پول سگ برمی‌گرده | اسم تیم و مبلغ بانک فقط پاک میشن"""
+    """لغو کار معلق، هیچکدوم هنوز پولی جابه‌جا نکردن و فقط اکشن پاک میشه"""
     action = user.pending_action
-    if action == "dogname" and user.pending_value in config.DOGS:
-        user.cash += config.DOGS[user.pending_value]["price"]
-    elif action in ("teamname", "bankdep", "bankwd", "admtp", "admxp"):
-        pass  # اینا هنوز پولی جابه‌جا نکردن، فقط اکشن معلق پاک میشه
-    else:
+    if action not in ("dogname", "teamname", "teamcf", "bankdep", "bankwd", "admtp", "admxp"):
         return "🤷 کاری در جریان نیس که"
 
     user.pending_action = None
     user.pending_value = None
     if action == "dogname":
-        return "😅 خرید سگ لغو شد و پولت برگشت"
+        return "😅 خرید سگ لغو شد"
     return "😅 بی‌خیال شدیم"
 
 
@@ -241,7 +220,15 @@ def feeds_left(dog: Dog) -> int:
 
 def full_text(dog: Dog) -> str:
     """متن سیر بودن یه سگ خاص"""
-    return f"🍖 {dog.name} امروز حسابی لمبونده دیگه گرسنش نیست"
+    return f"🍖 {dog.name} سیر شده"
+
+
+def hunger_text(dog: Dog) -> str:
+    """خط وضعیت گرسنگی یه سگ، «هنوز گرسنشه و Nتا غذای دیگه جا داره» یا «سیر شده»"""
+    left = feeds_left(dog)
+    if left > 0:
+        return f"🍖 {dog.name} هنوز گرسنشه و {fa_num(left)}تا غذای دیگه جا داره"
+    return full_text(dog)
 
 
 async def feed_dog(session: AsyncSession, user: User, dog: Dog, food_key: str) -> tuple[bool, str, list[str]]:

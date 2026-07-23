@@ -12,10 +12,23 @@ from keyboards import keyboards as kb
 from models import Dog
 from services import dogs as dog_svc
 from services import users
-from utils import bar, esc, fa_num, money_tp
+from utils import bar, esc, fa_num, money, money_tp
 
 # عدد به حروف برای زمین شماره n (دکمه noop پلات)، مشترک با کیبوردها
 FA_WORDS = {1: "یکم", 2: "دوم", 3: "سوم", 4: "چهارم", 5: "پنجم"}
+
+
+def dog_name_question_text(item: dict) -> str:
+    """متن پرسیدن اسم سگ موقع خرید، قبل از فاکتور و پرداخت"""
+    return (
+        f"<b>🐕 خرید {esc(item['breed'])}</b>\n\n"
+        f"🐾 نژاد {esc(item['breed'])}\n"
+        f"💪 قدرت حمله {fa_num(item['attack'])}\n"
+        f"🎖 {esc(item['ability'])}\n"
+        f"💸 قیمت {money(item['price'])}\n\n"
+        "📛 اول بگو اسمش چی باشه، اسمشو همینجا بنویس و بفرست، مثلا «اصغر»\n\n"
+        "❌ پشیمون شدی بنویس «لغو»"
+    )
 
 
 async def _dogs_text(session, user, dogs: list[Dog]) -> str:
@@ -43,14 +56,9 @@ async def _dogs_text(session, user, dogs: list[Dog]) -> str:
             per = dog_svc.personality_of(d)
             if per:
                 entry += f"\n💫 شخصیت {per['emoji']} {esc(per['name'])}، {esc(per['desc'])}"
+            entry += f"\n{dog_svc.hunger_text(d)}"
             lines.append(entry)
 
-    if dogs:
-        total_left = sum(dog_svc.feeds_left(d) for d in dogs)
-        if total_left:
-            lines.append(f"\n\n🍖 امروز {fa_num(total_left)} غذا مونده، هر سگ روزی {fa_num(config.DOG_FEED_PER_DAY)} تا")
-        else:
-            lines.append("\n\n🍖 امروز دیگه نمی‌تونی به سگ‌هات غذا بدی گرسنشون نیست")
     return "\n".join(lines)
 
 
@@ -72,7 +80,7 @@ async def dogs_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ───────── کارت آمار یه سگ، «آمار اصغر» ─────────
 
-def _dog_card_text(user, dog: Dog, extra: str | None = None, other_dog: Dog | None = None) -> str:
+def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
     need = dog_svc.dog_xp_need(dog.level)
     atk = dog_svc.dog_attack(dog)
     maxed = dog.level >= config.DOG_MAX_LEVEL
@@ -92,13 +100,7 @@ def _dog_card_text(user, dog: Dog, extra: str | None = None, other_dog: Dog | No
     if per:
         per_line = f"\n💫 شخصیت {per['emoji']} {esc(per['name'])}، {esc(per['desc'])}"
 
-    left = dog_svc.feeds_left(dog)
-    if left > 0:
-        food_line = f"🍖 امروز {fa_num(left)} غذا مونده، از دکمه‌های پایین غذاش بده"
-    else:
-        food_line = dog_svc.full_text(dog)
-        if other_dog is not None and dog_svc.feeds_left(other_dog) > 0:
-            food_line += f"\nیکمی به {esc(other_dog.name)} غذا بده هنوز {fa_num(dog_svc.feeds_left(other_dog))} تا غذا جا داره"
+    food_line = dog_svc.hunger_text(dog)
 
     text = (
         f"<b>🐕 آمار {esc(dog.name)}</b>\n\n"
@@ -120,8 +122,7 @@ async def render_dog_card(update: Update, dog: Dog | None, alert: str | None = N
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         left = dog_svc.feeds_left(dog)
-        others = [d for d in await dog_svc.get_user_dogs(s, user.id) if d.id != dog.id]
-        text = _dog_card_text(user, dog, extra, other_dog=others[0] if others else None)
+        text = _dog_card_text(user, dog, extra)
         markup = kb.dog_card_kb(dog, left)
         await s.commit()
     await respond(update, text, markup, alert=alert)
@@ -140,8 +141,9 @@ async def dog_card_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def dog_stats_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """«آمار [اسم سگ]»، کارت سگ با دکمه‌های غذا"""
-    m = re.match(r"^آمار[\s‌]+(.+)$", (update.message.text or "").strip())
+    """«تریاکی آمار [اسم سگ]»، کارت سگ با دکمه‌های غذا"""
+    from handlers.common import strip_bot_cmd
+    m = re.match(r"^آمار[\s‌]+(.+)$", strip_bot_cmd(update.message.text or ""))
     query = m.group(1) if m else ""
 
     async with session_scope() as s:
@@ -159,6 +161,7 @@ async def dog_stats_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def feed_picker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """دکمه «🍖 غذا بده» دیالوگ جدا نمیاره، همون کارت آمار سگ میاد تا از اونجا غذا بدی"""
     dog_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -167,29 +170,14 @@ async def feed_picker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if not dog or dog.user_id != user.id:
             await s.commit()
             return await render_my_dogs(update, alert="❌ همچین سگی نداری")
-
-        left = dog_svc.feeds_left(dog)
-        if left <= 0:
-            await s.commit()
-            return await render_my_dogs(update, alert=dog_svc.full_text(dog))
-        if dog.level >= config.DOG_MAX_LEVEL:
-            await s.commit()
-            return await render_my_dogs(update, alert=f"⭐ {dog.name} مکس لوله")
-
-        text = (
-            f"<b>🍖 غذا برای {esc(dog.name)}</b>\n\n"
-            f"امروز {fa_num(left)} غذای دیگه داری\n"
-            "هر غذا همون لحظه خریده و خورده میشه\n\n"
-            "کدومشو بدی؟"
-        )
-        markup = kb.feed_foods_kb(dog.id)
         await s.commit()
 
-    await respond(update, text, markup)
+    await render_dog_card(update, dog)
 
 
 async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _, _, dog_id, food_key = parts(update)
+    dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         dog = await s.get(Dog, int(dog_id))
@@ -199,6 +187,10 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return await render_my_dogs(update, alert="❌ همچین سگی نداری")
 
         ok, msg, notes = await dog_svc.feed_dog(s, user, dog, food_key)
+        if ok:
+            from services import quests as dq_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "feed")
+            uname = users.display_name(user)
         cash = user.cash
         await s.commit()
 
@@ -210,6 +202,8 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if notes:
         extra += "\n" + "\n".join(notes)
     await render_dog_card(update, dog, alert="🍖 نوش جون", extra=extra)
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 # ───────── رها کردن سگ 🕊 ─────────
@@ -235,10 +229,10 @@ async def release_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def release_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای رها کردن، فقط صاحب سگ"""
-    _, _, dog_id, owner_tg = parts(update)
+    """اجرای رها کردن، فقط صاحب سگ (دیتا: relcf:<dog_id>:<tg_id>)"""
+    _, dog_id, owner_tg = parts(update)
     if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer("این سگ مال تو نیس 😅", show_alert=True)
+        await update.callback_query.answer()  # غریبه هیچ واکنشی نمی‌بینه
         return
 
     async with session_scope() as s:

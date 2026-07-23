@@ -117,19 +117,20 @@ def harvest_cooldown_left(user: User) -> int:
     return max(0, int(left))
 
 
-async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str | None]:
+async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str | None, tuple]:
     """
     برداشت همه زمین‌های آماده
-    خروجی: (موفق, پیام کوتاه برای alert, متن اضافه برای نمایش توی مزرعه)
+    خروجی: (موفق, پیام کوتاه برای alert, متن اضافه برای نمایش توی مزرعه,
+            جفت (کوئست‌های روزانه تکمیل‌شده, تعداد مونده))
     """
     left = harvest_cooldown_left(user)
     if left:
-        return False, f"⏳ هر 2 دقیقه یه بار میشه برداشت کرد، {fa_dur(left)} مونده", None
+        return False, f"⏳ هر 2 دقیقه یه بار میشه برداشت کرد، {fa_dur(left)} مونده", None, ([], 0)
 
     plots = await get_user_plots(session, user.id)
     ready = [p for p in plots if p.current_status()[0] == "ready"]
     if not ready:
-        return False, "▫️ چیزی آماده برداشت نیس", None
+        return False, "▫️ چیزی آماده برداشت نیس", None, ([], 0)
 
     # افکت‌های جهان: کیفیت برداشت ⭐ + آب و هوا 🌦 + بازار سیاه 📈
     from services import world as world_svc
@@ -171,6 +172,10 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     from services import teams as team_svc
     quest_msg = await team_svc.record_harvest(session, user, len(ready))
 
+    # قلاب کوئست روزانه، به تعداد محصول برداشت‌شده
+    from services import quests as dq_svc
+    dq = await dq_svc.track(session, user, "harvest", len(item_lines))
+
     extra = "\n".join(item_lines)
     extra += f"\n\n💰 مجموع {money(total_gain)} خالص گیرت اومد"
     if total_xp:
@@ -182,7 +187,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         extra += "\n\n" + quest_msg
     if notes:
         extra += "\n" + "\n".join(notes)
-    return True, f"💰 {money(total_gain)}", extra
+    return True, f"💰 {money(total_gain)}", extra, dq
 
 
 # ───────── آپگرید ─────────

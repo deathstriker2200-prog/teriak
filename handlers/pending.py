@@ -9,6 +9,7 @@ from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 import config
 from database import session_scope
+from keyboards import keyboards as kb
 from services import bank as bank_svc
 from services import dogs as dog_svc
 from services import teams, users
@@ -50,6 +51,8 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         norm = normalize_fa(text)
+        if norm == "تریاکی" or norm.startswith("تریاکی "):
+            return  # دستور با پیشوند تریاکی رو نباید به عنوان ورودی معلق قورت بدن
         if norm != "لغو" and (norm in _KNOWN_TEXTS or norm.startswith(_KNOWN_PREFIXES)):
             return  # دستوره، بذار بقیه هندلرها بگیرنش
 
@@ -62,18 +65,35 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_html(f"<b>{esc(msg)}</b>")
             raise ApplicationHandlerStop()
 
-        # ── اسم سگ بعد از پرداخت ──
+        # ── اسم سگ بعد از «خرید سگ»، فاکتور نهایی با نژاد و اسم و قیمت میاد ──
         if action == "dogname":
-            ok, res = await dog_svc.finalize_dog(s, user, text)
+            dog_key = user.pending_value or ""
+            cfg = config.DOGS.get(dog_key)
+            if not cfg:
+                user.pending_action = None
+                user.pending_value = None
+                await s.commit()
+                await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از شاپ شروع کن")
+                raise ApplicationHandlerStop()
+
+            dogs = await dog_svc.get_user_dogs(s, user.id)
+            ok, display, why = dog_svc.check_dog_name(dogs, text)
+            if not ok:
+                await s.commit()
+                await update.message.reply_html(why)  # pending می‌مونه تا اسم درست بفرسته
+                raise ApplicationHandlerStop()
+
+            user.pending_action = None
+            user.pending_value = None
             await s.commit()
-            if ok:
-                await update.message.reply_html(
-                    f"<b>🐕 {esc(res)} شد رفیق جدیدت</b>\n\n"
-                    f"باهوشه و به اسمش جواب میده 😎\n"
-                    f"هر وقت خواستی بنویس «آمار {esc(res)}» تا کارتو ببینی و از همونجا غذاش بدی"
-                )
-            else:
-                await update.message.reply_html(res)
+            await update.message.reply_html(
+                f"<b>🐕 خرید {esc(cfg['breed'])}</b>\n\n"
+                f"🐾 نژاد {esc(cfg['breed'])}\n"
+                f"📛 اسم {esc(display)}\n"
+                f"💸 قیمت {money(cfg['price'])}\n\n"
+                "معامله‌ست؟",
+                reply_markup=kb.tx_confirm_kb("dog", dog_key, update.effective_user.id, display),
+            )
             raise ApplicationHandlerStop()
 
         # ── مبلغ واریز/برداشت بانک (بعد از دکمه‌های «بانک») ──
@@ -141,22 +161,27 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await update.message.reply_html(out)
             raise ApplicationHandlerStop()
 
-        # ── اسم تیم بعد از «ساخت تیم» ──
+        # ── اسم تیم بعد از «ساخت تیم»، فاکتور تایید ساخت میاد ──
         if action == "teamname":
-            ok, res = await teams.create_team(s, user, text)
-            if ok:
-                user.pending_action = None
-                user.pending_value = None
+            ok_name, clean, why = teams.validate_team_name(text)
+            if not ok_name:
+                await s.commit()
+                await update.message.reply_html(why)  # pending می‌مونه تا اسم درست بفرسته
+                raise ApplicationHandlerStop()
+            if await teams.get_team_by_name(s, clean):
+                await s.commit()
+                await update.message.reply_html(f"🏴 تیمی با اسم «{esc(clean)}» از قبل هست، یه اسم دیگه بفرست")
+                raise ApplicationHandlerStop()
+
+            display = " ".join(str(text).split())
+            user.pending_action = "teamcf"
+            user.pending_value = display[:48]
             await s.commit()
-            if ok:
-                await update.message.reply_html(
-                    f"<b>🏴 تیم «{esc(res)}» ساخته شد</b>\n\n"
-                    f"📜 کوئست‌های روزانه با «کوئست»\n"
-                    f"⛏ کنده‌کاری تیمی با «کنده کاری تیمی»\n"
-                    f"✏️ بیوی تیم با «ست بیو تیم [متن]»\n"
-                    f"📊 آمار تیم با «تیم من»\n\n"
-                    f"به رفقات بگو بنویسن «جوین تیم {esc(res)}» 😈"
-                )
-            else:
-                await update.message.reply_html(res)
+            await update.message.reply_html(
+                f"<b>🏴 ساخت تیم «{esc(display)}»</b>\n\n"
+                f"💸 هزینه ساخت {money(config.TEAM_CREATE_COST)}\n"
+                f"👑 تو رهبرش میشی و تا {fa_num(config.TEAM_MAX_MEMBERS)} نفر عضو میگیره\n\n"
+                "می‌سازیمش؟",
+                reply_markup=kb.team_create_confirm_kb(update.effective_user.id),
+            )
             raise ApplicationHandlerStop()

@@ -12,11 +12,35 @@ from services import users as user_svc
 from utils import now_utc
 
 
+# ───────── سپر محافظ 🛡 ─────────
+
+def shield_left(user: User) -> int:
+    """ثانیه مونده از سپر محافظ، صفر یعنی سپری نیس"""
+    if not user.shield_until:
+        return 0
+    left = (user.shield_until - now_utc()).total_seconds()
+    return max(0, int(left))
+
+
+def give_shield(user: User) -> None:
+    """به هدف حمله سپر بده، ۱۵ دقیقه کسی نمی‌تونه بزنتش"""
+    from datetime import timedelta
+    user.shield_until = now_utc() + timedelta(minutes=config.ATTACK_SHIELD_MINUTES)
+
+
 # ───────── استت‌ها ─────────
 
 def _effective_bonus(base: int, user_level: int) -> int:
     """قدرت آیتم با بونس لول کاربر"""
     return int(base * (1 + config.LEVEL_ITEM_BONUS * max(0, user_level - 1)))
+
+
+def weapon_power(item_keys: list[str], user_level: int) -> int:
+    """قدرت موثر بهترین سلاح، مبنای دمیج نمایشی نبرد"""
+    base = max(
+        (config.WEAPONS[k]["attack"] for k in item_keys if k in config.WEAPONS), default=0
+    )
+    return _effective_bonus(base, user_level)
 
 
 def combat_stats(user: User, item_keys: list[str], dogs: list) -> tuple[int, int]:
@@ -74,12 +98,15 @@ def cooldown_left(user: User) -> int:
 
 
 async def find_target(session: AsyncSession, user: User) -> User | None:
-    """یه هدف رندوم هم‌لول، برای جستجوی منوی حمله"""
+    """یه هدف رندوم هم‌لول، برای جستجوی منوی حمله، سپردارها کنار گذاشته میشن"""
     lo = max(1, user.level - config.ATTACK_TARGET_LEVEL_RANGE)
     hi = user.level + config.ATTACK_TARGET_LEVEL_RANGE
     q = (
         select(User)
-        .where(User.id != user.id, User.level >= lo, User.level <= hi)
+        .where(
+            User.id != user.id, User.level >= lo, User.level <= hi,
+            (User.shield_until.is_(None)) | (User.shield_until <= now_utc()),
+        )
         .order_by(func.random())
         .limit(1)
     )
@@ -88,15 +115,23 @@ async def find_target(session: AsyncSession, user: User) -> User | None:
 
 # ───────── فرمول نبرد و سرقت ─────────
 
-def battle_roll(attacker_atk: int, defender_def: int) -> tuple[bool, int, int]:
+def win_chance(attacker_atk: int, defender_def: int) -> float:
     """
-    فرمول احتمالاتی: قدرت‌ها اول ضریب شانس می‌گیرن (۰٫۸۵ تا ۱٫۱۵)
-    بعد شانس برد مهاجم = حمله / (حمله + دفاع)
+    شانس برد مهاجم بر اساس اختلاف قدرت دو طرف
+    قدرت مساوی، ۵۰/۵۰ | اختلاف زیاد، قوی‌تر شانسش بیشتره ولی هیچ‌وقت ۱۰۰% تضمینی نیس
     """
-    a = attacker_atk * random.uniform(0.85, 1.15)
-    d = defender_def * random.uniform(0.85, 1.15)
-    win_chance = a / (a + d)
-    return random.random() < win_chance, round(a), round(d)
+    total = attacker_atk + defender_def
+    if total <= 0:
+        return 0.5
+    x = (attacker_atk - defender_def) / total
+    chance = 0.5 + x * config.ATTACK_CHANCE_SCALE
+    return min(config.ATTACK_WIN_MAX_CHANCE, max(config.ATTACK_WIN_MIN_CHANCE, chance))
+
+
+def display_damage(weapon_eff: int) -> int:
+    """دمیج نمایشی بر اساس قدرت سلاح، دست خالی هم مشتشو داره"""
+    base = max(5, weapon_eff)
+    return int(base * random.uniform(1.0, 1.6))
 
 
 def steal_amount(
@@ -140,10 +175,14 @@ def cash_bucket(cash: int) -> str:
 
 # ───────── اجرای کامل حمله (مشترک بین منو و ریپلای گروه) ─────────
 
-async def execute_attack(session: AsyncSession, user: User, target: User) -> dict:
+async def execute_attack(
+    session: AsyncSession, user: User, target: User, break_shield: bool = False
+) -> dict:
     """
     همه چک‌ها + محاسبات + تغییرات دیتابیس
     خروجی: دیکشنری نتیجه برای ساخت پیام، اگه ok نباشه reason داره
+    reason: cooldown | energy | self | shield_target | shield_self
+    break_shield=True یعنی مهاجم آگاهانه سپر خودشو شکسته و حمله کرده
     """
     left = cooldown_left(user)
     if left:
@@ -154,6 +193,16 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
 
     if target.id == user.id:
         return {"ok": False, "reason": "self"}
+
+    t_shield = shield_left(target)
+    if t_shield:
+        return {"ok": False, "reason": "shield_target", "left": t_shield}
+
+    self_shield = shield_left(user)
+    if self_shield and not break_shield:
+        return {"ok": False, "reason": "shield_self", "left": self_shield}
+    if self_shield:
+        user.shield_until = None  # تایید کرده بود، سپرش الان می‌شکنه
 
     user_items = await user_svc.get_item_keys(session, user.id)
     target_items = await user_svc.get_item_keys(session, target.id)
@@ -174,7 +223,7 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
     if tbuff_def:
         dfn = int(dfn * (1 + tbuff_def))
 
-    # افکت آب و هوا روی نبرد (طوفان −۱۰٪ حمله | مه +۲۰٪ دفاع)
+    # افکت آب و هوا روی نبرد (طوفان −۱۰% حمله | مه +۲۰% دفاع)
     from services import world as world_svc
     wkey, _ = await world_svc.current_weather(session)
     watk, wdef = world_svc.weather_combat_mods(wkey)
@@ -183,7 +232,7 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
     if wdef:
         dfn = max(1, int(dfn * (1 + wdef)))
 
-    # گرگ سیاه دفاع حریف رو خرد می‌کنه، تا ۳۰٪ بسته به لولش
+    # گرگ سیاه دفاع حریف رو خرد می‌کنه، تا ۳۰% بسته به لولش
     def_cut = dog_svc.rare_defense_cut(user_dogs)
     if def_cut:
         dfn = max(1, int(dfn * (1 - def_cut)))
@@ -192,12 +241,25 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
     user.energy -= config.ATTACK_ENERGY_COST
     user.last_attack_at = now_utc()
 
-    win, a_roll, d_roll = battle_roll(atk, dfn)
+    # نتیجه بر اساس شانس قدرت‌محور + دمیج نمایشی از قدرت سلاح + احتمال بحرانی
+    chance = win_chance(atk, dfn)
+    win = random.random() < chance
+    crit = random.random() < config.ATTACK_CRIT_CHANCE
+    if win:
+        dmg = display_damage(weapon_power(user_items, user.level))
+    else:
+        dmg = display_damage(weapon_power(target_items, target.level))
+    if crit:
+        dmg = int(dmg * config.ATTACK_CRIT_DMG_MULT)
+
     result: dict = {
         "ok": True,
         "win": win,
-        "a_roll": a_roll,
-        "d_roll": d_roll,
+        "a_pow": atk,
+        "d_pow": dfn,
+        "chance": chance,
+        "dmg": dmg,
+        "crit": crit,
         "amount": 0,
         "bonus": 0.0,
         "halved": False,
@@ -209,10 +271,15 @@ async def execute_attack(session: AsyncSession, user: User, target: User) -> dic
         "notes": [],
     }
 
+    # هدف هر حمله (برد یا باخت) برای مدتی سپر محافظ می‌گیره
+    give_shield(target)
+
     if win:
         amount, bonus, halved = steal_amount(
             target.cash, user_dogs, has_legend_armor(target_items), target_dogs
         )
+        if crit and amount:
+            amount = int(amount * config.ATTACK_CRIT_STEAL_MULT)
         target.cash -= amount
         user.cash += amount
         user.wins += 1

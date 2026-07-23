@@ -72,12 +72,12 @@ async def upload_backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         "<b>📤 آپلود بک‌آپ</b>\n\n"
         "فایل بک‌آپ رو همینجا بفرست (همون فایلی که /backup بهت داده)\n"
         "⚠️ اگه سالم باشه تمام اطلاعات فعلی ربات با اطلاعات فایل جایگزین میشه\n\n"
-        "منصرف شدی بنویس «لغو بک‌آپ»"
+        "منصرف شدی بنویس «تریاکی لغو بک‌آپ»"
     )
 
 
 async def cancel_upload_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """«لغو بک‌آپ»، کنسل کردن حالت انتظار فایل"""
+    """«تریاکی لغو بک‌آپ»، کنسل کردن حالت انتظار فایل"""
     if not _is_admin(update):
         return
     if (context.user_data or {}).pop("await_backup", False):

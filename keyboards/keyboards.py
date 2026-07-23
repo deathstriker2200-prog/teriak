@@ -15,7 +15,7 @@ farm:up:<plot_id>           → cf:farm:up:<plot_id>
 shop:sec:<kind>             → بخش‌های شاپ: weap | arm | seed | dog | food
 shop:buy:<kind>:<key>       → cf:shop:buy:<kind>:<key>
 txcf:<kind>:<key>:<tg_id>   → تایید خرید دستور متنی (فقط خودش)
-dogs:feed:<dog_id>          → انتخاب غذا → dogs:feed:<dog_id>:<food> → cf:feed:<dog_id>:<food>
+dogs:feed:<dog_id>          → کارت آمار سگ با همان دکمه‌های غذا (cf:feed:<dog_id>:<food>)
 att:find                    → cf:att:<target_id>
 menu:team | team:quests | team:mine | team:top | team:leave | team:disband
 tmcf:<leave|disband>:<tg_id> → تایید ترک/انحلال تیم (فقط خودش)
@@ -59,6 +59,8 @@ def main_menu_kb() -> InlineKeyboardMarkup:
          _btn("🏴 تیم من", "menu:team", PRIMARY)],
         [_btn("🏦 بانک", "menu:bank", PRIMARY),
          _btn("📊 رتبه‌بندی", "menu:rank", PRIMARY)],
+        [_btn("📅 کوئست‌های روزانه", "menu:dquests", PRIMARY),
+         _btn("📖 راهنما", "help:menu", PRIMARY)],
     ]
     if BOT_USERNAME:
         rows.append([InlineKeyboardButton(
@@ -299,6 +301,7 @@ def shop_seed_kb(user: User, stock: dict[str, int]) -> InlineKeyboardMarkup:
                 f"{s.get('emoji', '🌱')} {s['name']} | {money_tp(s['price'])}{have_txt}",
                 f"shop:buy:seed:{key}", PRIMARY,
             )])
+    rows.append([_btn("🌱 مزرعه من", "menu:farm", PRIMARY)])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -356,7 +359,7 @@ def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
                 f"cf:feed:{dog.id}:{key}", SUCCESS,
             )])
     elif feeds_left <= 0:
-        rows.append([_btn("🍖 سیره، امروز دیگه غذا نمی‌خوره", "noop:feedinfo", DANGER)])
+        rows.append([_btn("🍖 سیر شده", "noop:feedinfo", DANGER)])
     rows.append([_btn("🔙 سگ‌های من", "menu:dogs", PRIMARY),
                  _btn("🕊 رهاش کن", f"dog:rel:{dog.id}", DANGER)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
@@ -371,15 +374,13 @@ def release_confirm_kb(dog_id: int, tg_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-def feed_foods_kb(dog_id: int) -> InlineKeyboardMarkup:
-    rows = []
-    for key, f in config.DOG_FOODS.items():
-        rows.append([_btn(
-            f"{f['name']} | +{fa_num(f['xp'])} XP | {money_tp(f['price'])}",
-            f"cf:feed:{dog_id}:{key}", SUCCESS,
-        )])
-    rows.append([_btn("🔙 برگرد به سگ‌ها", "menu:dogs", PRIMARY)])
-    return InlineKeyboardMarkup(rows)
+def team_create_confirm_kb(tg_id: int) -> InlineKeyboardMarkup:
+    """تایید ساخت تیم بعد از اسم دادن، فقط خودش"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"teamcf:ok:{tg_id}", SUCCESS),
+        _btn("❌ لغو", f"teamcf:no:{tg_id}", DANGER),
+    ]])
+
 
 
 # ───────── حمله ─────────
@@ -406,11 +407,28 @@ def attack_result_kb() -> InlineKeyboardMarkup:
     ])
 
 
+def shield_break_kb(confirm_data: str, cancel_data: str = "cl") -> InlineKeyboardMarkup:
+    """تایید شکستن سپر محافظ برای حمله، با تایید سپر پاک میشه و حمله انجام میشه"""
+    return InlineKeyboardMarkup([
+        [_btn("✅ شکستن سپر و حمله", confirm_data, SUCCESS)],
+        [_btn("❌ انصراف", cancel_data, DANGER)],
+    ])
+
+
 # ───────── رتبه‌بندی ─────────
 
 def rank_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [_btn("🔃 رفرش", "menu:rank", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+# ───────── کوئست‌های روزانه 📅 ─────────
+
+def dquests_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("🔃 رفرش", "menu:dquests", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -520,7 +538,7 @@ def team_mine_kb() -> InlineKeyboardMarkup:
 
 def team_bank_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [_btn("💰 واریز به بانک تیم | آموزش: «تیم واریز 1200»", "noop:depinfo", PRIMARY)],
+        [_btn("💰 واریز به بانک تیم | آموزش: «تریاکی تیم واریز 1200»", "noop:depinfo", PRIMARY)],
         [_btn("🔙 تیم من", "menu:team", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])

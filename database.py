@@ -40,6 +40,9 @@ _NEW_COLUMNS = {
         ("last_search_at", "DATETIME"),
         ("last_casino_at", "DATETIME"),
         ("last_seen_at", "DATETIME"),
+        ("shield_until", "DATETIME"),
+        ("dq_date", "VARCHAR(10)"),
+        ("dq_data", "VARCHAR(1024)"),
     ],
     "plots": [
         ("built_at", "DATETIME"),

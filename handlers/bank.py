@@ -1,5 +1,5 @@
 """
-بانک شخصی 🏦، «بانک» با دکمه‌های واریز/برداشت | «واریز 1200» | «برداشت 1200»
+بانک شخصی 🏦، «تریاکی بانک» با دکمه‌های واریز/برداشت | «تریاکی واریز 1200» | «تریاکی برداشت 1200»
 پول بانک موقع حمله دزدیده نمیشه، واریز/برداشت با دکمه، مبلغ رو با پیام بعدی می‌پرسه
 """
 
@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import respond
+from handlers.common import respond, strip_bot_cmd
 from keyboards import keyboards as kb
 from services import users
 from services import bank as bank_svc
@@ -23,8 +23,8 @@ def _bank_text(user) -> str:
         f"📦 ظرفیت {bar(user.bank_balance, cap)} {fa_num(user.bank_balance)}/{fa_num(cap)}\n"
         f"⭐ لول بانک {fa_num(user.bank_level)}\n\n"
         "🛡 پولی که تو بانکه موقع حمله دزدیده نمیشه، امنه\n\n"
-        "💰 واریز با دستور «واریز 1200»\n"
-        "💸 برداشت با دستور «برداشت 1200»"
+        "💰 واریز با دستور «تریاکی واریز 1200»\n"
+        "💸 برداشت با دستور «تریاکی برداشت 1200»"
     )
 
 
@@ -48,7 +48,7 @@ async def bank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def _amount_cmd(update: Update, action: str, sample: str) -> int | None:
     """خواندن مبلغ از آخر دستور، نامعتبر/بدون مبلغ → پیام راهنما و None"""
-    txt = (update.message.text or "").strip()
+    txt = strip_bot_cmd(update.message.text or "")
     p = txt.split(None, 1)
     amount = parse_amount(p[1]) if len(p) > 1 else None
     if amount is None:
@@ -57,7 +57,7 @@ async def _amount_cmd(update: Update, action: str, sample: str) -> int | None:
 
 
 async def deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    amount = await _amount_cmd(update, "dep", "واریز 1200")
+    amount = await _amount_cmd(update, "dep", "تریاکی واریز 1200")
     if amount is None:
         return
     async with session_scope() as s:
@@ -74,7 +74,7 @@ async def deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def withdraw_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    amount = await _amount_cmd(update, "wd", "برداشت 1200")
+    amount = await _amount_cmd(update, "wd", "تریاکی برداشت 1200")
     if amount is None:
         return
     async with session_scope() as s:

@@ -19,12 +19,17 @@ from utils import esc, fa_dur, fa_num, money, money_tp
 # ═════════ جستجو 🔍 ═════════
 
 async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
         dogs = await dog_svc.get_user_dogs(s, user.id)
         luck = dog_svc.search_luck(dogs)
         res = await world_svc.do_search(s, user, luck=luck)
+        if res["status"] != "cooldown":
+            from services import quests as dq_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "search")
+            uname = users.display_name(user)
         cash = user.cash
         await s.commit()
 
@@ -55,6 +60,8 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if luck > 1:
         text += "\n\n🍀 سگ خوش‌شانست شانس خوبت رو بیشتر کرد"
     await respond(update, text, kb.home_kb())
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 # ═════════ آب و هوا 🌦 ═════════
@@ -79,7 +86,7 @@ async def weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         lines.append("افکت خاصی فعال نیست، هوا عادیه")
     else:
         lines.append("افکت‌های فعلی:")
-        for b in w.get("boosts", []):
+        for b in w.get("effects", []):
             lines.append(f"▫️ {b}")
     lines.append("")
     lines.append("🌦 هر 2 ساعت عوض میشه و تو گروه‌های فعال اعلام میشه")
@@ -108,11 +115,11 @@ async def _shelter_text(user) -> str:
         "",
         f"⭐ لول {fa_num(user.shelter_level)}" + (f" از {fa_num(config.SHELTER_MAX_LEVEL)}" if user.shelter_level else "، هنوز نداری"),
         "",
-        f"🛡 خسارت یورش پلیس {fa_num(int(cut * 100))}٪ کمتره",
-        f"🎲 شانس فرار کامل از یورش {fa_num(int(dodge * 100))}٪",
+        f"🛡 خسارت یورش پلیس {fa_num(int(cut * 100))}% کمتره",
+        f"🎲 شانس فرار کامل از یورش {fa_num(int(dodge * 100))}%",
         f"📦 ظرفیت انبار هر بذر {fa_num(cap)} تا",
         "",
-        "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30٪ محصولات انبار رو نابود می‌کنه، پناهگاه جلوته",
+        "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30% محصولات انبار رو نابود می‌کنه، پناهگاه جلوته",
     ]
     if user.shelter_level < config.SHELTER_MAX_LEVEL:
         price = world_svc.shelter_price(user.shelter_level + 1)
@@ -182,7 +189,7 @@ async def casino_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     text = (
         "<b>🎰 قمارخانه</b>\n\n"
-        f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}٪ | برد = {config.CASINO_WIN_MULT} برابر شرط\n"
+        f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}% | برد = {config.CASINO_WIN_MULT} برابر شرط\n"
         f"یه دست هر {fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت\n"
         f"💵 نقدینگی {fa_num(cash)}TP\n\n"
         "میزتو انتخاب کن 🎲"
@@ -208,7 +215,7 @@ async def casino_bet_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"<b>🎰 میز {money(bet)}</b>\n\n"
         f"بردی → {money(prize)} جیبت میشه\n"
         f"باختی → {money(bet)} میره رو دیلر\n"
-        f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}٪\n\n"
+        f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}%\n\n"
         "قماره ها، بازی کنیم؟"
     )
     await respond(update, text, kb.confirm_kb(f"cascf:{bet}"))

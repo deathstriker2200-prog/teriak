@@ -1,15 +1,75 @@
-"""سیم‌کشی هندلرها به اپلیکیشن، دستورهای متنی هم PV هم گروه جواب میدن"""
+"""
+سیم‌کشی هندلرها به اپلیکیشن، دستورهای متنی هم PV هم گروه جواب میدن
+
+همه دستورهای متنی با پیشوند «تریاکی » میان، مثلا:
+«تریاکی زمین» «تریاکی شاپ» «تریاکی حمله» «تریاکی تیم پروفایل» «تریاکی تیم بانک»
+تنها استثنا «کنده کاری» ـه که بدون پیشوند کار می‌کنه
+
+قفل مالکیت دکمه‌ها: پیام دکمه‌داری که از دستور یه نفر تو گروه ساخته شده
+فقط خودش می‌تونه بزنه، بقیه هیچ واکنشی نمی‌بینن (handlers/common.owner_guard)
+"""
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, dogs, farm, mine, pending, profile, rank, shop, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, common, dogs, dquests, farm, mine, pending, profile, rank, shop, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
+T = rf"^تریاکی{S}+"  # پیشوند اجباری همه دستورها
+
+# ── دستورهای متنی فارسی (PV و گروه) ──
+# ترتیب مهمه: الگوهای اختصاصی بالاترن (مثلا «تریاکی تیم بانک» قبل از «تریاکی تیم [اسم]»)
+# فرمت: (اسم، الگو، هندلر)، تست‌ها روی همین جدول پترن‌ها رو چک می‌کنن
+TEXT_HANDLERS: list[tuple[str, str, object]] = [
+    ("team_mine", rf"{T}کنده{S}*کاری{S}*تیمی!?$|{T}استخراج{S}*تیمی!?$", team.team_mine_text),
+    ("mine", r"^کنده[\s‌]*کاری!?$", mine.mine_cmd),  # تنها دستور بدون پیشوند تریاکی
+    ("shop", rf"{T}شاپ!?$|{T}فروشگاه!?$", textcmd.shop_text),
+    ("profile", rf"{T}پروفایل!?$", textcmd.profile_text),
+    ("attack", rf"{T}حمله!?$", textcmd.attack_text),
+    ("harvest", rf"{T}برداشت{S}*محصول!?$|{T}برداشت!?$", textcmd.harvest_text),
+    ("buy_dog", rf"{T}خرید{S}+سگ{S}+(.+)$", textcmd.buy_dog_text),
+    ("buy", rf"{T}خرید{S}+(.+)$", textcmd.buy_text),
+    ("plant", rf"{T}کاشت{S}+(.+)$", textcmd.plant_text),
+    ("mydogs", rf"{T}سگ{S}*های{S}*من!?$|{T}سگ{S}*هام!?$|{T}سگ{S}*ها!?$", textcmd.dogs_text),
+    ("farm", rf"{T}مزرعه!?$|{T}زمین{S}*های{S}*من!?$|{T}زمین{S}*هام!?$|{T}زمین{S}*ها!?$|{T}زمین!?$", textcmd.farm_text),
+    ("rank", rf"{T}رتبه!?$|{T}رتبه{S}*بندی!?$|{T}لیدربرد!?$|{T}لیدر{S}*برد!?$", rank.rank_cb),
+    ("dogstats", rf"{T}آمار{S}+(.+)$", dogs.dog_stats_text),
+    # ── تیم ──
+    ("team_bld", rf"{T}تیم{S}+ساختمان(?:{S}*ها)?!?$|{T}تیم{S}+ساخت!?$", team.buildings_text),
+    ("team_profile", rf"{T}تیم{S}+پروفایل!?$", team.team_profile_text),
+    ("roster", rf"{T}تیم{S}+عضویت!?$", team.roster_text),
+    ("team_top", rf"{T}تیم{S}+لیدربرد!?$|{T}تیم{S}+لیدر{S}*برد!?$", team.top_teams_text),
+    ("team_quests", rf"{T}تیم{S}+(?:کوئست|چالش)!?$", team.quests_text),
+    ("team_bank", rf"{T}تیم{S}+بانک!?$", team.team_bank_text),
+    ("team_dep", rf"{T}تیم{S}+واریز(?:{S}+(.+))?!?$", team.team_deposit_text),
+    ("team_up", rf"{T}تیم{S}+ارتقا{S}+(?:حمله|دفاع)!?$", team.team_upgrade_text),
+    ("team_create", rf"{T}ساخت{S}+تیم!?$", team.create_team_text),
+    ("team_join", rf"{T}جوین{S}+تیم{S}+(.+)$", team.join_team_text),
+    ("team_leave", rf"{T}ترک{S}+تیم!?$", team.leave_confirm),
+    ("team_disband", rf"{T}انحلال{S}+تیم!?$", team.disband_confirm),
+    ("team_bio", rf"{T}(?:ست{S}+)?بیو{S}+تیم{S}+(.+)$", team.set_bio_text),
+    ("quests", rf"{T}کوئست{S}*تیم!?$|{T}کوئست!?$|{T}استعلام{S}*کوئست!?$", team.quests_text),
+    ("team", rf"{T}تیم(?:{S}+(.+))?!?$", team.team_text),
+    ("backup_cancel", rf"{T}لغو{S}*بک{S}*آپ!?$", backup.cancel_upload_text),
+    # ── سیستم‌های جهان ──
+    ("search", rf"{T}جستجو!?$|{T}جست{S}*و{S}*جو!?$", world.search_cmd),
+    ("weather", rf"{T}وضعیت{S}+آب{S}+و{S}+هوا!?$|{T}آب{S}*و{S}*هوا!?$|{T}وضعیت{S}+هواشناسی!?$|{T}وضعیت{S}+هوا!?$", world.weather_cmd),
+    ("market", rf"{T}وضعیت{S}+بازار!?$|{T}بازار{S}*سیاه!?$", world.market_cmd),
+    ("shelter", rf"{T}پناهگاه!?$", world.shelter_cmd),
+    ("casino", rf"{T}قمارخانه!?$|{T}قمار!?$", world.casino_cmd),
+    # ── بانک شخصی ──
+    ("bankhome", rf"{T}بانک!?$", bank.bank_cb),
+    ("bankdep", rf"{T}واریز{S}+(.+)$", bank.deposit_text),
+    ("bankwd", rf"{T}برداشت{S}+([0-9۰-۹٠-٩,٬]+)$", bank.withdraw_text),
+    ("help", rf"{T}راهنما!?$|{T}آموزشات!?$", start.help_cmd),
+]
 
 
 def register_handlers(app: Application) -> None:
     fa_text = filters.TEXT & ~filters.COMMAND
+
+    # ── گارد مالکیت دکمه‌ها، قبل از همه کالبک‌ها (غریبه هیچ واکنشی نمی‌بینه) ──
+    app.add_handler(CallbackQueryHandler(common.owner_guard), group=-2)
 
     # ── ورودی معلق (اسم سگ بعد خرید | اسم تیم بعد ساخت)، قبل از همه دستورهای متنی ──
     app.add_handler(MessageHandler(fa_text, pending.capture), group=-1)
@@ -35,54 +95,9 @@ def register_handlers(app: Application) -> None:
     # ── اد شدن ربات به گروه، خودش متن خوش‌آمد می‌فرسته ──
     app.add_handler(ChatMemberHandler(start.bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    # ── دستورهای متنی فارسی (PV و گروه) ──
-    # ترتیب اضافه شدن مهمه: الگوهای اختصاصی اول
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^کنده{S}*کاری{S}*تیمی!?$|^استخراج{S}*تیمی!?$"), team.team_mine_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(r"^کنده[\s‌]*کاری!?$"), mine.mine_cmd))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^شاپ!?$|^فروشگاه!?$|^[sS]hop$|^/{S}?[sS]hop$"), textcmd.shop_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(r"^پروفایل!?$|^[pP]rofile$"), textcmd.profile_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(r"^حمله!?$"), textcmd.attack_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^برداشت{S}*محصول!?$|^برداشت!?$"), textcmd.harvest_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^خرید{S}+سگ{S}+(.+)$"), textcmd.buy_dog_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^خرید{S}+(.+)$"), textcmd.buy_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^کاشت{S}+(.+)$"), textcmd.plant_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^سگ{S}*های{S}*من!?$"), textcmd.dogs_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^مزرعه!?$|^زمین{S}*های{S}*من!?$|^زمین{S}*هام!?$|^زمین{S}*ها!?$|^زمین!?$"), textcmd.farm_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^رتبه!?$|^رتبه{S}*بندی!?$|^لیدربرد!?$|^لیدر{S}*برد!?$"), rank.rank_cb))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^آمار{S}+(.+)$"), dogs.dog_stats_text))
-
-    # ── تیم ──
-    # الگوهای «تیم X» اختصاصی قبل از الگوی عمومی «تیم [اسم]»
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+ساختمان(?:{S}*ها)?!?$|^تیم{S}+ساخت!?$"), team.buildings_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+پروفایل!?$"), team.team_profile_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+عضویت!?$"), team.roster_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+لیدربرد!?$|^تیم{S}+لیدر{S}*برد!?$"), team.top_teams_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+(?:کوئست|چالش)!?$"), team.quests_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+بانک!?$"), team.team_bank_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+واریز(?:{S}+(.+))?!?$"), team.team_deposit_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم{S}+ارتقا{S}+(?:حمله|دفاع)!?$"), team.team_upgrade_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^ساخت{S}+تیم!?$"), team.create_team_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^جوین{S}+تیم{S}+(.+)$"), team.join_team_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^ترک{S}+تیم!?$"), team.leave_confirm))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^انحلال{S}+تیم!?$"), team.disband_confirm))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^(?:ست{S}+)?بیو{S}+تیم{S}+(.+)$"), team.set_bio_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^کوئست{S}*تیم!?$|^کوئست!?$|^استعلام{S}*کوئست!?$"), team.quests_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^تیم(?:{S}+(.+))?!?$"), team.team_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^لغو{S}*بک{S}*آپ!?$"), backup.cancel_upload_text))
-
-    # ── سیستم‌های جهان ──
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^جستجو!?$|^جست{S}*و{S}*جو!?$"), world.search_cmd))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^وضعیت{S}+آب{S}+و{S}+هوا!?$|^آب{S}*و{S}*هوا!?$|^وضعیت{S}+هواشناسی!?$|^وضعیت{S}+هوا!?$"), world.weather_cmd))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^وضعیت{S}+بازار!?$|^بازار{S}*سیاه!?$"), world.market_cmd))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^پناهگاه!?$"), world.shelter_cmd))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^قمارخانه!?$|^قمار!?$"), world.casino_cmd))
-
-    # ── بانک شخصی ──
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^بانک!?$"), bank.bank_cb))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(rf"^واریز{S}+(.+)$"), bank.deposit_text))
-    app.add_handler(MessageHandler(fa_text & filters.Regex(r"^برداشت[\s‌]+([0-9۰-۹٠-٩,٬]+)$"), bank.withdraw_text))
-
-    app.add_handler(MessageHandler(fa_text & filters.Regex(r"^راهنما!?$|^[hH]elp$"), start.help_cmd))
+    # ── دستورهای متنی فارسی (PV و گروه)، همه با پیشوند «تریاکی » به‌جز کنده کاری ──
+    for _name, pattern, func in TEXT_HANDLERS:
+        app.add_handler(MessageHandler(fa_text & filters.Regex(pattern), func))
 
     # ── فایل بک‌آپ (فقط بعد از /upload_backup و فقط ادمین) ──
     app.add_handler(MessageHandler(filters.ATTACHMENT & ~filters.COMMAND, backup.backup_doc))
@@ -96,6 +111,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(rank.rank_cb, pattern=r"^menu:rank$"))
     app.add_handler(CallbackQueryHandler(dogs.dogs_cb, pattern=r"^menu:dogs$"))
     app.add_handler(CallbackQueryHandler(team.team_cb, pattern=r"^menu:team$"))
+    app.add_handler(CallbackQueryHandler(dquests.daily_quests_cb, pattern=r"^menu:dquests$"))
 
     # ── مزرعه ──
     app.add_handler(CallbackQueryHandler(farm.buy_plot_confirm, pattern=r"^farm:buy$"))
@@ -121,11 +137,12 @@ def register_handlers(app: Application) -> None:
 
     # ── تیم (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(team.quests_text, pattern=r"^team:quests$"))
-    app.add_handler(CallbackQueryHandler(team.team_mine_text, pattern=r"^team:mine$"))
+    app.add_handler(CallbackQueryHandler(team.team_mine_text, pattern=r"^team:mine$"))  # دکمه جمعی
     app.add_handler(CallbackQueryHandler(team.top_teams_text, pattern=r"^team:top$"))
     app.add_handler(CallbackQueryHandler(team.leave_confirm, pattern=r"^team:leave$"))
     app.add_handler(CallbackQueryHandler(team.disband_confirm, pattern=r"^team:disband$"))
     app.add_handler(CallbackQueryHandler(team.team_confirm_cb, pattern=r"^tmcf:(?:leave|disband):\d+$"))
+    app.add_handler(CallbackQueryHandler(team.team_create_cb, pattern=r"^teamcf:(?:ok|no):\d+$"))
     app.add_handler(CallbackQueryHandler(team.buildings_cb, pattern=r"^team:bld$"))
     app.add_handler(CallbackQueryHandler(team.team_bank_text, pattern=r"^team:bank$"))
     app.add_handler(CallbackQueryHandler(team.team_upgrade_cb, pattern=r"^tbup:(?:atk|def):\d+$"))
@@ -136,7 +153,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(world.shelter_up_execute, pattern=r"^cf:shelter:up$"))
     app.add_handler(CallbackQueryHandler(world.casino_bet_confirm, pattern=r"^cas:bet:\d+$"))
     app.add_handler(CallbackQueryHandler(world.casino_execute, pattern=r"^cascf:\d+$"))
-    app.add_handler(CallbackQueryHandler(world.caravan_hit_cb, pattern=r"^cv:hit$"))
+    app.add_handler(CallbackQueryHandler(world.caravan_hit_cb, pattern=r"^cv:hit$"))  # دکمه جمعی
 
     # ── بانک شخصی (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(bank.bank_cb, pattern=r"^menu:bank$"))
@@ -146,7 +163,7 @@ def register_handlers(app: Application) -> None:
 
     # ── حمله ──
     app.add_handler(CallbackQueryHandler(attack.find_cb, pattern=r"^att:find$"))
-    app.add_handler(CallbackQueryHandler(attack.attack_execute, pattern=r"^cf:att:\d+$"))
+    app.add_handler(CallbackQueryHandler(attack.attack_execute, pattern=r"^cf:att:\d+(?::brk)?$"))
 
     # ── آموزشات (هلپ دکمه‌دار) ──
     app.add_handler(CallbackQueryHandler(start.help_section_cb, pattern=r"^help:sec:\w+$"))
@@ -154,7 +171,7 @@ def register_handlers(app: Application) -> None:
 
     # ── تایید دستورهای متنی (فقط خود کاربر، اسم سگ اختیاریه) ──
     app.add_handler(CallbackQueryHandler(textcmd.tx_confirm_cb, pattern=r"^txcf:\w+:\w+:\d+(?::.+)?$"))
-    app.add_handler(CallbackQueryHandler(textcmd.tx_attack_cb, pattern=r"^txatt:\d+:\d+$"))
+    app.add_handler(CallbackQueryHandler(textcmd.tx_attack_cb, pattern=r"^txatt:\d+:\d+(?::brk)?$"))
     app.add_handler(CallbackQueryHandler(textcmd.tx_cancel_cb, pattern=r"^txcl:\d+$"))
 
     # ── ادمین ──

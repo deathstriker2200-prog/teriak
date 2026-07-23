@@ -107,7 +107,7 @@ def _picker_text(stock: dict[str, int]) -> str:
     return (
         "<b>🌾 انبار بذرت خالیه</b>\n\n"
         "از بخش 🌱 بذرهای شاپ بذر بخر\n"
-        "یا تو گروه بنویس «خرید ماری جوانا»"
+        "یا تو گروه بنویس «تریاکی خرید ماری جوانا»"
     )
 
 
@@ -162,25 +162,38 @@ async def plant_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _, _, plot_id, seed_key = parts(update)
+    dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         plot = await farming.get_plot(s, user.id, int(plot_id))
         if not plot:
             alert = "❌ همچین زمینی نداری"
         else:
-            _, alert = await farming.plant(s, user, plot, seed_key)
+            ok, alert = await farming.plant(s, user, plot, seed_key)
+            if ok:
+                from services import quests as dq_svc
+                dq_done, dq_left = await dq_svc.track(s, user, "plant")
+                uname = users.display_name(user)
         await s.commit()
     await render_farm(update, alert=alert)
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 # ───────── برداشت (همه آماده‌ها، کولدون ۲ دقیقه) ─────────
 
 async def harvest_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        _, alert, extra = await farming.harvest_all(s, user)
+        ok, alert, extra, dq = await farming.harvest_all(s, user)
+        if ok:
+            dq_done, dq_left = dq
+            uname = users.display_name(user)
         await s.commit()
     await render_farm(update, extra=extra, alert=alert)
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 # ───────── آپگرید ─────────
@@ -207,8 +220,8 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             f"<b>⬆️ لول‌آپ زمین، تا لول {fa_num(config.PLOT_MAX_LEVEL)}</b>\n\n"
             f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n"
             f"💸 هزینه {money(price)}\n"
-            f"📈 درآمد 25٪ بهتر میشه (×{old_y:.2f} ← ×{new_y:.2f})\n"
-            f"⚡ سرعت رشد 40٪ بیشتر میشه (×{old_sp:.1f} ← ×{new_sp:.1f})\n\n"
+            f"📈 درآمد 25% بهتر میشه (×{old_y:.2f} ← ×{new_y:.2f})\n"
+            f"⚡ سرعت رشد 40% بیشتر میشه (×{old_sp:.1f} ← ×{new_sp:.1f})\n\n"
             "انجامش بدیم؟"
         )
         markup = kb.confirm_kb(f"cf:farm:up:{plot.id}")

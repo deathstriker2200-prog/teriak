@@ -13,7 +13,7 @@ from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import GameMeta, GroupActivity, SeedStock, User
+from models import GameMeta, GroupActivity, Plot, SeedStock, User
 from services.farming import get_stock, add_seed_stock
 from services.users import add_xp
 from utils import fa_dur, fa_num, money, now_utc
@@ -58,8 +58,21 @@ def weather_of(key: str) -> dict:
     return config.WEATHERS.get(key) or config.WEATHERS["normal"]
 
 
+def _effect_emoji(line: str) -> str:
+    """ایموجی خط افکت اعلان آب و هوا بر اساس موضوعش"""
+    if "رشد" in line:
+        return "🌱"
+    if "دفاع" in line:
+        return "🛡"
+    if "حمله" in line:
+        return "⚔️"
+    if "فروش" in line:
+        return "💰"
+    return "⭐"
+
+
 def weather_announce_text(key: str) -> str:
-    """پیام اعلان آب و هوای جدید برای گروه‌ها"""
+    """پیام اعلان آب و هوای جدید برای گروه‌ها، افکت به زبون کامل گفته میشه"""
     w = weather_of(key)
     lines = ["<b>🌦 وضعیت آب و هوای جدید</b>", ""]
     if key == "normal":
@@ -67,8 +80,8 @@ def weather_announce_text(key: str) -> str:
         lines.append("محله به روال خودش برگشته")
     else:
         lines.append(f"{w['emoji']} {w['name']} آغاز شد")
-        for b in w.get("boosts", []):
-            lines.append(f"🌱 {b}، تا 2 ساعت آینده")
+        for b in w.get("announce", []):
+            lines.append(f"{_effect_emoji(b)} {b}، تا 2 ساعت آینده")
     return "\n".join(lines)
 
 
@@ -102,7 +115,32 @@ async def ensure_weather(session: AsyncSession) -> tuple[str, object | None]:
     new_until = now + timedelta(seconds=config.WEATHER_ROLL_SECONDS)
     await _meta_set(session, "weather_key", key)
     await _meta_set(session, "weather_until", new_until.isoformat())
+    # افکت هوای جدید همون لحظه روی محصول‌های در حال رشد هم اعمال میشه
+    await apply_growth_rescale(session, cur_key, key)
     return key, {"key": key, "until": new_until}
+
+
+async def apply_growth_rescale(session: AsyncSession, old_key: str, new_key: str) -> int:
+    """
+    با عوض شدن آب و هوا، تایمر زمین‌های در حال رشد بر اساس سرعت جدید تنظیم میشه
+    کار باقی‌مونده ثابت می‌مونه، فقط سرعتش با هوای جدید حساب میشه
+    خروجی: تعداد زمین‌هایی که تایمرشون عوض شد
+    """
+    old_speed = weather_grow_speed(old_key)
+    new_speed = weather_grow_speed(new_key)
+    if old_speed <= 0 or new_speed <= 0 or old_speed == new_speed:
+        return 0
+    mult = old_speed / new_speed
+    now = now_utc()
+    q = select(Plot).where(Plot.status == "growing", Plot.ready_at.isnot(None))
+    changed = 0
+    for p in (await session.execute(q)).scalars():
+        left = (p.ready_at - now).total_seconds()
+        if left <= 0:
+            continue
+        p.ready_at = now + timedelta(seconds=max(5, int(left * mult)))
+        changed += 1
+    return changed
 
 
 async def current_weather(session: AsyncSession) -> tuple[str, int]:
@@ -118,23 +156,23 @@ async def current_weather(session: AsyncSession) -> tuple[str, int]:
 
 
 def weather_grow_speed(key: str) -> float:
-    """ضریب سرعت رشد (باران +30٪ | گرمای شدید ۲۰٪− | سرمای شدید +15٪ زمان)"""
+    """ضریب سرعت رشد (باران +30% | گرمای شدید ۲۰%− | سرمای شدید +15% زمان)"""
     return weather_of(key).get("speed", 1.0)
 
 
 def weather_sell_mult(key: str) -> float:
-    """ضریب قیمت فروش (جشن برداشت +50٪)"""
+    """ضریب قیمت فروش (جشن برداشت +50%)"""
     return 1.0 + weather_of(key).get("sell_mod", 0.0)
 
 
 def weather_combat_mods(key: str) -> tuple[float, float]:
-    """(اصلاح حمله, اصلاح دفاع)، طوفان −10٪ موفقیت حمله | مه +20٪ دفاع"""
+    """(اصلاح حمله, اصلاح دفاع)، طوفان −10% موفقیت حمله | مه +20% دفاع"""
     w = weather_of(key)
     return w.get("atk_mod", 0.0), w.get("def_mod", 0.0)
 
 
 def weather_q5_bonus(key: str) -> float:
-    """شانس اضافه محصول ۵ ستاره (شب مهتابی +10٪)"""
+    """شانس اضافه محصول ۵ ستاره (شب مهتابی +10%)"""
     return weather_of(key).get("q5", 0.0)
 
 
@@ -326,7 +364,7 @@ def casino_cooldown_left(user: User) -> int:
 
 async def casino_play(session: AsyncSession, user: User, bet: int) -> dict:
     """
-    یه دست قمار، ۴۰٪ برد ۶۰٪ باخت | برد = ۱٫۸ برابر شرط (تو بلندمدت ضرره)
+    یه دست قمار، ۴۰% برد ۶۰% باخت | برد = ۱٫۸ برابر شرط (تو بلندمدت ضرره)
     """
     if user.level < config.CASINO_MIN_LEVEL:
         return {"status": "locked"}
@@ -356,12 +394,12 @@ def shelter_price(level: int) -> int:
 
 
 def shelter_raid_cut(level: int) -> float:
-    """کاهش خسارت یورش، هر لول ۵٪"""
+    """کاهش خسارت یورش، هر لول ۵%"""
     return min(0.9, config.SHELTER_RAID_CUT_PER_LEVEL * level)
 
 
 def shelter_dodge_chance(level: int) -> float:
-    """شانس فرار کامل از یورش، هر لول ۴٪"""
+    """شانس فرار کامل از یورش، هر لول ۴%"""
     return min(0.5, config.SHELTER_DODGE_PER_LEVEL * level)
 
 
@@ -382,7 +420,7 @@ async def upgrade_shelter(session: AsyncSession, user: User) -> tuple[bool, str]
     user.shelter_level = next_level
     return True, (
         f"🏚 پناهگاهت رفت رو لول {fa_num(next_level)}\n"
-        f"🛡 خسارت یورش {fa_num(int(shelter_raid_cut(next_level) * 100))}٪ کمتره\n"
+        f"🛡 خسارت یورش {fa_num(int(shelter_raid_cut(next_level) * 100))}% کمتره\n"
         f"📦 ظرفیت انبار هر بذر {fa_num(seed_storage_cap(user))} تا شد"
     )
 

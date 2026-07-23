@@ -44,12 +44,12 @@ def upgrade_price(plot_level: int) -> int:
 # ───────── بذر و محصول ─────────
 
 def plot_yield_mult(plot_level: int) -> float:
-    """ضریب درآمد زمین تو لولش، هر لول ۲۵٪ بیشتر (×۱٫۲۵)"""
+    """ضریب درآمد زمین تو لولش، هر لول ۲۵% بیشتر (×۱٫۲۵)"""
     return config.PLOT_YIELD_PER_LEVEL ** max(0, plot_level - 1)
 
 
 def plot_speed_mult(plot_level: int) -> float:
-    """ضریب سرعت رشد زمین تو لولش، هر لول ۴۰٪ سرعت بیشتر (زمان ÷۱٫۴۰)"""
+    """ضریب سرعت رشد زمین تو لولش، هر لول ۴۰% سرعت بیشتر (زمان ÷۱٫۴۰)"""
     return config.PLOT_SPEED_PER_LEVEL ** max(0, plot_level - 1)
 
 
@@ -61,7 +61,7 @@ def crop_yield(seed_key: str, plot_level: int = 1, user_level: int = 1) -> int:
 
 
 def crop_grow_seconds(seed_key: str, plot_level: int = 1) -> int:
-    """مدت آماده شدن با ضریب سرعت لول زمین، هر لول آپ ۴۰٪ سرعت بیشتر"""
+    """مدت آماده شدن با ضریب سرعت لول زمین، هر لول آپ ۴۰% سرعت بیشتر"""
     minutes = config.SEEDS[seed_key]["grow_min"]
     return max(30, int(minutes * 60 / plot_speed_mult(plot_level)))
 

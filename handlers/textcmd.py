@@ -1,7 +1,7 @@
 """
-دستورهای متنی فارسی، هم PV هم گروه
-«شاپ» «پروفایل» «خرید چاقو» «خرید سگ دوبرمن» «کاشت ماری جوانا» «واریز 1200»
-«برداشت محصول» «حمله» (با ریپلای) «مزرعه» «سگ‌های من» «کنده کاری»
+دستورهای متنی فارسی، هم PV هم گروه، همه با پیشوند «تریاکی »
+«تریاکی شاپ» «تریاکی پروفایل» «تریاکی خرید چاقو» «تریاکی خرید سگ دوبرمن» «تریاکی کاشت ماری جوانا»
+«تریاکی واریز 1200» «تریاکی برداشت محصول» «تریاکی حمله» (با ریپلای) «تریاکی مزرعه» «تریاکی سگ‌های من»
 
 ⚠️ برای کار کردن تو گروه، Privacy Mode ربات باید توی BotFather خاموش باشه
 """
@@ -13,7 +13,7 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import format_attack_result, parts, respond
+from handlers.common import format_attack_result, parts, respond, strip_bot_cmd
 from handlers import dogs as dogs_h
 from handlers import farm as farm_h
 from handlers import profile as profile_h
@@ -27,9 +27,9 @@ from utils import esc, fa_dur, fa_num, find_by_name, money, normalize_fa
 # ───────── ابزار ─────────
 
 def _match_arg(update: Update) -> str:
-    """بخش بعد از فعل دستور، مثلا «چاقو» از «خرید چاقو»"""
-    text = update.message.text or ""
-    m = re.match(r"^\S+\s+(.+)$", text.strip())
+    """بخش بعد از فعل دستور، مثلا «چاقو» از «تریاکی خرید چاقو»"""
+    text = strip_bot_cmd(update.message.text or "")
+    m = re.match(r"^\S+\s+(.+)$", text)
     return m.group(1) if m else ""
 
 
@@ -64,16 +64,22 @@ async def buy_dog_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         names = " | ".join(d["name"] for d in config.DOGS.values())
         return await respond(update, f"🤷 سگی با این اسم پیدا نشد\n\nموجودی:\n{names}")
 
-    shown = custom_name or dog["name"]
-    name_hint = "" if custom_name else "\nبعد از پرداخت، اسمشو ازت می‌پرسم\n"
+    # اسم تو دستور نیومده، اول اسمش پرسیده میشه و بعد فاکتور میاد
+    if not custom_name:
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            ok, alert = await dog_svc.hold_dog(s, user, key)
+            await s.commit()
+        if not ok:
+            return await respond(update, alert)
+        return await respond(update, dogs_h.dog_name_question_text(dog))
+
     text = (
-        f"<b>🐕 خرید {esc(shown)}</b>\n\n"
+        f"<b>🐕 خرید {esc(dog['breed'])}</b>\n\n"
         f"🐾 نژاد {esc(dog['breed'])}\n"
-        f"💪 قدرت حمله {fa_num(dog['attack'])}\n"
-        f"🎖 {esc(dog['ability'])}\n"
-        f"💸 قیمت {money(dog['price'])}\n"
-        f"{name_hint}\n"
-        "می‌خریش؟"
+        f"📛 اسم {esc(custom_name)}\n"
+        f"💸 قیمت {money(dog['price'])}\n\n"
+        "معامله‌ست؟"
     )
     await respond(update, text, kb.tx_confirm_kb("dog", key, update.effective_user.id, custom_name))
 
@@ -117,7 +123,7 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     dog_name = p[4] if len(p) > 4 else None  # اسم دلخواه سگ
 
     if update.effective_user.id != int(owner_id):
-        await update.callback_query.answer("این فاکتور مال تو نیس 😅", show_alert=True)
+        await update.callback_query.answer()  # غریبه هیچ واکنشی نمی‌بینه
         return
 
     async with session_scope() as s:
@@ -139,6 +145,7 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         names = " | ".join(s["name"] for s in config.SEEDS.values())
         return await respond(update, f"🤷 محصولی با این اسم ندارم\n\nگزینه‌ها:\n{names}")
 
+    dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
 
@@ -155,18 +162,28 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             else:
                 msg = "🌱 همه زمین‌هات پره صبر کن یدونه آماده بشه"
         else:
-            _, msg = await farming.plant(s, user, empty, key)
+            ok, msg = await farming.plant(s, user, empty, key)
+            if ok:
+                from services import quests as dq_svc
+                dq_done, dq_left = await dq_svc.track(s, user, "plant")
+                uname = users.display_name(user)
         await s.commit()
 
     await respond(update, f"<b>🌱 کاشت</b>\n\n{esc(msg)}", kb.home_kb())
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 # ───────── برداشت متنی ─────────
 
 async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        ok, msg, extra = await farming.harvest_all(s, user)
+        ok, msg, extra, dq = await farming.harvest_all(s, user)
+        if ok:
+            dq_done, dq_left = dq
+            uname = users.display_name(user)
         await s.commit()
 
     if not ok:
@@ -174,6 +191,8 @@ async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     text = "<b>📦 برداشت</b>\n\n" + esc(extra or msg)
     await respond(update, text, kb.home_kb())
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 # ───────── حمله با ریپلای (گروه و PV)، با تاییدیه ─────────
@@ -185,7 +204,7 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return await respond(
             update,
             "<b>⚔️ حمله</b>\n\n"
-            "روی پیام هدفت ریپلای کن و بنویس «حمله»\n"
+            "روی پیام هدفت ریپلای کن و بنویس «تریاکی حمله»\n"
             "یا از منوی ⚔️ حمله هدف رندوم پیدا کن",
             kb.home_kb(),
         )
@@ -214,6 +233,27 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return await respond(update, "🤷 این هنوز وارد محله نشده، اول باید به بات /start بزنه")
 
         name = esc(users.display_name(target))
+
+        # هدف سپرداره، تا تموم شدن سپرش نمیشه زدش
+        t_shield = combat.shield_left(target)
+        if t_shield:
+            await s.commit()
+            return await respond(
+                update,
+                f"🛡 {name} سپر محافظ داره\n\n{fa_dur(t_shield)} دیگه دوباره می‌تونی بزنیش",
+            )
+
+        target_id = target.id
+
+        # خودش سپر داره، اول باید تایید کنه سپرشو می‌شکنه
+        if combat.shield_left(user):
+            await s.commit()
+            from handlers.attack import shield_prompt_text
+            return await respond(
+                update, shield_prompt_text(),
+                kb.shield_break_kb(f"txatt:{target_id}:{update.effective_user.id}:brk", f"txcl:{update.effective_user.id}"),
+            )
+
         text = (
             f"<b>⚔️ حمله به {name}</b>\n\n"
             f"⭐ لول {fa_num(target.level)}\n"
@@ -221,18 +261,19 @@ async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"هزینه حمله ⚡ {fa_num(config.ATTACK_ENERGY_COST)} انرژی\n\n"
             "مطمئنی رفیق؟"
         )
-        target_id = target.id
         await s.commit()
 
     await respond(update, text, kb.tx_attack_kb(target_id, update.effective_user.id))
 
 
 async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای حمله بعد از تایید، فقط خود مهاجم می‌تونه بزنه"""
-    _, target_id, owner_tg = parts(update)
+    """اجرای حمله بعد از تایید، فقط خود مهاجم می‌تونه بزنه (brk یعنی سپرشو تایید کرده بشکنه)"""
+    p = parts(update)
+    target_id, owner_tg = p[1], p[2]
+    break_shield = len(p) > 3 and p[3] == "brk"
 
     if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer("این دعوا مال تو نیس 😅", show_alert=True)
+        await update.callback_query.answer()  # غریبه هیچ واکنشی نمی‌بینه
         return
 
     async with session_scope() as s:
@@ -244,17 +285,33 @@ async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await s.commit()
             return await respond(update, "🤷 طرفت تیک انداخت رفت")
 
-        result = await combat.execute_attack(s, user, target)
+        result = await combat.execute_attack(s, user, target, break_shield=break_shield)
         target_name = esc(users.display_name(target))
+        dq_done, dq_left = [], 0
+        if result["ok"]:
+            from services import quests as dq_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "attack")
+        uname = users.display_name(user)
         await s.commit()
 
     if not result["ok"]:
+        if result["reason"] == "shield_self":
+            from handlers.attack import shield_prompt_text
+            return await respond(
+                update, shield_prompt_text(),
+                kb.shield_break_kb(f"txatt:{target_id}:{owner_tg}:brk", f"txcl:{owner_tg}"),
+            )
         msg = (
             f"⏳ هنوز {fa_dur(result['left'])} از کولدونت مونده"
-            if result["reason"] == "cooldown" else "⚡ انرژیت کمه"
+            if result["reason"] == "cooldown"
+            else f"🛡 طرف سپر محافظ داره، {fa_dur(result['left'])} دیگه میشه زدش"
+            if result["reason"] == "shield_target"
+            else "⚡ انرژیت کمه"
         )
         return await respond(update, msg)
     await respond(update, format_attack_result(result, target_name), kb.attack_result_kb())
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 async def tx_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -262,6 +319,6 @@ async def tx_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _, owner_tg = parts(update)
 
     if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer("مال تو نیس 😅", show_alert=True)
+        await update.callback_query.answer()  # غریبه هیچ واکنشی نمی‌بینه
         return
     await respond(update, "<b>😅 بی‌خیال شدیم</b>")

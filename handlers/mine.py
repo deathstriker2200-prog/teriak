@@ -13,6 +13,7 @@ from utils import fa_dur, money, now_utc
 
 
 async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
 
@@ -31,6 +32,10 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user.last_mine_at = now
             notes = users.add_xp(user, config.MINE_XP)
 
+            from services import quests as dq_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "mine")
+            uname = users.display_name(user)
+
             text = (
                 "<b>⛏ کنده‌کاری</b>\n\n"
                 f"{money(amount)} گیرت اومد\n"
@@ -44,3 +49,5 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await s.commit()
 
     await respond(update, text)
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)

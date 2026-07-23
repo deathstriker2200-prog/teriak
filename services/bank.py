@@ -29,14 +29,14 @@ def bank_upgrade_price(level: int) -> int:
 async def deposit(session: AsyncSession, user: User, amount: int) -> tuple[bool, str]:
     """واریز از جیب به بانک، تا سقف ظرفیت"""
     if amount <= 0:
-        return False, "❌ مبلغو درست بگو، مثلا «واریز 1200»"
+        return False, "❌ مبلغو درست بگو، مثلا «تریاکی واریز 1200»"
     if user.cash < amount:
         return False, f"❌ این همه پول نقد نداری، جیبت {money(user.cash)} ـه"
     cap = bank_capacity(user.bank_level)
     if user.bank_balance + amount > cap:
         room = max(0, cap - user.bank_balance)
         if room <= 0:
-            return False, "🏦 بانکت پره دیگه، اول ارتقاش بده «بانک»"
+            return False, "🏦 بانکت پره دیگه، اول ارتقاش بده «تریاکی بانک»"
         return False, f"🏦 ظرفیت بانکت تا {money(cap)} ـه، فقط {money(room)} جا داره"
     user.cash -= amount
     user.bank_balance += amount
@@ -46,7 +46,7 @@ async def deposit(session: AsyncSession, user: User, amount: int) -> tuple[bool,
 async def withdraw(session: AsyncSession, user: User, amount: int) -> tuple[bool, str]:
     """برداشت از بانک به جیب"""
     if amount <= 0:
-        return False, "❌ مبلغو درست بگو، مثلا «برداشت 1200»"
+        return False, "❌ مبلغو درست بگو، مثلا «تریاکی برداشت 1200»"
     if user.bank_balance < amount:
         return False, f"❌ تو بانک این همه نداری، موجودیت {money(user.bank_balance)} ـه"
     user.bank_balance -= amount

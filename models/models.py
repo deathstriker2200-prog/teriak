@@ -53,6 +53,13 @@ class User(Base):
     pending_action: Mapped[str | None] = mapped_column(String(16), nullable=True)
     pending_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # سپر محافظ بعد از حمله، تا وقتی فعاله کسی نمی‌تونه بهش حمله کنه
+    shield_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # کوئست‌های روزانه، تاریخ به‌وقت ایران + JSON پیشرفت و جایزه‌ها
+    dq_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    dq_data: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     plots: Mapped[list["Plot"]] = relationship(back_populates="user", cascade="all, delete-orphan")
