@@ -554,6 +554,9 @@ async def caravan_attack(session: AsyncSession, chat_id: int, user: User, dmg: i
 
     CARAVAN_HITS[(chat_id, user.id)] = now_utc()
     dmg = max(1, dmg)
+    # دمیج هر ضربه ثابت نیس، حول قدرت حمله بالا‌پایین می‌چرخه
+    swing = config.CARAVAN_DMG_VARIANCE
+    dmg = max(1, round(dmg * random.uniform(1 - swing, 1 + swing)))
     cv["hp"] -= dmg
     cv["damages"][user.id] = cv["damages"].get(user.id, 0) + dmg
     name = user.first_name or user.username or "؟"
@@ -638,30 +641,36 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
 
 
 def caravan_board_text(cv: dict) -> str:
-    """متن برد کاروان برای گروه"""
+    """متن برد کاروان برای گروه، جدول دمیج از همون اول نمایش داده میشه"""
     pct = max(0, cv["hp"]) / cv["max_hp"]
     filled = round(pct * 10)
     bar = "🟥" * filled + "⬜" * (10 - filled)
     left = max(0, int((cv["expires_at"] - now_utc()).total_seconds()))
+    refresh_min = fa_num(config.CARAVAN_BOARD_REFRESH_SECONDS // 60)
+    var_pct = fa_num(round(config.CARAVAN_DMG_VARIANCE * 100))
 
     lines = [
-        "<b>🚛 کاروان اومد تو محله!</b>",
+        "<b>🚛 کاروان وارد محله شد</b>",
         "",
-        f"❤️ HP {bar} {fa_num(max(0, cv['hp']))}/{fa_num(cv['max_hp'])}",
-        f"⏳ تا {fa_dur(left)} دیگه فرار می‌کنه",
+        f"❤️ جان کاروان: {bar} {fa_num(max(0, cv['hp']))}/{fa_num(cv['max_hp'])}",
+        f"⏳ {fa_dur(left)} دیگه از محله خارج میشه",
+        f"⏱ جدول دمیج هر {refresh_min} دقیقه به‌روز میشه",
         "",
-        "هرکی هر 1 دقیقه یه ضربه می‌تونه بزنه، دمیجت = قدرت حمله‌ته",
-        "🏆 نفر اول بیشترین جایزه رو می‌گیره، شاید بذر جهنم 🔥 یا ابلیس 😈",
-        f"📢 فقط {fa_num(config.CARAVAN_TOP_REWARDS)} نفر برتر دمیج جایزه دریافت می‌کنن",
+        "هر نفر هر 1 دقیقه فقط یه ضربه می‌تونه بزنه",
+        f"قدرت هر ضربه بر اساس قدرت حملت می‌چرخه، تا {var_pct}% بیشتر یا کمتر",
+        "🏆 بزرگ‌ترین جایزه به نفر اول می‌رسه، شاید بذر جهنم 🔥 یا بذر ابلیس 😈",
+        f"📢 فقط {fa_num(config.CARAVAN_TOP_REWARDS)} نفر برتر جدول جایزه دریافت می‌کنن",
         "",
+        "⚔️ جدول دمیج:",
     ]
     top = sorted(cv["damages"].items(), key=lambda kv: -kv[1])[: config.CARAVAN_TOP_REWARDS]
-    if top:
-        lines.append(f"⚔️ دمیج‌ها (هر {fa_num(config.CARAVAN_BOARD_REFRESH_SECONDS // 60)} دقیقه یک بار آپدیت میشه):")
+    if not top:
+        lines.append("▫️ هنوز کسی به کاروان ضربه نزده، اولین نفر باش 😈")
+    else:
         medals = ["🥇", "🥈", "🥉"]
         for i, (uid, dmg) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i + 1}."
-            lines.append(f"{medal} {esc(str(cv['names'].get(uid, '؟')))}، {fa_num(dmg)}")
+            lines.append(f"{medal} {esc(str(cv['names'].get(uid, '؟')))}، {fa_num(dmg)} دمیج")
     return "\n".join(lines)
 
 

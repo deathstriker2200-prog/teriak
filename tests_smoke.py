@@ -1751,12 +1751,13 @@ async def main() -> None:
         chat_id = 920001
         cv = world_svc.caravan_spawn(chat_id)
         check("کاروان با HP از تیِرها اسپون شد", cv["hp"] in config.CARAVAN_HP_TIERS, str(cv["hp"]))
-        check("برد کاروان هدر داره", "🚛 کاروان اومد تو محله" in world_svc.caravan_board_text(cv))
+        check("برد کاروان هدر داره", "🚛 کاروان وارد محله شد" in world_svc.caravan_board_text(cv))
 
         cash_b = atk1.cash
         r = await world_svc.caravan_attack(s, chat_id, atk1, 55)
         check("ضربه اول ثبت شد و جایزه نقدی داره",
-              r["status"] == "hit" and atk1.cash == cash_b + 55 * config.CARAVAN_MONEY_PER_DMG,
+              r["status"] == "hit" and atk1.cash == cash_b + r["dmg"] * config.CARAVAN_MONEY_PER_DMG
+              and 44 <= r["dmg"] <= 66,
               str(r.get("status")))
         r = await world_svc.caravan_attack(s, chat_id, atk1, 55)
         check("کولدون ۱ دقیقه ضربه کاروان", r["status"] == "cooldown" and 0 < r["left"] <= 60)
@@ -1792,8 +1793,13 @@ async def main() -> None:
     cv_b["damages"][esc_uid] = 40
     cv_b["names"][esc_uid] = "دیررس"
     btxt = world_svc.caravan_board_text(cv_b)
-    check("برد کاروان نکته آپدیت 2 دقیقه‌ای رو جلوی دمیج‌ها داره",
-          "هر 2 دقیقه یک بار آپدیت میشه" in btxt, btxt[-120:])
+    check("برد کاروان نکته آپدیت 2 دقیقه‌ای رو بالای متن داره",
+          "⏱ جدول دمیج هر 2 دقیقه به‌روز میشه" in btxt.split("\n")[4], btxt.split("\n")[4])
+    check("جدول دمیج از اول خالی هم نمایش داده میشه",
+          "⚔️ جدول دمیج:" in world_svc.caravan_board_text(world_svc.caravan_spawn(940006))
+          and "هنوز کسی به کاروان ضربه نزده" in world_svc.caravan_board_text(world_svc.caravan_spawn(940007)))
+    world_svc.CARAVANS.pop(940006, None)
+    world_svc.CARAVANS.pop(940007, None)
 
     cv_b["expires_at"] = now_utc() - timedelta(seconds=5)
     async with session_scope() as s:
@@ -1904,10 +1910,241 @@ async def main() -> None:
     botr = _CvBot()
     await jobs_h.caravan_refresh_job(SimpleNamespace(bot=botr))
     check("تایمر 2 دقیقه‌ای برد کاروان رو با دمیج تازه ادیت می‌کنه",
-          any(mid == 4321 and "⚔️ دمیج‌ها (هر 2 دقیقه یک بار آپدیت میشه)" in t
-              and "33" in t for _, mid, t in botr.edited), str(botr.edited))
+          any(mid == 4321 and "⚔️ جدول دمیج:" in t
+              and "33 دمیج" in t for _, mid, t in botr.edited), str(botr.edited))
     world_svc.CARAVANS.clear()
     world_svc.CARAVAN_HITS.clear()
+
+    # ═══ این دور: دمیج چرخان کاروان | اسپون دستی ادمین | عضویت اجباری 🔒 | آمار پنل ═══
+    from telegram.error import BadRequest as _BR
+    from telegram.ext import ApplicationHandlerStop as _AHS
+    from handlers import gate as gate_h
+    from services import forcejoin as fj_svc
+
+    # ── دمیج کاروان دیگه ثابت نیس، ±20% می‌چرخه ──
+    async with session_scope() as s:
+        vu, _ = await users.get_or_create(s, tg(8862, "cvd", "چرخان"))
+        await s.commit()
+        world_svc.caravan_spawn(960001)
+        world_svc.CARAVANS[960001]["hp"] = 10_000_000
+        rolls = []
+        for _ in range(80):
+            world_svc.CARAVAN_HITS.clear()
+            r = await world_svc.caravan_attack(s, 960001, vu, 100)
+            rolls.append(r["dmg"])
+        await s.commit()
+    world_svc.CARAVANS.clear()
+    world_svc.CARAVAN_HITS.clear()
+    check("دمیج کاروان می‌چرخه و همیشه توی بازه ±20% می‌مونه",
+          len(set(rolls)) >= 10 and all(80 <= d <= 120 for d in rolls),
+          f"{min(rolls)} تا {max(rolls)}، {len(set(rolls))} مقدار متفاوت")
+
+    # ── «تی اسپان کاروان» ادمین توی گروه اسپون می‌کنه ──
+    class _SpawnChat(SimpleNamespace):
+        def __init__(self, chat_id, uid):
+            super().__init__(
+                message=SimpleNamespace(calls=[], message_id=777),
+                effective_user=SimpleNamespace(id=uid, username="adm1", first_name="ادمین", is_bot=False),
+                effective_chat=SimpleNamespace(id=chat_id, type="group"),
+            )
+
+        async def _noop(self):
+            return None
+
+    sp_chat = 950001
+    upd_sp = _SpawnChat(sp_chat, 1001)
+
+    async def _reply(text, reply_markup=None, **kw):
+        upd_sp.message.calls.append((text, reply_markup))
+        return SimpleNamespace(message_id=777)
+    upd_sp.message.reply_html = _reply
+    await world_h.caravan_spawn_cmd(upd_sp, None)
+    cvs = world_svc.caravan_active(sp_chat)
+    check("«تی اسپان کاروان» کاروان آورد و بردش ثبت شد",
+          cvs is not None and cvs["message_id"] == 777
+          and upd_sp.message.calls and "🚛 کاروان وارد محله شد" in upd_sp.message.calls[0][0])
+    await world_h.caravan_spawn_cmd(upd_sp, None)
+    check("کاروان فعال که هست دوبل اسپون نمیشه", "کاروان فعال" in upd_sp.message.calls[-1][0])
+    upd_sp.message.calls.clear()
+    upd_no = _SpawnChat(sp_chat, 6001)
+    upd_no.message.reply_html = _reply
+    await world_h.caravan_spawn_cmd(upd_no, None)
+    check("اسپان دستی توسط غیرادمین کاملاً بی‌صداس", not upd_sp.message.calls)
+    world_svc.CARAVANS.clear()
+
+    # ── سرویس عضویت اجباری: ست/خاموش/پاک ──
+    check("فرمت‌های کانال درست پارس میشن",
+          fj_svc.parse_input("@abc12345") == ("@abc12345", "https://t.me/abc12345")
+          and fj_svc.parse_input("https://t.me/abc12345") == ("@abc12345", "https://t.me/abc12345")
+          and fj_svc.parse_input("-1001234567890 https://t.me/+xyz") == ("-1001234567890", "https://t.me/+xyz")
+          and fj_svc.parse_input("-1001234567890") is None
+          and fj_svc.parse_input("سلام") is None)
+
+    async with session_scope() as s:
+        await fj_svc.set_channel(s, "@teriakytest", "https://t.me/teriakytest")
+        await s.commit()
+    async with session_scope() as s:
+        st = await fj_svc.get_settings(s)
+        active = await fj_svc.is_active(s)
+        await s.commit()
+    check("کانل ست شد و عضویت اجباری فعاله",
+          active and st["channel"] == "@teriakytest" and st["on"], str(st))
+
+    # ── گیت: غیرعضو بلاک میشه و آپدیتش نگه داشته میشه ──
+    gate_h.PENDING.clear()
+    gate_h._LAST_GATE.clear()
+
+    class _FjBot:
+        def __init__(self, member=False):
+            self.member_flag = member
+            self.sent = []
+
+        async def get_chat_member(self, chat, uid):
+            if self.member_flag:
+                return SimpleNamespace(status="member")
+            raise _BR("User not found")
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            self.sent.append((chat_id, text))
+            return SimpleNamespace(message_id=len(self.sent))
+
+    class _FjApp:
+        def __init__(self, bot):
+            self.bot = bot
+            self.replayed = []
+
+        async def process_update(self, upd):
+            self.replayed.append(upd)
+
+    bot_g = _FjBot(member=False)
+    app_g = _FjApp(bot_g)
+    ctx_g = SimpleNamespace(bot=bot_g, application=app_g)
+
+    upd = _text_update("تریاکی شاپ", uid=8860, uname="gate1", fname="گیت‌خور")
+    stopped = False
+    try:
+        await gate_h.gate_messages(upd, ctx_g)
+    except _AHS:
+        stopped = True
+    g_body, g_kw = (upd.message.calls[-1][1], upd.message.calls[-1][2]) if upd.message.calls else ("", {})
+    g_markup = g_kw.get("reply_markup")
+    g_btns = [b for row in (g_markup.inline_keyboard if g_markup else []) for b in row]
+    check("غیرعضو گیت خورد و پیام دکمه‌دار گرفت، دستورشم نزدیکه",
+          stopped and "عضویت اجباری" in g_body
+          and any(getattr(b, "url", None) == "https://t.me/teriakytest" for b in g_btns)
+          and any(getattr(b, "callback_data", None) == "fj:check" for b in g_btns)
+          and gate_h.PENDING.get(8860) is upd, g_body[:60])
+
+    upd_adm = _text_update("تریاکی شاپ", uid=1001, uname="adm1", fname="ادمین")
+    await gate_h.gate_messages(upd_adm, ctx_g)
+    check("ادمین دور گیت رد میشه", not upd_adm.message.calls and 1001 not in gate_h.PENDING)
+
+    class _FjQ:
+        def __init__(self, uid):
+            self.uid = uid
+            self.answers = []
+            self.edited = []
+            self.message = SimpleNamespace(chat_id=-1008860, message_id=55)
+
+        async def answer(self, text="", show_alert=False):
+            self.answers.append(text)
+
+        async def edit_message_text(self, text, parse_mode=None):
+            self.edited.append(text)
+
+    def _fj_upd(uid=8860):
+        return SimpleNamespace(
+            callback_query=None,
+            effective_user=SimpleNamespace(id=uid, username="gate1", first_name="گیت‌خور", is_bot=False),
+            effective_chat=SimpleNamespace(id=-1008860, type="group"),
+            message=None,
+        )
+
+    q1 = _FjQ(8860)
+    updq = _fj_upd()
+    updq.callback_query = q1
+    await gate_h.gate_confirm(updq, ctx_g)
+    check("تایید قبل از عضو شدن رد میشه و دستور هنوز نگهداشته‌ست",
+          any("هنوز عضو" in a for a in q1.answers) and not q1.edited
+          and gate_h.PENDING.get(8860) is upd)
+
+    bot_g.member_flag = True
+    q2 = _FjQ(8860)
+    updq2 = _fj_upd()
+    updq2.callback_query = q2
+    await gate_h.gate_confirm(updq2, ctx_g)
+    check("تایید بعد از عضو شدن، ✅ و ادامه اجرای همون دستور",
+          any("تایید شد" in a for a in q2.answers)
+          and any("خوش اومدی" in e for e in q2.edited)
+          and gate_h.PENDING.get(8860) is None
+          and app_g.replayed == [upd], str(len(app_g.replayed)))
+
+    upd2 = _text_update("تریاکی شاپ", uid=8860, uname="gate1", fname="گیت‌خور")
+    await gate_h.gate_messages(upd2, ctx_g)
+    check("عضو شده دیگه گیت نمی‌خوره", not upd2.message.calls)
+
+    bot_g.member_flag = False
+    qc = _FjQ(8860)
+    updc = _fj_upd()
+    updc.callback_query = qc
+    stopped = False
+    try:
+        await gate_h.gate_callbacks(updc, ctx_g)
+    except _AHS:
+        stopped = True
+    check("دکمه غیرعضو هم گیت میشه و پیام لینک فقط یه بار میره",
+          stopped and any("عضو شو" in a for a in qc.answers)
+          and len(bot_g.sent) == 1 and "عضویت اجباری" in bot_g.sent[0][1]
+          and gate_h.PENDING.get(8860) is updc)
+    try:
+        await gate_h.gate_callbacks(updc, ctx_g)
+    except _AHS:
+        pass
+    check("پیام گیت کالبکی پشت سر هم اسپم نمیشه", len(bot_g.sent) == 1)
+
+    # ── خاموش کردن، کاملاً عبوری ──
+    gate_h.PENDING.pop(8860, None)  # آپدیت کالبکی که تو تست قبلی گذاشتیم
+    async with session_scope() as s:
+        await fj_svc.set_enabled(s, False)
+        await s.commit()
+    upd3 = _text_update("تریاکی شاپ", uid=8860, uname="gate1", fname="گیت‌خور")
+    await gate_h.gate_messages(upd3, SimpleNamespace(bot=_FjBot(member=False), application=app_g))
+    check("عضویت اجباری غیرفعال، هیچ بلاکی نداره", not upd3.message.calls and 8860 not in gate_h.PENDING)
+
+    # ── ست کانال از طریق پنل (پیام بعدی ادمین) ──
+    async with session_scope() as s:
+        adm, _ = await users.get_or_create(s, tg(1001, "adm1", "ادمین یک"))
+        adm.pending_action = "fjchan"
+        await s.commit()
+    upd4 = _text_update("@fjchan2", uid=1001, uname="adm1", fname="ادمین یک")
+    try:
+        await pending_h.capture(upd4, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        st2 = await fj_svc.get_settings(s)
+        adm2 = await users.get_by_tg(s, 1001)
+        pend = adm2.pending_action
+        await s.commit()
+    check("ست کانال با پیام بعدی پنل انجام شد و pending خالی شد",
+          st2["channel"] == "@fjchan2" and st2["link"] == "https://t.me/fjchan2"
+          and st2["on"] and pend is None, str(st2))
+
+    async with session_scope() as s:
+        await fj_svc.clear_channel(s)
+        await s.commit()
+    async with session_scope() as s:
+        off = await fj_svc.is_active(s)
+        await s.commit()
+    check("حذف کانال گیت رو کامل پاک می‌کنه", not off)
+
+    # ── 📊 آمار پنل ادمین ──
+    from handlers import admin as admin_h
+    stats_txt = await admin_h._stats_text()
+    check("آمار پنل ادمین بخش‌های کلیدی رو داره",
+          all(x in stats_txt for x in ["📊 آمار ربات", "کاربرا:", "فعال 24 ساعت اخیر",
+                                       "تیم‌ها:", "سگ‌ها:", "کاروان زنده الان",
+                                       "مجموع تی‌پوینت"]), stats_txt[:60])
 
     # ── شخصیت سگ‌ها 💫 ──
     check("۵ شخصیت تعریف شدن",

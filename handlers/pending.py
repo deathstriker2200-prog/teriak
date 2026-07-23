@@ -161,6 +161,39 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await update.message.reply_html(out)
             raise ApplicationHandlerStop()
 
+        # ── کانال عضویت اجباری بعد از دکمه ست کردن (فقط ادمین) ──
+        if action == "fjchan":
+            if update.effective_user.id not in config.ADMIN_IDS:
+                user.pending_action = None
+                user.pending_value = None
+                await s.commit()
+                return
+
+            from services import forcejoin as fj_svc
+            parsed = fj_svc.parse_input(text)
+            if not parsed:
+                await update.message.reply_html(
+                    "❌ فرمت درست نیس، یوزرنیم یا لینک کانال رو بفرست\n"
+                    "مثلا <code>@mychannel</code> یا <code>https://t.me/mychannel</code>\n"
+                    "کانال خصوصی: <code>-1001234567890 https://t.me/+AbCdEfGh</code>\n\n"
+                    "❌ پشیمون شدی بنویس «لغو»",
+                )
+                raise ApplicationHandlerStop()
+
+            channel, link = parsed
+            await fj_svc.set_channel(s, channel, link)
+            user.pending_action = None
+            user.pending_value = None
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>✅ عضویت اجباری فعال شد</b>\n\n"
+                f"▫️ کانال: <code>{esc(channel)}</code>\n"
+                f"▫️ لینک: {esc(link)}\n\n"
+                "از این لحظه هر دستوری قبل از اجرا چک عضویت میشه\n"
+                "⚠️ یادت نره ربات رو توی کانال ادمین کنی، وگر نه چک کار نمی‌کنه",
+            )
+            raise ApplicationHandlerStop()
+
         # ── اسم تیم بعد از «ساخت تیم»، فاکتور تایید ساخت میاد ──
         if action == "teamname":
             ok_name, clean, why = teams.validate_team_name(text)

@@ -385,6 +385,7 @@ POLICE_DESTROY_PCT = 0.30          # ۳۰% محصولات انبار نابود 
 CARAVAN_TICK_SECONDS = 60          # هر دقیقه چک اسپون/انقضا
 CARAVAN_BOARD_REFRESH_SECONDS = 120  # برد کاروان با این تایمر ادیت میشه نه بعد هر ضربه
 CARAVAN_TOP_REWARDS = 5            # فقط ۵ نفر برتر دمیج جایزه نهایی می‌گیرن
+CARAVAN_DMG_VARIANCE = 0.20        # دمیج کاروان تا اینقدر بیشتر یا کمتر از قدرت حمله می‌چرخه
 CARAVAN_SPAWN_CHANCE = 0.35        # شانس اسپون برای هر گروه فعال در هر ساعت
 CARAVAN_GROUP_COOLDOWN_HOURS = 3   # فاصله بین دو کاروان تو یه گروه
 CARAVAN_GROUP_ACTIVE_HOURS = 24    # فقط گروه‌های فعال ۱ روز اخیر
@@ -400,6 +401,10 @@ CARAVAN_LOOT = [
     {"key": "hell",   "chance": 0.07, "pool": ["jahannam"]},
     {"key": "devil",  "chance": 0.03, "pool": ["eblis"]},
 ]
+
+# ───────── عضویت اجباری 🔒 ─────────
+# کانال از پنل ادمین ست میشه و توی game_meta ذخیره می‌مونه (با ری‌استارت حفظه)
+FORCE_JOIN_STALE_SECONDS = 120   # پیام گیت برای هر نفر پشت سر هم اسپم نمیشه
 
 # ───────── رتبه‌بندی ─────────
 RANK_LIMIT = 10

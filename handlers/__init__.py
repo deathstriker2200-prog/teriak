@@ -11,7 +11,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, common, dogs, dquests, farm, mine, pending, profile, rank, shop, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, common, dogs, dquests, farm, gate, mine, pending, profile, rank, shop, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -63,11 +63,17 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("bankdep", rf"{T}واریز{S}+(.+)$", bank.deposit_text),
     ("bankwd", rf"{T}برداشت{S}+([0-9۰-۹٠-٩,٬]+)$", bank.withdraw_text),
     ("help", rf"{T}راهنما!?$|{T}آموزشات!?$", start.help_cmd),
+    ("caravan_spawn", rf"{T}اسپان{S}+کاروان!?$", world.caravan_spawn_cmd),  # فقط ادمین
 ]
 
 
 def register_handlers(app: Application) -> None:
     fa_text = filters.TEXT & ~filters.COMMAND
+
+    # ── گیت عضویت اجباری، قبل از همه هندلرها (غیرفعال که باشه کاملاً عبوریه) ──
+    app.add_handler(MessageHandler(filters.TEXT | filters.COMMAND, gate.gate_messages), group=-3)
+    app.add_handler(CallbackQueryHandler(gate.gate_confirm, pattern=r"^fj:check$"), group=-3)
+    app.add_handler(CallbackQueryHandler(gate.gate_callbacks), group=-3)
 
     # ── گارد مالکیت دکمه‌ها، قبل از همه کالبک‌ها (غریبه هیچ واکنشی نمی‌بینه) ──
     app.add_handler(CallbackQueryHandler(common.owner_guard), group=-2)

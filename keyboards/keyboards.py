@@ -105,13 +105,44 @@ def tx_attack_kb(target_id: int, owner_tg: int) -> InlineKeyboardMarkup:
 
 
 def admin_kb() -> InlineKeyboardMarkup:
-    """پنل ساده ادمین"""
+    """پنل ادمین، پول/XP + آمار + عضویت اجباری"""
     return InlineKeyboardMarkup([
         [_btn("💵 +10,000 TP", "adm:cash:10000", SUCCESS),
          _btn("💵 +100,000 TP", "adm:cash:100000", SUCCESS)],
         [_btn("✨ +100 XP", "adm:xp:100", PRIMARY),
          _btn("✨ +1,000 XP", "adm:xp:1000", PRIMARY)],
+        [_btn("📊 آمار ربات", "adm:stats:0", PRIMARY)],
+        [_btn("📢 عضویت اجباری", "adm:fj:0", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def admin_stats_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("🔃 رفرش", "adm:stats:0", PRIMARY)],
+        [_btn("🔙 پنل ادمین", "adm:panel:0", PRIMARY)],
+    ])
+
+
+def admin_fj_kb(st: dict) -> InlineKeyboardMarkup:
+    """کیبورد مدیریت عضویت اجباری بر اساس وضعیت فعلی"""
+    rows: list[list[InlineKeyboardButton]] = []
+    if st.get("channel"):
+        rows.append([_btn(
+            "⏸ غیرفعال کن" if st.get("on") else "▶️ فعال کن",
+            "adm:fjtog:0", DANGER if st.get("on") else SUCCESS,
+        )])
+        rows.append([_btn("🗑 حذف کانال", "adm:fjdel:0", DANGER)])
+    rows.append([_btn("🔗 ست کردن کانال", "adm:fjset:0", SUCCESS)])
+    rows.append([_btn("🔙 پنل ادمین", "adm:panel:0", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def force_join_kb(link: str) -> InlineKeyboardMarkup:
+    """دکمه‌های پیام گیت عضویت اجباری"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 عضویت در کانال", url=link)],
+        [_btn("✅ تایید عضویت", "fj:check", SUCCESS)],
     ])
 
 

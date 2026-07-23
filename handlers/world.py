@@ -11,9 +11,10 @@ import config
 from database import session_scope
 from handlers.common import parts, respond
 from keyboards import keyboards as kb
+from models import GroupActivity
 from services import combat, dogs as dog_svc, users
 from services import world as world_svc
-from utils import esc, fa_dur, fa_num, money, money_tp
+from utils import esc, fa_dur, fa_num, money, money_tp, now_utc
 
 
 # ═════════ جستجو 🔍 ═════════
@@ -299,3 +300,35 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             pass
         end_text = world_svc.caravan_end_text(res.get("rewards", []), killed=True)
         await context.bot.send_message(chat_id, end_text, parse_mode="HTML")
+
+
+# ═════════ اسپون دستی کاروان (ادمین) ═════════
+
+async def caravan_spawn_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«تی اسپان کاروان»، اسپون فوری کاروان توی همون گروه، فقط ادمین (به غریبه بی‌صدا)"""
+    if not update.effective_user or update.effective_user.id not in config.ADMIN_IDS:
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        await update.message.reply_html("این دستور رو توی گروه بزن تا کاروان همونجا اسپون بشه 🚛")
+        return
+
+    if world_svc.caravan_active(chat.id):
+        await update.message.reply_html("🚛 الان یه کاروان فعال توی محله‌ست، اول بذار تموم بشه")
+        return
+
+    cv = world_svc.caravan_spawn(chat.id)
+    async with session_scope() as s:
+        row = await s.get(GroupActivity, chat.id)
+        if row:
+            row.last_caravan_at = now_utc()
+        else:
+            s.add(GroupActivity(chat_id=chat.id, last_caravan_at=now_utc()))
+        await s.commit()
+
+    msg = await update.message.reply_html(
+        world_svc.caravan_board_text(cv), reply_markup=kb.caravan_kb(),
+    )
+    if msg:
+        cv["message_id"] = msg.message_id

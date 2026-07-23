@@ -13,7 +13,9 @@ from database import session_scope
 from handlers.common import parts, respond
 from keyboards import keyboards as kb
 from services import economy, users
+from services import forcejoin as fj_svc
 from services import teams as team_svc
+from services import world as world_svc
 from utils import esc, fa_num, jalali_str, money, parse_amount
 
 
@@ -171,6 +173,56 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _, kind, value = parts(update)
     num = int(value)
 
+    # ── برگشت به پنل ──
+    if kind == "panel":
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            text = _panel_text(user)
+            await s.commit()
+        return await respond(update, text, kb.admin_kb())
+
+    # ── 📊 آمار ربات ──
+    if kind == "stats":
+        text = await _stats_text()
+        return await respond(update, text, kb.admin_stats_kb())
+
+    # ── 📢 عضویت اجباری ──
+    if kind == "fj":
+        return await respond(update, await _fj_text(), await _fj_kb())
+
+    if kind == "fjtog":
+        async with session_scope() as s:
+            st = await fj_svc.get_settings(s)
+            await fj_svc.set_enabled(s, not st["on"])
+            await s.commit()
+        return await respond(update, await _fj_text(), await _fj_kb(),
+                             alert="وضعیت عضویت اجباری عوض شد ✅")
+
+    if kind == "fjdel":
+        async with session_scope() as s:
+            await fj_svc.clear_channel(s)
+            await s.commit()
+        return await respond(update, await _fj_text(), await _fj_kb(),
+                             alert="کانل عضویت اجباری پاک شد 🗑")
+
+    if kind == "fjset":
+        async with session_scope() as s:
+            me, _ = await users.get_or_create(s, update.effective_user)
+            me.pending_action = "fjchan"
+            me.pending_value = None
+            await s.commit()
+        return await respond(
+            update,
+            "<b>🔗 ست کردن کانال عضویت اجباری</b>\n\n"
+            "یوزرنیم یا لینک کانال رو بفرست، مثلا:\n"
+            "▫️ <code>@mychannel</code>\n"
+            "▫️ <code>https://t.me/mychannel</code>\n\n"
+            "کانال خصوصی؟ آیدی عددی + لینک دعوت بفرست:\n"
+            "▫️ <code>-1001234567890 https://t.me/+AbCdEfGh</code>\n\n"
+            "⚠️ ربات باید توی کانال ادمین باشه تا بتونه عضویت رو چک کنه\n\n"
+            "❌ پشیمون شدی بنویس «لغو»",
+        )
+
     # ── کارت یه کاربر ──
     if kind == "u":
         async with session_scope() as s:
@@ -223,3 +275,76 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await s.commit()
 
     await respond(update, text, kb.admin_kb(), alert=alert)
+
+
+# ───────── 📊 آمار ربات ─────────
+
+async def _stats_text() -> str:
+    """آمار کلی ربات برای ادمین"""
+    from datetime import timedelta
+
+    from sqlalchemy import func, select
+
+    from models import Dog, GroupActivity, Plot, Team, User
+    from utils import now_utc
+
+    async with session_scope() as s:
+        day_ago = now_utc() - timedelta(hours=24)
+        users_n = (await s.execute(select(func.count(User.id)))).scalar() or 0
+        active_n = (await s.execute(
+            select(func.count(User.id)).where(User.last_seen_at >= day_ago)
+        )).scalar() or 0
+        cash_sum = (await s.execute(
+            select(func.coalesce(func.sum(User.cash + User.bank_balance), 0))
+        )).scalar() or 0
+        teams_n = (await s.execute(select(func.count(Team.id)))).scalar() or 0
+        dogs_n = (await s.execute(select(func.count(Dog.id)))).scalar() or 0
+        plots_n = (await s.execute(select(func.count(Plot.id)))).scalar() or 0
+        groups_n = (await s.execute(select(func.count(GroupActivity.chat_id)))).scalar() or 0
+        await s.commit()
+
+    return (
+        "<b>📊 آمار ربات</b>\n\n"
+        f"👥 کاربرا: {fa_num(users_n)} نفر\n"
+        f"🟢 فعال 24 ساعت اخیر: {fa_num(active_n)} نفر\n"
+        f"🏘 گروه‌های فعال: {fa_num(groups_n)}\n"
+        f"🏴 تیم‌ها: {fa_num(teams_n)}\n"
+        f"🐕 سگ‌ها: {fa_num(dogs_n)}\n"
+        f"🗺 زمین‌ها: {fa_num(plots_n)}\n"
+        f"💰 مجموع تی‌پوینت کل بازیکنا: {money(cash_sum)}\n"
+        f"🚛 کاروان زنده الان: {fa_num(len(world_svc.CARAVANS))}\n\n"
+        "⏱ آمار زنده‌ست، با 🔃 رفرش میشه"
+    )
+
+
+# ───────── 📢 عضویت اجباری ─────────
+
+async def _fj_text() -> str:
+    async with session_scope() as s:
+        st = await fj_svc.get_settings(s)
+        await s.commit()
+    st_link = st["link"] or ""
+    if st["channel"]:
+        state = "🟢 فعال" if st["on"] else "🔴 غیرفعال"
+        return (
+            "<b>📢 عضویت اجباری</b>\n\n"
+            f"▫️ کانال: <code>{esc(st['channel'])}</code>\n"
+            f"▫️ لینک: {esc(st_link)}\n"
+            f"▫️ وضعیت: {state}\n\n"
+            "هر دستوری که زده بشه اول عضویت کاربر چک میشه، "
+            "عضو نباشه پیام گیت با دکمه عضویت و تایید می‌گیره\n\n"
+            "⚠️ یادت نره ربات توی کانال ادمین باشه"
+        )
+    return (
+        "<b>📢 عضویت اجباری</b>\n\n"
+        "هنوز کانالی ست نشده\n\n"
+        "با «🔗 ست کردن کانال» یوزرنیم یا لینک کانال رو بفرست، خاموش/روشنش هم می‌تونی کنی\n\n"
+        "⚠️ ربات باید توی کانال ادمین باشه تا عضویت‌ها رو بتونه چک کنه"
+    )
+
+
+async def _fj_kb():
+    async with session_scope() as s:
+        st = await fj_svc.get_settings(s)
+        await s.commit()
+    return kb.admin_fj_kb(st)
