@@ -17,7 +17,7 @@ shop:buy:<kind>:<key>       → cf:shop:buy:<kind>:<key>
 txcf:<kind>:<key>:<tg_id>   → تایید خرید دستور متنی (فقط خودش)
 dogs:feed:<dog_id>          → کارت آمار سگ با همان دکمه‌های غذا (cf:feed:<dog_id>:<food>)
 heal:buy:<key>              → خرید و استفاده همون لحظه آیتم درمان
-patt:go:<tg_id> | patt:re   → حمله پی‌وی کلاسیک: تایید حمله | رفرش لیست، اجرا با cf:patt:x:<tg_id>
+patt:go                     → 🎯 هدف شانسی پی‌وی، پیش‌نمایش قربانی → patt:hit:<user_id> حمله | patt:next:<user_id> هدف دیگه | patt:back بازگشت
 menu:team | team:quests | team:mine | team:top | team:leave | team:disband
 tmcf:<leave|disband>:<tg_id> → تایید ترک/انحلال تیم (فقط خودش)
 dog:card:<dog_id>           → کارت آمار سگ (آمار [اسم])
@@ -417,22 +417,20 @@ def team_create_confirm_kb(tg_id: int) -> InlineKeyboardMarkup:
 
 # ───────── درمان ❤️ ─────────
 
-def pv_attack_kb(targets: list) -> InlineKeyboardMarkup:
-    """لیست هدف‌های حمله پی‌وی، هر هدف یه دکمه قرمز حمله + رفرش لیست"""
-    rows: list[list[InlineKeyboardButton]] = []
-    for u in targets:
-        name = (u.first_name or u.username or "ناشناس")[:14]
-        rows.append([_btn(f"⚔️ حمله به {name}", f"patt:go:{u.telegram_id}", DANGER)])
-    rows.append([_btn("🔄 لیست جدید", "patt:re", PRIMARY)])
-    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
-    return InlineKeyboardMarkup(rows)
-
-
-def pv_attack_result_kb() -> InlineKeyboardMarkup:
-    """بعد نتیجه حمله پی‌وی، برگرد به لیست یا منو"""
+def pv_attack_kb() -> InlineKeyboardMarkup:
+    """پنل حمله پی‌وی و زیر نتیجه حمله، فقط دکمه هدف شانسی"""
     return InlineKeyboardMarkup([
-        [_btn("🔄 لیست حمله", "patt:re", PRIMARY)],
+        [_btn("🎯 هدف شانسی", "patt:go", DANGER)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def pv_target_kb(target_id: int) -> InlineKeyboardMarkup:
+    """پیش‌نمایش هدف پی‌وی، یا میزنیش یا یه هدف دیگه می‌گیری یا برمی‌گردی"""
+    return InlineKeyboardMarkup([
+        [_btn("⚔️ حمله", f"patt:hit:{target_id}", DANGER)],
+        [_btn("🎯 هدف دیگه", f"patt:next:{target_id}", PRIMARY)],
+        [_btn("🔙 بازگشت", "patt:back", PRIMARY)],
     ])
 
 

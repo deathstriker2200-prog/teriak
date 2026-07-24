@@ -11,7 +11,7 @@ from handlers.common import strip_home
 from keyboards import keyboards as kb
 from models import User
 from services import combat, dogs as dog_svc, economy, farming, users
-from utils import bar, esc, fa_num, fancy_name, jalali_str, money
+from utils import bar, esc, fa_num, jalali_str, money, short_name
 
 # ───────── فرمت پروفایل ─────────
 
@@ -51,7 +51,7 @@ async def _profile_caption(session, user) -> str:
     )).scalar_one() + 1
     total = (await session.execute(select(func.count(User.id)))).scalar_one()
 
-    name = esc(fancy_name(users.display_name(user)))
+    name = esc(short_name(users.display_name(user)))
     uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
     # تاریخ عضویت به شمسی
     joined = jalali_str(user.created_at) if user.created_at else "—"

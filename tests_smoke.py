@@ -1134,10 +1134,14 @@ async def main() -> None:
     check("متن ضربه قالب دقیق جدید رو داره",
           "<b>💥 به حریف «سارا» حمله کردی</b>" in txt
           and "🩸 64 دمیج وارد شد" in txt
-          and "❤️ HP حریف" in txt and "136 از 200" in txt
+          and "❤️ سلامت حریف 136 از 200" in txt
           and "💰 5,000 تی‌پوینت غارت کردی" in txt
           and "✨ 8 تجربه گرفتی" in txt
-          and "☠️" not in txt, txt.replace("\n", " | ")[:240])
+          and "☠️" not in txt
+          and txt.replace("\n\n", "␤") == (
+              "<b>💥 به حریف «سارا» حمله کردی</b>␤"
+              "🩸 64 دمیج وارد شد\n❤️ سلامت حریف 136 از 200␤"
+              "💰 5,000 تی‌پوینت غارت کردی\n✨ 8 تجربه گرفتی"), txt.replace("\n", " | ")[:240])
 
     txt_k = battle_h.hit_text(
         {"ok": True, "nodmg": False, "killed": True, "dmg": 40, "hp_now": 0, "hp_max": 200,
@@ -1170,9 +1174,9 @@ async def main() -> None:
           txt_dt == "💀 حریف «سارا» مرده و تا 3 دقیقه دیگه زنده نمیشه\nیه هدف دیگه پیدا کن", txt_dt)
 
     from handlers import attack as attack_h
-    check("متن راهنمای حمله و پنل لیست پی‌وی",
+    check("متن راهنمای حمله و پنل شانسی پی‌وی",
           "حمله | شلیک | بنگ | پیو" in battle_h.ATTACK_GUIDE_TEXT
-          and "⚔️ لیست حمله" in attack_h.PANEL_HEADER)
+          and "هدف شانسی" in attack_h.PV_PANEL_TEXT)
 
     # ═══ دکمه‌های قفل قرمز + افزودن به گروه ═══
     from keyboards import keyboards as kb2
@@ -1216,8 +1220,8 @@ async def main() -> None:
               and all(st == "success" for st in hstyles), str(htexts))
         check("کاتالوگ درمان سه آیتم و قیمت‌هاش تو کانفیگه",
               set(config.HEAL_ITEMS) == {"band", "kit", "box"}
-              and config.HEAL_ITEMS["band"]["heal"] == 100
-              and config.HEAL_ITEMS["kit"]["heal"] == 250
+              and config.HEAL_ITEMS["band"]["heal"] == 75
+              and config.HEAL_ITEMS["kit"]["heal"] == 150
               and config.HEAL_ITEMS["box"]["heal"] is None
               and config.HEAL_ITEMS["band"]["price"] == 400
               and config.HEAL_ITEMS["kit"]["price"] == 900
@@ -1375,9 +1379,9 @@ async def main() -> None:
 
     from handlers import jobs as jobs_h  # noqa: E402
     jobs_h.register_jobs(app)
-    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|پلیس)",
-          app.job_queue is not None and len(app.job_queue.jobs()) == 5
-          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "police"},
+    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|پلیس|نبض انرژی)",
+          app.job_queue is not None and len(app.job_queue.jobs()) == 6
+          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "police", "energy-pulse"},
           str([j.name for j in (app.job_queue.jobs() if app.job_queue else [])]))
 
     # regex دستورهای متنی، از خود TEXT_HANDLERS رجیستری — پیشوند «تریاکی » اجباریه
@@ -2635,6 +2639,10 @@ async def main() -> None:
     )
     await rank_h.rank_cb(gupd, None)
     check("پیام دکمه‌دار گروهی به اسم صاحب دستور ثبت شد", owner_of(777, 4242) == 8808)
+    from models import MessageOwner
+    async with session_scope() as s:
+        mo = await s.get(MessageOwner, (777, 4242))
+    check("مالک پیام تو دیتابیس هم ثبت شد", mo is not None and mo.owner_tg == 8808)
 
     def _cb(data, uid, mid=4242, cid=777):
         q = _Q(data=data, message=SimpleNamespace(photo=None, chat_id=cid, message_id=mid), calls=[])
@@ -2678,6 +2686,35 @@ async def main() -> None:
     except ApplicationHandlerStop:
         stopped = True
     check("پیامی که ثبت نشده آزاده", not stopped)
+
+    # ── ری‌استارت ربات: حافظه پاک ولی قفل از دیتابیس سر جاش میمونه ──
+    _MESSAGE_OWNERS.clear()
+    check("بعد پاک‌شدن حافظه مالک از یاد حافظه رفته", owner_of(777, 4242) is None)
+    updg = _cb("menu:rank", 9999)
+    stopped = False
+    try:
+        await owner_guard(updg, None)
+    except ApplicationHandlerStop:
+        stopped = True
+    check("بعد ری‌استارت هم غریبه بلاکه (مالک از دیتابیس خونده میشه)", stopped)
+    check("مالک دیتابیسی تو حافظه کش شد", owner_of(777, 4242) == 8808)
+
+    updg = _cb("menu:rank", 8808)
+    stopped = False
+    try:
+        await owner_guard(updg, None)
+    except ApplicationHandlerStop:
+        stopped = True
+    check("بعد ری‌استارت صاحب دستور رد میشه", not stopped and not updg.callback_query.calls)
+
+    _MESSAGE_OWNERS.clear()
+    updg = _cb("menu:rank", 9999, mid=3333)
+    stopped = False
+    try:
+        await owner_guard(updg, None)
+    except ApplicationHandlerStop:
+        stopped = True
+    check("پیامی که تو دیتابیس هم نیس بعد ری‌استارت آزاده", not stopped)
 
     # ── «تریاکی شاپ» وسط اسم‌گذاری سگ قورت داده نمیشه ──
     async with session_scope() as s:
@@ -2755,7 +2792,7 @@ async def main() -> None:
     from handlers import attack as attack_h2
     check("پنل پی‌وی به نبرد گروهی ارجاع میده",
           "حمله | شلیک | بنگ | پیو" in battle_h2.ATTACK_GUIDE_TEXT
-          and "توی گروه" in attack_h2.PANEL_FOOTER)
+          and "گروه‌ها" in attack_h2.PV_PANEL_TEXT)
     check("متن بانک دستورها رو با تریاکی می‌گه",
           "«تریاکی واریز 1200»" in btx and "«تریاکی برداشت 1200»" in btx)
     check("noop واریز تیم بدون پیشونده", "«تیم واریز 1200»" in start_h2._NOOP_ANSWERS["depinfo"]
@@ -3056,7 +3093,7 @@ async def main() -> None:
     check("حمله ریپلای گروهی متن قالب دقیق میاره",
           "<b>💥 به حریف «قربانی» حمله کردی</b>" in htxt
           and "🩸" in htxt and "دمیج وارد شد" in htxt
-          and "❤️ HP حریف" in htxt and " از 200" in htxt
+          and "❤️ سلامت حریف" in htxt and " از 200" in htxt
           and "تی‌پوینت غارت کردی" in htxt and "تجربه گرفتی" in htxt,
           htxt.replace("\n", " | ")[:220])
     async with session_scope() as s:
@@ -3211,15 +3248,15 @@ async def main() -> None:
     check("حمله با آیدی عددی هم کار می‌کنه",
           any("<b>💥 به حریف «قربانی» حمله کردی</b>" in c[1] for c in upd.message.calls))
 
-    # تو پی‌وی حمله، لیست کلاسیک پی‌وی باز میشه
+    # تو پی‌وی حمله، پنل هدف شانسی پی‌وی باز میشه
     upd = _text_update("حمله", uid=8890, uname="gangsta", fname="گانگستر")
     await battle_h3.attack_cmd(upd, None)
     pvt = upd.message.calls[-1][1]
     pvk = upd.message.calls[-1][2].get("reply_markup")
-    check("حمله تو پی‌وی لیست کلاسیک رو نشون میده",
-          "⚔️ لیست حمله" in pvt
+    check("حمله تو پی‌وی پنل هدف شانسی رو نشون میده",
+          "هدف شانسی" in pvt
           and pvk is not None
-          and any(b.callback_data == "patt:re" for row in pvk.inline_keyboard for b in row))
+          and any(b.callback_data == "patt:go" for row in pvk.inline_keyboard for b in row))
 
     # ═══ این دور: حمله پی‌وی کلاسیک ۱۲ساعته | کریتیکال گروهی ۲٪ | گیت لول و قیمت مزرعه ═══
     from services import pvattack as pv_svc
@@ -3229,7 +3266,7 @@ async def main() -> None:
     check("کانفیگ حمله پی‌وی کلاسیک",
           config.PV_ATTACK_ENERGY_COST == 15 and config.PV_ATTACK_LEVEL_RANGE == 2
           and config.PV_ATTACK_MIN_CHANCE == 0.15 and config.PV_ATTACK_MAX_CHANCE == 0.85
-          and config.PV_BASE_CHANCE == 0.50 and config.PV_ATTACK_SUGGESTIONS == 5)
+          and config.PV_BASE_CHANCE == 0.50)
     check("مصونیت پی‌وی دقیقا 12 ساعته", config.PV_ATTACK_SHIELD_SECONDS == 12 * 3600,
           str(config.PV_ATTACK_SHIELD_SECONDS))
     check("غارت و جریمه پی‌وی تو کانفیگن",
@@ -3255,19 +3292,27 @@ async def main() -> None:
         sh.shield_until = now_utc() + timedelta(hours=1)
         await s.commit()
 
-        _old_sug = config.PV_ATTACK_SUGGESTIONS
-        config.PV_ATTACK_SUGGESTIONS = 50  # موقتا سقف لیست بلند که همه حوالی‌لول‌ها بیان
-        try:
-            tgts = await pv_svc.find_targets(s, a0)
-        finally:
-            config.PV_ATTACK_SUGGESTIONS = _old_sug
-        tids = {u.telegram_id for u in tgts}
-        check("لیست پی‌وی فقط حوالی لول خودته",
-              {9401, 9402, 9403, 9404} <= tids and 9405 not in tids and 9406 not in tids, str(tids))
-        check("خودش و مصونیت‌دارها تو لیست نمیان",
-              9400 not in tids and 9407 not in tids
-              and all(pv_svc.shield_left(u) <= 0 for u in tgts)
-              and all(abs(u.level - 20) <= 2 for u in tgts), str(tids))
+        picked = set()
+        picked_lvls = set()
+        for _ in range(60):
+            t = await pv_svc.pick_random_target(s, a0)
+            if t is not None:
+                picked.add(t.telegram_id)
+                picked_lvls.add(t.level)
+        check("هدف شانسی فقط حوالی لول خودته",
+              picked and all(abs(lv - 20) <= 2 for lv in picked_lvls)
+              and {9405, 9406}.isdisjoint(picked), str(sorted(picked)))
+        check("خودش و مصونیت‌دارها شانسی هم انتخاب نمیشن",
+              9400 not in picked and 9407 not in picked, str(sorted(picked)))
+
+        ex = await users.get_by_tg(s, 9401)
+        picked2 = set()
+        for _ in range(60):
+            t = await pv_svc.pick_random_target(s, a0, exclude_id=ex.id)
+            if t is not None:
+                picked2.add(t.telegram_id)
+        check("هدف دیگه هدف فعلی پیش‌نمایش رو کنار می‌ذاره",
+              9401 not in picked2 and picked2, str(sorted(picked2)))
 
         # ── اجرای برد: انرژی + غارت درصدی + مصونیت ۱۲ساعته + آمار ──
         atk_u = await users.get_by_tg(s, 9400)
@@ -3343,45 +3388,158 @@ async def main() -> None:
     plist_txt = upd.message.calls[-1][1]
     plist_kb = upd.message.calls[-1][2].get("reply_markup")
     pdata = [b.callback_data for row in plist_kb.inline_keyboard for b in row]
-    check("دستور «حمله» تو پی‌وی لیست دکمه‌دار میده",
-          "⚔️ لیست حمله" in plist_txt and any(d.startswith("patt:go:") for d in pdata), pdata[:6])
-    check("شانس هر هدف تو لیست نوشته میشه", "شانس" in plist_txt and "درصد" in plist_txt)
+    check("دستور «حمله» تو پی‌وی پنل هدف شانسی میده",
+          "هدف شانسی" in plist_txt and "patt:go" in pdata, pdata[:6])
+    check("پنل شانسی شانس و مصونیت رو توضیح میده",
+          "شانس" in plist_txt and "12 ساعت" in plist_txt)
 
-    upd = _fake_update("patt:go:9411", uid=9410)
-    await pv_h3.target_cb(upd, None)
-    cft = next(c[1] for c in upd.callback_query.calls if c[0] == "edit")
-    cfk = next(c[2].get("reply_markup") for c in upd.callback_query.calls if c[0] == "edit")
-    cfmap = {b.callback_data: b.style for row in cfk.inline_keyboard for b in row}
-    check("تایید پی‌وی شانس، لول و هزینه رو نشون میده",
-          "<b>⚔️ حمله به «طرف9411»</b>" in cft and "شانس برد" in cft and "15 انرژی" in cft
-          and cfmap.get("cf:patt:x:9411") == "success", cft)
-
+    # دکمه شانسی: هدف کنترل‌شده تزریق میشه (SQL انتخاب شانسی با تست سرویس پوشش داده شد)
+    async def _pick9411(session, u, exclude_id=None):
+        return await users.get_by_tg(session, 9411)
+    async def _pick_none(session, u, exclude_id=None):
+        return None
+    _old_pick = pv_svc.pick_random_target
     _old_wc = pv_svc.win_chance
+    pv_svc.pick_random_target = _pick9411
     pv_svc.win_chance = lambda a, d: 1.0
     try:
-        upd = _fake_update("cf:patt:x:9411", uid=9410)
-        await pv_h3.execute_cb(upd, None)
+        upd = _fake_update("patt:go", uid=9410)
+        await pv_h3.target_go_cb(upd, None)
+    finally:
+        pv_svc.pick_random_target = _old_pick
+        pv_svc.win_chance = _old_wc
+    rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    rkb = next((c[2].get("reply_markup") for c in upd.callback_query.calls if c[0] == "edit"), None)
+    rdata = [b.callback_data for row in rkb.inline_keyboard for b in row] if rkb else []
+    check("هدف شانسی اول پیش‌نمایش قربانی رو نشون میده",
+          "<b>🎯 هدف پیدا شد</b>" in rt and "طرف9411" in rt and "شانس برد 100 درصد" in rt
+          and "می‌زنیش یا یه هدف دیگه می‌خوای؟" in rt, rt)
+    async with session_scope() as s:
+        id9411 = (await users.get_by_tg(s, 9411)).id
+        id9412 = (await users.get_by_tg(s, 9412)).id
+    check("دکمه‌های پیش‌نمایش: حمله و هدف دیگه و بازگشت",
+          rdata == [f"patt:hit:{id9411}", f"patt:next:{id9411}", "patt:back"], str(rdata))
+
+    # دکمه حمله روی هدف پیش‌نمایش‌شده اجرا میشه
+    pv_svc.win_chance = lambda a, d: 1.0
+    try:
+        upd = _fake_update(f"patt:hit:{id9411}", uid=9410)
+        await pv_h3.target_hit_cb(upd, None)
     finally:
         pv_svc.win_chance = _old_wc
     rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
-    check("نتیجه برد پی‌وی قالب موردانتظاره",
-          "<b>⚔️ بردی!</b>" in rt and "غارت کردی" in rt and "12 ساعت" in rt, rt)
+    check("دکمه حمله نتیجه با قالب دقیق رو میده",
+          "<b>⚔️ بردی!</b>" in rt and "غارت کردی" in rt and "طرف9411" in rt and "12 ساعت" in rt, rt)
+
+    # حمله به قربانی مصون‌شده با الرت رد میشه
+    upd = _fake_update(f"patt:hit:{id9411}", uid=9410)
+    await pv_h3.target_hit_cb(upd, None)
+    ans = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
+    check("حمله به مصون الرت مصونیت میده",
+          ans is not None and ans[1] and "مصونیت داره" in str(ans[1][0]), str(ans)[:80])
+
+    # دکمه هدف دیگه: هدف فعلی رد میشه و قربانی تازه میاد
+    async def _pick9412(session, u, exclude_id=None):
+        if exclude_id:
+            return await users.get_by_tg(session, 9412)
+        return await users.get_by_tg(session, 9411)
+    pv_svc.pick_random_target = _pick9412
+    try:
+        upd = _fake_update(f"patt:next:{id9411}", uid=9410)
+        await pv_h3.target_next_cb(upd, None)
+    finally:
+        pv_svc.pick_random_target = _old_pick
+    rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    rkb = next((c[2].get("reply_markup") for c in upd.callback_query.calls if c[0] == "edit"), None)
+    rdata = [b.callback_data for row in rkb.inline_keyboard for b in row] if rkb else []
+    check("هدف دیگه یه قربانی تازه میاره",
+          "طرف9412" in rt and f"patt:hit:{id9412}" in rdata, rt)
+
+    # هدف دیگه‌ای نباشه: همون پیش‌نمایش میمونه با الرت دقیق
+    pv_svc.pick_random_target = _pick_none
+    try:
+        upd = _fake_update(f"patt:next:{id9412}", uid=9410)
+        await pv_h3.target_next_cb(upd, None)
+    finally:
+        pv_svc.pick_random_target = _old_pick
+    rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    ans = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
+    check("هدف دیگه نیس همون پیش‌نمایش میمونه با الرت دقیق",
+          "طرف9412" in rt
+          and ans is not None and ans[1] and ans[1][0] == "فعلا هدفی جز این در حوالی لولت پیدا نمیشه", rt)
+
+    # دکمه بازگشت برمی‌گرده به پنل شانسی
+    upd = _fake_update("patt:back", uid=9410)
+    await pv_h3.target_back_cb(upd, None)
+    rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    check("بازگشت پنل هدف شانسی رو برمی‌گردونه", "هدف شانسی" in rt, rt[:60])
+
+    # ── نبض انرژی: هر ۵ دقیقه +۲۰ به همه با یه کوئری، سقف MAX_ENERGY ──
+    check("کانفیگ نبض انرژی ۵ دقیقه‌ی ۲۰تاییه",
+          config.ENERGY_PULSE_SECONDS == 300 and config.ENERGY_PULSE_AMOUNT == 20)
+    from handlers import jobs as jobs_h2
+    async with session_scope() as s:
+        e1 = await users.get_by_tg(s, 9400)  # انرژیش کم شده با حمله‌ها
+        e1.energy = 50
+        e2, _ = await users.get_or_create(s, tg(9420, "nrg2", "شارژی"))
+        e2.energy = 95
+        e3, _ = await users.get_or_create(s, tg(9421, "nrg3", "فولی"))
+        e3.energy = config.MAX_ENERGY
+        await s.commit()
+
+        await s.execute(jobs_h2._energy_pulse_stmt())
+        await s.commit()
+
+        e1 = await users.get_by_tg(s, 9400)
+        e2 = await users.get_by_tg(s, 9420)
+        e3 = await users.get_by_tg(s, 9421)
+        check("نبض انرژی ۲۰ تا به همه اضافه می‌کنه", e1.energy == 50 + 20, str(e1.energy))
+        check("نبض انرژی روی سقف کلمپ میشه", e2.energy == config.MAX_ENERGY
+              and e3.energy == config.MAX_ENERGY, f"{e2.energy}/{e3.energy}")
+
+        e1.energy = 0
+        await s.commit()
+        await s.execute(jobs_h2._energy_pulse_stmt())
+        await s.commit()
+        e1 = await users.get_by_tg(s, 9400)
+        check("نبض پشت‌سرهم بدون حلقه پر می‌کنه", e1.energy == 20, str(e1.energy))
+
+    # ── ریجن تنبلی دیگه انرژی نمیده، فقط سقف نگه می‌داره (share سرور مهمه) ──
+    async with session_scope() as s:
+        lazy = await users.get_by_tg(s, 9400)
+        lazy.energy = 10
+        lazy.energy_updated_at = now_utc() - timedelta(hours=5)
+        users.apply_energy_regen(lazy)
+        check("ریجن تنبلی انرژی اضافه نمی‌کنه (فقط نبض دسته‌جمعی)",
+              lazy.energy == 10, str(lazy.energy))
+        lazy.energy = config.MAX_ENERGY + 50
+        users.apply_energy_regen(lazy)
+        check("ریجن تنبلی سقف رو نگه می‌داره", lazy.energy == config.MAX_ENERGY)
+        await s.commit()
+
+    # جاب واقعی نبض انرژی (ایندپوینت async)
+    async with session_scope() as s:
+        j1 = await users.get_by_tg(s, 9400)
+        j1.energy = 0
+        await s.commit()
+    await jobs_h2.energy_pulse_job(None)
+    async with session_scope() as s:
+        j1 = await users.get_by_tg(s, 9400)
+        check("جاب نبض انرژی واقعی اجرا میشه", j1.energy == 20, str(j1.energy))
     async with session_scope() as s:
         v1 = await users.get_by_tg(s, 9411)
-        check("قربانی واقعا مصون شد", v1.shield_until is not None and pv_svc.shield_left(v1) > 0)
+        check("قربانی شانسی واقعا 12 ساعت مصون شد",
+              v1.shield_until is not None and pv_svc.shield_left(v1) > 0)
 
-    upd = _fake_update("patt:go:9411", uid=9410)
-    await pv_h3.target_cb(upd, None)
-    ans = [c for c in upd.callback_query.calls if c[0] == "answer"]
-    check("هدف مصون دیگه قابل انتخاب نیس", ans and "مصونیت" in str(ans[-1][1]),
-          str(upd.callback_query.calls[-1]))
-
-    upd = _fake_update("patt:re", uid=9410)
-    await pv_h3.panel_refresh_cb(upd, None)
-    re_data = next((c[2].get("reply_markup") for c in upd.callback_query.calls if c[0] == "edit"), None)
-    re_btns = {b.callback_data for row in re_data.inline_keyboard for b in row}
-    check("رفرش لیست مصون‌شده رو نمیاره",
-          re_btns is not None and "patt:go:9411" not in re_btns, str(re_btns))
+    pv_svc.pick_random_target = _pick_none
+    try:
+        upd = _fake_update("patt:go", uid=9410)
+        await pv_h3.target_go_cb(upd, None)
+    finally:
+        pv_svc.pick_random_target = _old_pick
+    nt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    check("هدف نیس پیام دقیق تک‌خطی «هدفی حوالی لولت پیدا نشد» میاد",
+          nt == "😴 هدفی حوالی لولت پیدا نشد", nt)
 
     # ── کریتیکال نبرد گروهی ۲٪ ──
     check("کانفیگ کریتیکال گروهی 2 درصده",
@@ -3469,14 +3627,20 @@ async def main() -> None:
           and hhkb is not None
           and any(b.callback_data == "heal:buy:band" for row in hhkb.inline_keyboard for b in row),
           hhome.replace("\n", " | ")[:230])
+    check("خط آیتم‌های درمان قالب «اسم | قیمت TP | سلامت» رو داره",
+          "🩹 باند کوچک | 🪙 400 TP | 🏥 سلامت +75" in hhome
+          and "💉 کیت درمان | 🪙 900 TP | 🏥 سلامت +150" in hhome
+          and "🏥 جعبه کمک‌های اولیه | 🪙 1,800 TP | 🏥 سلامت فول" in hhome,
+          hhome.replace("\n", " | ")[:250])
 
-    # باند: همون لحظه +100 و قیمتش از جیب رفت
+    # باند: همون لحظه +75 و قیمتش از جیب رفت
     upd = _fake_update("heal:buy:band", uid=8894)
     await battle_h3.heal_buy_cb(upd, None)
     async with session_scope() as s:
         hl = await users.get_by_tg(s, 8894)
-        check("باند همون لحظه +100 HP داد و قیمتش کم شد و تو انبار نیس",
-              hl.hp == 200 and hl.cash == 5000 - config.HEAL_ITEMS["band"]["price"])
+        check("باند همون لحظه +75 HP داد و قیمتش کم شد و تو انبار نیس",
+              hl.hp == 175 and hl.cash == 5000 - config.HEAL_ITEMS["band"]["price"])
+        hl.hp = battle_svc.max_hp(1)
         await s.commit()
 
     # HP فول، خرید رد میشه
@@ -3526,11 +3690,16 @@ async def main() -> None:
         hl.hp = battle_svc.max_hp(hl.level)
         await s.commit()
 
-    # ── پروفایل قالب جدید: اسم فانتزی + خطوط اموال + خط تجربه ──
+    # ── پروفایل قالب جدید: اسم ساده با قطع طولانی‌ها + خطوط اموال + خط تجربه ──
     from handlers import profile as profile_h2
-    from utils import fancy_name as _fn
-    check("اسم لاتین فانتزی دقیقا مثل نمونه کاربر میشه", _fn("Rapit") == "𝑅𝒶𝓅𝒾𝓉")
-    check("اسم فارسی دست نمی‌خوره", _fn("علی12") == "علی12")
+    from utils import short_name as _sn
+    check("اسم بلندتر از نمونه با چهار نقطه قطع میشه",
+          _sn("Cosholatasdfghhjklq") == "Cosholatasdfghhjkl....")
+    check("اسم کوتاه و معمولی همونطوری میمونه",
+          _sn("Cosholat") == "Cosholat" and _sn("علی") == "علی"
+          and _sn("Cosholatasdfghhjkl") == "Cosholatasdfghhjkl")
+    check("اسم با ۱۹ کاراکتر میشه ۱۸ تاش با نقاط",
+          len(_sn("a" * 19)) == 22 and _sn("a" * 19).endswith("...."))
     async with session_scope() as s:
         pf = await users.get_by_tg(s, 8890)
         cap = await profile_h2._profile_caption(s, pf)

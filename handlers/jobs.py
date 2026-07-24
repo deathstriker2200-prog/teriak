@@ -3,19 +3,21 @@
 آب و هوا هر ۲ ساعت + اعلان به گروه‌های فعال ۱ ساعت اخیر 🌦
 بازار سیاه هر ۴ ساعت 📈 | کاروان برای گروه‌های فعال ۲۴ ساعت اخیر 🚛 (بردش هر ۲ دقیقه رفرش میشه)
 یورش پلیس هر ۲ ساعت به بازیکنان فعال ۲۴ ساعت اخیر 🚔
+نبض انرژی هر ۵ دقیقه به همه کاربرا (یه کوئری دسته‌جمعی، بدون حلقه تک‌تک) ⚡
 """
 
 import logging
 import random
 from datetime import timedelta
 
+from sqlalchemy import update as sql_update
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
 from keyboards import keyboards as kb
-from models import GroupActivity
+from models import GroupActivity, User
 from services import world as world_svc
 from utils import now_utc
 
@@ -53,6 +55,28 @@ async def weather_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def market_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         await world_svc.ensure_market(s)
+        await s.commit()
+
+
+# ───────── نبض انرژی ⚡ ─────────
+
+def _energy_pulse_stmt():
+    """UPDATE دسته‌جمعی: min(انرژی + نبض, سقف) برای همه کاربرای زیر سقف"""
+    from sqlalchemy import case
+    return (
+        sql_update(User)
+        .where(User.energy < config.MAX_ENERGY)
+        .values(energy=case(
+            (User.energy + config.ENERGY_PULSE_AMOUNT > config.MAX_ENERGY, config.MAX_ENERGY),
+            else_=User.energy + config.ENERGY_PULSE_AMOUNT,
+        ))
+    )
+
+
+async def energy_pulse_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """هر ۵ دقیقه ۲۰ انرژی به همه کاربرا، یه کوئری دسته‌جمعی که سرور سنگین نشه"""
+    async with session_scope() as s:
+        await s.execute(_energy_pulse_stmt())
         await s.commit()
 
 
@@ -149,4 +173,5 @@ def register_jobs(app) -> None:
     jq.run_repeating(caravan_job, interval=config.CARAVAN_TICK_SECONDS, first=30, name="caravan")
     jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
     jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
-    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس")
+    jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
+    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس | نبض انرژی")

@@ -80,24 +80,14 @@ def display_name(user: User) -> str:
 
 
 def apply_energy_regen(user: User) -> None:
-    """ریجن تنبلی انرژی، فقط موقع دیدن کاربر حساب میشه"""
-    now = now_utc()
+    """
+    ریجن تنبلی حذف شد، فقط سقف انرژی نگه داشته میشه
+    شارژ انرژی با نبض دسته‌جمعی هر ۵ دقیقه (energy_pulse_job) انجام میشه
+    """
+    if user.energy > config.MAX_ENERGY:
+        user.energy = config.MAX_ENERGY
     if user.energy_updated_at is None:
-        user.energy_updated_at = now
-
-    if user.energy >= config.MAX_ENERGY:
-        user.energy = min(user.energy, config.MAX_ENERGY)
-        user.energy_updated_at = now
-        return
-
-    step = config.ENERGY_REGEN_MINUTES * 60
-    elapsed = (now - user.energy_updated_at).total_seconds()
-    gained = int(elapsed // step)
-    if gained > 0:
-        user.energy = min(config.MAX_ENERGY, user.energy + gained)
-        user.energy_updated_at += timedelta(seconds=gained * step)
-        if user.energy >= config.MAX_ENERGY:
-            user.energy_updated_at = now
+        user.energy_updated_at = now_utc()
 
 
 async def get_item_keys(session: AsyncSession, user_id: int) -> list[str]:

@@ -254,3 +254,15 @@ class SeenUser(Base):
     username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class MessageOwner(Base):
+    """
+    صاحب هر پیام منو — برای قفل مالکیت دکمه‌ها که با ری‌استارت ربات پاک نشه
+    """
+    __tablename__ = "message_owners"
+
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    owner_tg: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)

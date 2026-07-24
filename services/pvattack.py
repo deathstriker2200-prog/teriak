@@ -46,26 +46,25 @@ def win_chance(a_atk: int, t_dfn: int) -> float:
     return max(config.PV_ATTACK_MIN_CHANCE, min(config.PV_ATTACK_MAX_CHANCE, raw))
 
 
-# ───────── لیست هدف 🎯 ─────────
+# ───────── هدف شانسی 🎯 ─────────
 
-async def find_targets(session: AsyncSession, user: User) -> list[User]:
+async def pick_random_target(session: AsyncSession, user: User, exclude_id: int | None = None) -> User | None:
     """
-    هدف‌های پیشنهادی پی‌وی: ±۲ لول خودت، خودت و کسایی که مصونیت دارن حذف میشن
-    هر بار رندوم پر میشه که لیست عوض بشه
+    یه هدف شانسی حوالی لول کاربر (±۲)، خودش و کسایی که مصونیت دارن حذف میشن
+    exclude_id آیدی هدف فعلی پیش‌نمایشه که دکمه «هدف دیگه» باید ردش کنه
+    هدفی نبود None برمی‌گرده
     """
     rng = config.PV_ATTACK_LEVEL_RANGE
-    q = (
-        select(User)
-        .where(
-            User.id != user.id,
-            User.level >= user.level - rng,
-            User.level <= user.level + rng,
-        )
-        .order_by(func.random())
-        .limit(config.PV_ATTACK_SUGGESTIONS * 4)
-    )
-    cands = list((await session.execute(q)).scalars())
-    return [u for u in cands if shield_left(u) <= 0][: config.PV_ATTACK_SUGGESTIONS]
+    conds = [
+        User.id != user.id,
+        User.level >= user.level - rng,
+        User.level <= user.level + rng,
+        (User.shield_until.is_(None)) | (User.shield_until <= now_utc()),
+    ]
+    if exclude_id:
+        conds.append(User.id != exclude_id)
+    q = select(User).where(*conds).order_by(func.random()).limit(1)
+    return (await session.execute(q)).scalar_one_or_none()
 
 
 # ───────── اجرای حمله ⚔️ ─────────

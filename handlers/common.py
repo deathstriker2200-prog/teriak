@@ -33,8 +33,8 @@ _OWNER_CAP = 4000
 _SHARED_OPEN = ("team:mine", "cv:hit")
 
 
-def track_message(chat_id: int | None, message_id: int | None, owner_tg: int | None) -> None:
-    """ثبت مالک پیام دکمه‌دار، چت/آیدی/مالک خالی رد میشه"""
+async def track_message(chat_id: int | None, message_id: int | None, owner_tg: int | None) -> None:
+    """ثبت مالک پیام دکمه‌دار تو حافظه و دیتابیس، چت/آیدی/مالک خالی رد میشه"""
     if not chat_id or not message_id or not owner_tg:
         return
     _MESSAGE_OWNERS[(chat_id, message_id)] = owner_tg
@@ -42,6 +42,14 @@ def track_message(chat_id: int | None, message_id: int | None, owner_tg: int | N
         stale = list(_MESSAGE_OWNERS.keys())[:-_OWNER_CAP // 2]
         for key in stale:
             _MESSAGE_OWNERS.pop(key, None)
+    try:  # ماندگاری روی ری‌استارت، دیتابیس در دسترس نبود حافظه کفایت می‌کنه
+        from database import session_scope
+        from models import MessageOwner
+        async with session_scope() as session:
+            await session.merge(MessageOwner(chat_id=int(chat_id), message_id=int(message_id), owner_tg=int(owner_tg)))
+            await session.commit()
+    except Exception:
+        pass
 
 
 def owner_of(chat_id: int | None, message_id: int | None) -> int | None:
@@ -51,20 +59,39 @@ def owner_of(chat_id: int | None, message_id: int | None) -> int | None:
     return _MESSAGE_OWNERS.get((chat_id, message_id))
 
 
+async def _db_owner(chat_id: int | None, message_id: int | None) -> int | None:
+    """پیدا کردن مالک از دیتابیس وقتی حافظه چیزی نداره (بعد از ری‌استارت)"""
+    if not chat_id or not message_id:
+        return None
+    try:
+        from database import session_scope
+        from models import MessageOwner
+        async with session_scope() as session:
+            row = await session.get(MessageOwner, (chat_id, message_id))
+        owner = row.owner_tg if row else None
+    except Exception:
+        owner = None
+    if owner:
+        _MESSAGE_OWNERS[(chat_id, message_id)] = owner  # کش برای دفعه بعد
+    return owner
+
+
 async def owner_guard(update: Update, context) -> None:
     """
     گارد مالکیت دکمه، تو گروه -1 قبل از همه هندلرهای کالبک اجرا میشه
     اگه کلیک‌کننده صاحب دستور نباشه با ApplicationHandlerStop می‌بلاکه
+    مالک اول از حافظه و اگه نبود از دیتابیس خونده میشه تا ری‌استارت قفل رو نشکنه
     """
     query = update.callback_query
     if query is None or query.data is None:
         return
     if query.data.startswith(_SHARED_OPEN):
         return
-    owner = owner_of(
-        getattr(query.message, "chat_id", None),
-        getattr(query.message, "message_id", None),
-    )
+    chat_id = getattr(query.message, "chat_id", None)
+    message_id = getattr(query.message, "message_id", None)
+    owner = owner_of(chat_id, message_id)
+    if owner is None:
+        owner = await _db_owner(chat_id, message_id)
     if owner is None:
         return
     if update.effective_user and update.effective_user.id == owner:
@@ -95,7 +122,7 @@ async def respond(update: Update, text: str, markup=None, alert: str | None = No
     اگر پیام از کیبورد اومده همون رو ادیت می‌کنه وگرنه ریپلای میده
     اگر پیام عکسی باشه (مثل پروفایل) پاکش می‌کنه و دوباره می‌فرسته
     دکمه منوی اصلی هم تو گروه حذف میشه
-    پیام‌های دکمه‌داری که تو گروه با دستور متنی ساخته میشن به اسم صاحبشون ثبت میشن
+    پیام‌های دکمه‌داری که تو گروه با دستور متنی ساخته میشن تو دیتابیس به اسم صاحبشون ثبت میشن
     """
     markup = strip_home(update, markup)
     query = update.callback_query
@@ -108,7 +135,7 @@ async def respond(update: Update, text: str, markup=None, alert: str | None = No
                 pass
             sent = await query.message.reply_html(text, reply_markup=markup)
             if markup is not None:
-                track_message(
+                await track_message(
                     getattr(sent, "chat_id", None),
                     getattr(sent, "message_id", None),
                     update.effective_user.id if update.effective_user else None,
@@ -123,7 +150,7 @@ async def respond(update: Update, text: str, markup=None, alert: str | None = No
         sent = await update.effective_message.reply_html(text, reply_markup=markup)
         chat = update.effective_chat
         if markup is not None and chat is not None and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
-            track_message(
+            await track_message(
                 getattr(sent, "chat_id", None) or chat.id,
                 getattr(sent, "message_id", None),
                 update.effective_user.id if update.effective_user else None,

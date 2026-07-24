@@ -18,7 +18,7 @@ from database import session_scope
 from handlers.common import respond, strip_bot_cmd
 from keyboards import keyboards as kb
 from services import battle, seen as seen_svc, users
-from utils import esc, fa_dur, fa_num, money
+from utils import esc, fa_dur, fa_num, money, money_tp
 
 
 # ───────── متن‌ها ─────────
@@ -43,14 +43,11 @@ def hit_text(result: dict, target_name: str) -> str:
     )
     if result.get("crit"):
         text += "⚡ کریتیکال\n"
-    text += (
-        f"\n❤️ HP حریف\n"
-        f"{fa_num(result['hp_now'])} از {fa_num(result['hp_max'])}\n\n"
-    )
+    text += f"❤️ سلامت حریف {fa_num(result['hp_now'])} از {fa_num(result['hp_max'])}\n\n"
     if result["steal"]:
-        text += f"💰 {money(result['steal'])} غارت کردی\n\n"
+        text += f"💰 {money(result['steal'])} غارت کردی\n"
     else:
-        text += "💰 جیب حریف خالی بود\n\n"
+        text += "💰 جیب حریف خالی بود\n"
     text += f"✨ {fa_num(result['xp'])} تجربه گرفتی"
 
     if result.get("killed"):
@@ -224,8 +221,8 @@ def heal_home_text(hp_now: int, hp_max: int) -> str:
         "",
     ]
     for it in config.HEAL_ITEMS.values():
-        gain = "فول" if it["heal"] is None else f"+{fa_num(it['heal'])} HP"
-        lines.append(f"{it['name']} | {gain} | {money(it['price'])}")
+        gain = "سلامت فول" if it["heal"] is None else f"سلامت +{fa_num(it['heal'])}"
+        lines.append(f"{it['name']} | 🪙 {money_tp(it['price'])} | 🏥 {gain}")
     lines += [
         "",
         "هر آیتم همون لحظه استفاده میشه و توی انبار ذخیره نمیشه",
