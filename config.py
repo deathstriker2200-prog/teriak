@@ -169,6 +169,11 @@ PV_ATTACK_STEAL_MAX_PCT = 0.20
 PV_ATTACK_LOSE_PENALTY_PCT = 0.05  # جریمه باخت، این درصد از جیب مهاجم به قربانی میرسه
 PV_ATTACK_WIN_XP = 25             # تجربه برد
 PV_ATTACK_LOSE_XP = 6             # تجربه باخت
+PV_ATTACK_VICTIM_XP = 3           # تجربه کمی که قربانی تو پی‌ویش می‌گیره (حمله نکرده، فقط خورده)
+PV_ATTACK_COOLDOWN_SECONDS = 60   # کولدون هر حمله پی‌وی
+PV_REROLL_MIN_COST = 25           # هزینه «هدف دیگه» تو لول ۱
+PV_REROLL_MAX_COST = 1000         # هزینه «هدف دیگه» تو مکس لول، بین اینا خطی با لول جست‌وجوگر
+PV_ATTACK_SHIELD_BREAK_COST = 1500  # هزینه شکستن سپر ۱۲ ساعته قربانی (اختیاری مهاجمه)
 
 # قدرت پایه نبرد (حمله و دفاع) که با لول رشد می‌کنه
 ATK_BASE = 4

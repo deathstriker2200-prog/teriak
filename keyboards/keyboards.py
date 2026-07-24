@@ -17,7 +17,7 @@ shop:buy:<kind>:<key>       → cf:shop:buy:<kind>:<key>
 txcf:<kind>:<key>:<tg_id>   → تایید خرید دستور متنی (فقط خودش)
 dogs:feed:<dog_id>          → کارت آمار سگ با همان دکمه‌های غذا (cf:feed:<dog_id>:<food>)
 heal:buy:<key>              → خرید و استفاده همون لحظه آیتم درمان
-patt:go                     → 🎯 هدف شانسی پی‌وی، پیش‌نمایش قربانی → patt:hit:<user_id> حمله | patt:next:<user_id> هدف دیگه | patt:back بازگشت
+patt:go                     → 🎯 هدف شانسی پی‌وی، پیش‌نمایش قربانی → patt:hit:<user_id> حمله | patt:next:<user_id> هدف دیگه (هزینه‌دار) | patt:back بازگشت | patt:break:<user_id> شکستن سپر
 menu:team | team:quests | team:mine | team:top | team:leave | team:disband
 tmcf:<leave|disband>:<tg_id> → تایید ترک/انحلال تیم (فقط خودش)
 dog:card:<dog_id>           → کارت آمار سگ (آمار [اسم])
@@ -425,12 +425,20 @@ def pv_attack_kb() -> InlineKeyboardMarkup:
     ])
 
 
-def pv_target_kb(target_id: int) -> InlineKeyboardMarkup:
-    """پیش‌نمایش هدف پی‌وی، یا میزنیش یا یه هدف دیگه می‌گیری یا برمی‌گردی"""
+def pv_target_kb(target_id: int, reroll_cost: int) -> InlineKeyboardMarkup:
+    """پیش‌نمایش هدف پی‌وی، یا میزنیش یا با پرداخت یه هدف دیگه می‌گیری یا برمی‌گردی"""
     return InlineKeyboardMarkup([
         [_btn("⚔️ حمله", f"patt:hit:{target_id}", DANGER)],
-        [_btn("🎯 هدف دیگه", f"patt:next:{target_id}", PRIMARY)],
+        [_btn(f"🎯 هدف دیگه | 🪙 {money_tp(reroll_cost)}", f"patt:next:{target_id}", PRIMARY)],
         [_btn("🔙 بازگشت", "patt:back", PRIMARY)],
+    ])
+
+
+def pv_break_kb(target_id: int) -> InlineKeyboardMarkup:
+    """قربانی سپر ۱۲ ساعته داره، یا با پول می‌شکنیش یا بی‌خیال میشی"""
+    return InlineKeyboardMarkup([
+        [_btn("💥 بشکن و حمله کن", f"patt:break:{target_id}", DANGER)],
+        [_btn("🙅 بی‌خیال", "patt:back", PRIMARY)],
     ])
 
 
@@ -438,9 +446,9 @@ def heal_kb() -> InlineKeyboardMarkup:
     """کیبورد بخش درمان، هر آیتم با یه کلیک خریده و همون لحظه استفاده میشه"""
     rows: list[list[InlineKeyboardButton]] = []
     for key, it in config.HEAL_ITEMS.items():
-        gain = "فول" if it["heal"] is None else f"+{fa_num(it['heal'])} HP"
+        gain = "سلامت فول" if it["heal"] is None else f"سلامت +{fa_num(it['heal'])}"
         rows.append([_btn(
-            f"{it['name']} | {gain} | {money_tp(it['price'])}",
+            f"{it['name']} | 🪙 {money_tp(it['price'])} | 🏥 {gain}",
             f"heal:buy:{key}", SUCCESS,
         )])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])

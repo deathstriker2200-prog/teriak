@@ -18,7 +18,7 @@ from database import session_scope
 from handlers.common import respond, strip_bot_cmd
 from keyboards import keyboards as kb
 from services import battle, seen as seen_svc, users
-from utils import esc, fa_dur, fa_num, money, money_tp
+from utils import esc, fa_dur, fa_num, money
 
 
 # ───────── متن‌ها ─────────
@@ -213,21 +213,15 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # ───────── بخش درمان ❤️ ─────────
 
 def heal_home_text(hp_now: int, hp_max: int) -> str:
-    lines = [
+    """صفحه درمان، آیتم‌ها با قیمت و مقدار فقط روی دکمه‌ها میان"""
+    return "\n".join([
         "<b>❤️ درمان</b>",
         "",
-        "❤️ HP تو",
+        "❤️ سلامت تو",
         f"{fa_num(hp_now)} از {fa_num(hp_max)}",
         "",
-    ]
-    for it in config.HEAL_ITEMS.values():
-        gain = "سلامت فول" if it["heal"] is None else f"سلامت +{fa_num(it['heal'])}"
-        lines.append(f"{it['name']} | 🪙 {money_tp(it['price'])} | 🏥 {gain}")
-    lines += [
-        "",
         "هر آیتم همون لحظه استفاده میشه و توی انبار ذخیره نمیشه",
-    ]
-    return "\n".join(lines)
+    ])
 
 
 HEAL_FULL_TEXT = (

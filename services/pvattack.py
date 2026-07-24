@@ -31,6 +31,26 @@ def shield_left(user: User) -> int:
     return max(0, int(left))
 
 
+# ───────── کولدون مهاجم ⏳ ─────────
+
+def cooldown_left(user: User) -> int:
+    """ثانیه مونده از کولدون حمله پی‌وی، صفر یعنی آماده حمله‌ست"""
+    if not user.pv_attack_at:
+        return 0
+    end = user.pv_attack_at + timedelta(seconds=config.PV_ATTACK_COOLDOWN_SECONDS)
+    return max(0, int((end - now_utc()).total_seconds()))
+
+
+# ───────── هزینه «هدف دیگه» 🎲 ─────────
+
+def reroll_cost(level: int) -> int:
+    """هزینه دکمه هدف دیگه، خطی با لول جست‌وجوگر بین حداقل و حداکثر کانفیگ"""
+    lo, hi = config.PV_REROLL_MIN_COST, config.PV_REROLL_MAX_COST
+    lv = max(1, min(config.MAX_LEVEL, level))
+    span = max(1, config.MAX_LEVEL - 1)
+    return int(lo + (hi - lo) * (lv - 1) / span)
+
+
 # ───────── قدرت و شانس 🎲 ─────────
 
 async def powers(session: AsyncSession, user: User) -> tuple[int, int]:
@@ -72,8 +92,9 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
 async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     """
     همه چک‌ها + رول شانس + تغییرات دیتابیس یه حمله پی‌وی (بدون کامیت)
-    reason: self | level | shield | energy
+    reason: self | level | shield | energy | cooldown
     هر حمله، برد یا باخت، قربانی رو 12 ساعت مصون می‌کنه
+    کولدون مهاجم ثبت میشه و به قربانی هم یه تجربه ناچیز میرسه
     """
     if victim.id == attacker.id:
         return {"ok": False, "reason": "self"}
@@ -89,7 +110,12 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     if attacker.energy < config.PV_ATTACK_ENERGY_COST:
         return {"ok": False, "reason": "energy"}
 
+    cd = cooldown_left(attacker)
+    if cd:
+        return {"ok": False, "reason": "cooldown", "left": cd}
+
     attacker.energy -= config.PV_ATTACK_ENERGY_COST
+    attacker.pv_attack_at = now_utc()
 
     a_atk, _ = await powers(session, attacker)
     _, t_dfn = await powers(session, victim)
@@ -120,6 +146,10 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         xp = config.PV_ATTACK_LOSE_XP
 
     notes = user_svc.add_xp(attacker, xp)
+    # قربانی هم یه تجربه ناچیز می‌گیره، حمله نکرده ولی خورده
+    victim_xp = config.PV_ATTACK_VICTIM_XP
+    if victim_xp:
+        user_svc.add_xp(victim, victim_xp)
     return {
         "ok": True,
         "won": won,
@@ -127,6 +157,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         "steal": steal,
         "penalty": penalty,
         "xp": xp,
+        "victim_xp": victim_xp,
         "notes": notes,
         "a_pow": a_atk,
         "d_pow": t_dfn,

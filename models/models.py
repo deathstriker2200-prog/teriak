@@ -56,6 +56,9 @@ class User(Base):
     # مصونیت حمله پی‌وی — بعد اینکه بهت حمله شد تا این زمان از لیست حمله‌های پی‌وی خارجی (۱۲ ساعت)
     shield_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # آخرین حمله پی‌وی که خودت زدی — کولدون حمله پی‌وی روی این حساب میشه
+    pv_attack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # نبرد HP گروهی — جان دائمی بین نبردها میمونه | NULL یعنی هنوز مقداردهی نشده (فول حساب میشه)
     hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # بعد شکست تا این زمان بیهوشه، بعدش خودکار با HP فول زنده میشه

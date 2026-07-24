@@ -127,6 +127,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(attack.target_hit_cb, pattern=r"^patt:hit:\d+$"))
     app.add_handler(CallbackQueryHandler(attack.target_next_cb, pattern=r"^patt:next:\d+$"))
     app.add_handler(CallbackQueryHandler(attack.target_back_cb, pattern=r"^patt:back$"))
+    app.add_handler(CallbackQueryHandler(attack.target_break_cb, pattern=r"^patt:break:\d+$"))
     app.add_handler(CallbackQueryHandler(rank.rank_cb, pattern=r"^menu:rank$"))
     app.add_handler(CallbackQueryHandler(dogs.dogs_cb, pattern=r"^menu:dogs$"))
     app.add_handler(CallbackQueryHandler(team.team_cb, pattern=r"^menu:team$"))
