@@ -282,7 +282,7 @@ async def _record(session: AsyncSession, user: User, key: str, n: int) -> str | 
 
 
 async def record_kill(session: AsyncSession, user: User) -> str | None:
-    """هر برد تو حمله، با قلاب execute_attack صدا زده میشه"""
+    """هر برد تو نبرد، با قلاب execute_hit توی services.battle صدا زده میشه"""
     return await _record(session, user, "kills", 1)
 
 

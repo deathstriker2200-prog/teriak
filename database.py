@@ -43,6 +43,8 @@ _NEW_COLUMNS = {
         ("shield_until", "DATETIME"),
         ("dq_date", "VARCHAR(10)"),
         ("dq_data", "VARCHAR(1024)"),
+        ("hp", "INTEGER"),
+        ("dead_until", "DATETIME"),
     ],
     "plots": [
         ("built_at", "DATETIME"),
@@ -77,7 +79,7 @@ def _ensure_columns(sync_conn) -> None:
 
 
 def _migrate_data(sync_conn) -> None:
-    """مایگریشن دیتا — بذرهای قدیمی (کوکا/قات) به کلیدهای جدید"""
+    """مایگریشن دیتا — بذرهای قدیمی (کوکا/قات) به کلیدهای جدید + سقف لول ۲۰"""
     from sqlalchemy import text
 
     for old, new in _LEGACY_SEEDS.items():
@@ -86,6 +88,15 @@ def _migrate_data(sync_conn) -> None:
             sync_conn.execute(text("UPDATE plots SET crop=:n WHERE crop=:o"), {"n": new, "o": old})
         except Exception:
             pass  # جدول هنوز نیس یا خطای جزئی — مهم نیس
+
+    # نبرد HP: لول‌های بالاتر از سقف برمی‌گردن روی مکس
+    try:
+        import config as _cfg
+        sync_conn.execute(
+            text("UPDATE users SET level=:cap WHERE level > :cap"), {"cap": _cfg.MAX_LEVEL}
+        )
+    except Exception:
+        pass
 
 
 async def reload_engine(url: str | None = None) -> None:

@@ -53,8 +53,13 @@ class User(Base):
     pending_action: Mapped[str | None] = mapped_column(String(16), nullable=True)
     pending_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    # سپر محافظ بعد از حمله، تا وقتی فعاله کسی نمی‌تونه بهش حمله کنه
+    # مصونیت حمله پی‌وی — بعد اینکه بهت حمله شد تا این زمان از لیست حمله‌های پی‌وی خارجی (۱۲ ساعت)
     shield_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # نبرد HP گروهی — جان دائمی بین نبردها میمونه | NULL یعنی هنوز مقداردهی نشده (فول حساب میشه)
+    hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # بعد شکست تا این زمان بیهوشه، بعدش خودکار با HP فول زنده میشه
+    dead_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # کوئست‌های روزانه، تاریخ به‌وقت ایران + JSON پیشرفت و جایزه‌ها
     dq_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
@@ -236,3 +241,16 @@ class GameMeta(Base):
 
     key: Mapped[str] = mapped_column(String(32), primary_key=True)
     value: Mapped[str] = mapped_column(String(512), default="")
+
+
+class SeenUser(Base):
+    """
+    کاربرانی که ربات پیامشون رو دیده (بیشتر تو گروه‌ها)
+    برای حمله با @یوزرنیم به کسایی که هنوز ربات رو استارت نکردن
+    """
+    __tablename__ = "seen_users"
+
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)

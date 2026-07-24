@@ -211,6 +211,14 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await s.commit()
             return await render_farm(update, alert="⭐ این زمین مکس لوله")
 
+        req_level = economy.plot_upgrade_required_level(plot.level)
+        if user.level < req_level:
+            await s.commit()
+            return await render_farm(
+                update,
+                alert=f"🔒 آپگرید به لول {fa_num(plot.level + 1)} لول {fa_num(req_level)} می‌خواد",
+            )
+
         price = economy.upgrade_price(plot.level)
         old_y = economy.plot_yield_mult(plot.level)
         new_y = economy.plot_yield_mult(plot.level + 1)
@@ -219,6 +227,7 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         text = (
             f"<b>⬆️ لول‌آپ زمین، تا لول {fa_num(config.PLOT_MAX_LEVEL)}</b>\n\n"
             f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n"
+            f"🔓 لول {fa_num(req_level)} به بالا لازمه\n"
             f"💸 هزینه {money(price)}\n"
             f"📈 درآمد 25% بهتر میشه (×{old_y:.2f} ← ×{new_y:.2f})\n"
             f"⚡ سرعت رشد 40% بیشتر میشه (×{old_sp:.1f} ← ×{new_sp:.1f})\n\n"

@@ -198,6 +198,10 @@ async def upgrade_plot(session: AsyncSession, user: User, plot: Plot) -> tuple[b
     if plot.level >= config.PLOT_MAX_LEVEL:
         return False, "⭐ این زمین مکس لوله"
 
+    req_level = economy.plot_upgrade_required_level(plot.level)
+    if user.level < req_level:
+        return False, f"🔒 آپگرید به لول {fa_num(plot.level + 1)} لول {fa_num(req_level)} می‌خواد"
+
     price = economy.upgrade_price(plot.level)
     if user.cash < price:
         return False, "❌ تی‌پوینتت کافی نیس"

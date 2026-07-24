@@ -1,7 +1,7 @@
 """
 دستورهای متنی فارسی، هم PV هم گروه، همه با پیشوند «تریاکی »
 «تریاکی شاپ» «تریاکی پروفایل» «تریاکی خرید چاقو» «تریاکی خرید سگ دوبرمن» «تریاکی کاشت ماری جوانا»
-«تریاکی واریز 1200» «تریاکی برداشت محصول» «تریاکی حمله» (با ریپلای) «تریاکی مزرعه» «تریاکی سگ‌های من»
+«تریاکی واریز 1200» «تریاکی برداشت محصول» «تریاکی مزرعه» «تریاکی سگ‌های من» (نبرد گروهی توی handlers/battle.py)
 
 ⚠️ برای کار کردن تو گروه، Privacy Mode ربات باید توی BotFather خاموش باشه
 """
@@ -13,14 +13,13 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import format_attack_result, parts, respond, strip_bot_cmd
+from handlers.common import parts, respond, strip_bot_cmd
 from handlers import dogs as dogs_h
 from handlers import farm as farm_h
 from handlers import profile as profile_h
 from handlers import shop as shop_h
 from keyboards import keyboards as kb
-from models import User
-from services import combat, dogs as dog_svc, economy, farming, shop_svc, users
+from services import dogs as dog_svc, farming, shop_svc, users
 from utils import esc, fa_dur, fa_num, find_by_name, money, normalize_fa
 
 
@@ -195,123 +194,7 @@ async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
-# ───────── حمله با ریپلای (گروه و PV)، با تاییدیه ─────────
-
-async def attack_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    reply = update.message.reply_to_message
-
-    if not reply or not reply.from_user:
-        return await respond(
-            update,
-            "<b>⚔️ حمله</b>\n\n"
-            "روی پیام هدفت ریپلای کن و بنویس «حمله» یا «تریاکی حمله»\n"
-            "یا از منوی ⚔️ حمله هدف رندوم پیدا کن",
-            kb.home_kb(),
-        )
-
-    tg_target = reply.from_user
-    if tg_target.is_bot:
-        return await respond(update, "😅 ربات‌ها رو نمیشه زد")
-    if tg_target.id == update.effective_user.id:
-        return await respond(update, "😅 خودتو نزن")
-
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        users.apply_energy_regen(user)
-
-        left = combat.cooldown_left(user)
-        if left:
-            await s.commit()
-            return await respond(update, f"⏳ هنوز {fa_dur(left)} از کولدونت مونده")
-        if user.energy < config.ATTACK_ENERGY_COST:
-            await s.commit()
-            return await respond(update, "⚡ انرژیت کمه")
-
-        target = await users.get_by_tg(s, tg_target.id)
-        if not target:
-            await s.commit()
-            return await respond(update, "🤷 این هنوز وارد محله نشده، اول باید به بات /start بزنه")
-
-        name = esc(users.display_name(target))
-
-        # هدف سپرداره، تا تموم شدن سپرش نمیشه زدش
-        t_shield = combat.shield_left(target)
-        if t_shield:
-            await s.commit()
-            return await respond(
-                update,
-                f"🛡 {name} سپر محافظ داره\n\n{fa_dur(t_shield)} دیگه دوباره می‌تونی بزنیش",
-            )
-
-        target_id = target.id
-
-        # خودش سپر داره، اول باید تایید کنه سپرشو می‌شکنه
-        if combat.shield_left(user):
-            await s.commit()
-            from handlers.attack import shield_prompt_text
-            return await respond(
-                update, shield_prompt_text(),
-                kb.shield_break_kb(f"txatt:{target_id}:{update.effective_user.id}:brk", f"txcl:{update.effective_user.id}"),
-            )
-
-        text = (
-            f"<b>⚔️ حمله به {name}</b>\n\n"
-            f"⭐ لول {fa_num(target.level)}\n"
-            f"💵 وضعیت جیبش: {combat.cash_bucket(target.cash)}\n"
-            f"هزینه حمله ⚡ {fa_num(config.ATTACK_ENERGY_COST)} انرژی\n\n"
-            "مطمئنی رفیق؟"
-        )
-        await s.commit()
-
-    await respond(update, text, kb.tx_attack_kb(target_id, update.effective_user.id))
-
-
-async def tx_attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """اجرای حمله بعد از تایید، فقط خود مهاجم می‌تونه بزنه (brk یعنی سپرشو تایید کرده بشکنه)"""
-    p = parts(update)
-    target_id, owner_tg = p[1], p[2]
-    break_shield = len(p) > 3 and p[3] == "brk"
-
-    if update.effective_user.id != int(owner_tg):
-        await update.callback_query.answer()  # غریبه هیچ واکنشی نمی‌بینه
-        return
-
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        users.apply_energy_regen(user)
-
-        target = await s.get(User, int(target_id))
-        if not target:
-            await s.commit()
-            return await respond(update, "🤷 طرفت تیک انداخت رفت")
-
-        result = await combat.execute_attack(s, user, target, break_shield=break_shield)
-        target_name = esc(users.display_name(target))
-        dq_done, dq_left = [], 0
-        if result["ok"]:
-            from services import quests as dq_svc
-            dq_done, dq_left = await dq_svc.track(s, user, "attack")
-        uname = users.display_name(user)
-        await s.commit()
-
-    if not result["ok"]:
-        if result["reason"] == "shield_self":
-            from handlers.attack import shield_prompt_text
-            return await respond(
-                update, shield_prompt_text(),
-                kb.shield_break_kb(f"txatt:{target_id}:{owner_tg}:brk", f"txcl:{owner_tg}"),
-            )
-        msg = (
-            f"⏳ هنوز {fa_dur(result['left'])} از کولدونت مونده"
-            if result["reason"] == "cooldown"
-            else f"🛡 طرف سپر محافظ داره، {fa_dur(result['left'])} دیگه میشه زدش"
-            if result["reason"] == "shield_target"
-            else "⚡ انرژیت کمه"
-        )
-        return await respond(update, msg)
-    await respond(update, format_attack_result(result, target_name), kb.attack_result_kb())
-    from handlers import dquests
-    await dquests.announce_completed(update, uname, dq_done, dq_left)
+# ───────── حمله با ریپلای، به نبرد HP گروهی منتقل شد (handlers/battle.py) ─────────
 
 
 async def tx_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

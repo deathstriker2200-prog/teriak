@@ -1,144 +1,184 @@
-"""حمله PvP: خانه | جستجوی هدف رندوم | تایید | اجرا، منطق توی services.combat"""
+"""
+حمله پی‌وی کلاسیک ⚔️، منوی ⚔️ حمله، ‎/attack و دستورهای متنی تو پی‌وی
+سیستم قدیمی: لیست هدف‌های ±۲ لول با شانس درصدی، بعد هر حمله قربانی 12 ساعت مصونیت می‌گیره
+نبرد HP فقط توی گروه‌هاست، اینجا سیستم جدا داره
+"""
 
 from telegram import Update
+from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import format_attack_result, parts, respond
+from handlers.common import parts, respond
 from keyboards import keyboards as kb
-from models import User
-from services import combat, dogs as dog_svc, users
-from utils import esc, fa_dur, fa_num
+from services import pvattack, users
+from utils import esc, fa_num, money
+
+# ───────── متن‌ها ─────────
+
+PANEL_HEADER = "<b>⚔️ لیست حمله</b>"
+
+PANEL_FOOTER = (
+    "بعد هر حمله قربانی 12 ساعت از لیست خارج میشه\n"
+    "برای نبرد HP با بند و بساط کامل برو توی گروه‌ها سراغ حریفت"
+)
+
+PANEL_EMPTY_TEXT = (
+    f"{PANEL_HEADER}\n\n"
+    "😴 فعلا هدفی حوالی لولت پیدا نشد\n"
+    "یه کم دیگه کنده کاری کن و برگرد"
+)
 
 
-# ───────── خانه حمله ─────────
-
-async def _attack_home_text(session, user) -> str:
-    keys = await users.get_item_keys(session, user.id)
-    dogs = await dog_svc.get_user_dogs(session, user.id)
-    atk, dfn = combat.combat_stats(user, keys, dogs)
-
-    dog_power = sum(dog_svc.dog_attack(d) for d in dogs)
-
-    text = (
-        "<b>⚔️ دزدی از همسایه‌ها</b>\n\n"
-        f"💪 حمله تو {fa_num(atk)}"
-        + (f" (🐕 {fa_num(dog_power)} از سگ‌ها)" if dog_power else "")
-        + f"\n🛡 دفاع تو {fa_num(dfn)}\n\n"
-        f"🎯 تو گروه: ریپلای روی پیام طرف و بنویس «حمله» یا «تریاکی حمله»\n"
-        f"🎲 اینجا: هدف رندوم تو بازه {fa_num(config.ATTACK_TARGET_LEVEL_RANGE)} لول بالا و پایین خودت\n\n"
-        "💪 شانس برد از اختلاف قدرت دو طرف حساب میشه، قدرت مساوی یعنی 50/50 و هیچ بردی 100% تضمینی نیس\n"
-        f"💣 {fa_num(int(config.ATTACK_CRIT_CHANCE * 100))}% مواقع ضربه بحرانی میزنی، دمیج و غارتت بیشتر میشه\n"
-        f"🛡 بعد هر حمله هدف {fa_num(config.ATTACK_SHIELD_MINUTES)} دقیقه سپر می‌گیره و کسی نمی‌تونه بزنتش\n"
-        f"⚡ هر حمله {fa_num(config.ATTACK_ENERGY_COST)} انرژی می‌سوزونه\n"
-        f"💰 بردی بین {fa_num(config.STEAL_MIN_PCT * 100)} تا {fa_num(config.STEAL_MAX_PCT * 100)} درصد جیبش مال توئه\n"
-        f"🐺 گرگ سیاه تا {fa_num(config.RARE_DOG_STEAL_MAX * 100)}% غرامت بیشتر می‌گیره و تا {fa_num(config.RARE_DOG_DEF_CUT_MAX * 100)}% دفاع طرف رو خرد می‌کنه\n"
-        f"🛡 اگه زره افسانه‌ای داشت نصفش میشه\n"
-        f"⏳ هر {fa_num(config.ATTACK_COOLDOWN_MINUTES)} دقیقه فقط یه حمله"
-    )
-
-    left = combat.cooldown_left(user)
-    if left:
-        text += f"\n\n⏳ {fa_dur(left)} مونده تا حمله بعدی"
-    sleft = combat.shield_left(user)
-    if sleft:
-        text += f"\n🛡 سپر محافظت فعاله، {fa_dur(sleft)} دیگه می‌ره"
-    return text
+def _target_line(u, chance: float) -> str:
+    pct = round(chance * 100)
+    return f"🎯 {esc(users.display_name(u))} | لول {fa_num(u.level)} | شانس {fa_num(pct)} درصد"
 
 
-def shield_prompt_text() -> str:
-    """پیام تایید شکستن سپر قبل از حمله، وقتی خود مهاجم سپر داره"""
-    return (
-        "<b>🛡 سپر محافظت هنوز فعاله</b>\n\n"
-        "اگر حمله کنی سپرت از بین میره\n\n"
-        "ادامه میدی؟"
-    )
+async def _gather(session, user):
+    """لیست هدف‌ها + شانس هرکدوم"""
+    targets = await pvattack.find_targets(session, user)
+    a_atk, _ = await pvattack.powers(session, user)
+    out = []
+    for t in targets:
+        _, t_dfn = await pvattack.powers(session, t)
+        out.append((t, pvattack.win_chance(a_atk, t_dfn)))
+    return out
+
+
+# ───────── پنل لیست ─────────
+
+async def pv_panel(update: Update, alert: str | None = None) -> None:
+    """لیست حمله پی‌وی، نقطه ورود منو و دستورهای متنی پی‌وی"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        users.apply_energy_regen(user)
+        rows = await _gather(s, user)
+        await s.commit()
+
+    if not rows:
+        return await respond(update, PANEL_EMPTY_TEXT, kb.pv_attack_kb([]), alert=alert)
+
+    lines = [PANEL_HEADER, ""]
+    lines += [_target_line(u, ch) for u, ch in rows]
+    lines += ["", PANEL_FOOTER]
+    await respond(update, "\n".join(lines), kb.pv_attack_kb([u for u, _ in rows]), alert=alert)
 
 
 async def attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: str | None = None) -> None:
+    """دکمه ⚔️ حمله منو و دستور /attack | تو پی‌وی لیست باز میشه، تو گروه راهنمای نبرد گروهی"""
+    chat = update.effective_chat
+    if chat is not None and chat.type != ChatType.PRIVATE:
+        from handlers.battle import ATTACK_GUIDE_TEXT
+        return await respond(update, ATTACK_GUIDE_TEXT, kb.home_kb(), alert=alert)
+    await pv_panel(update, alert=alert)
+
+
+async def panel_refresh_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """🔄 رفرش لیست حمله"""
+    await pv_panel(update)
+
+
+# ───────── تایید و اجرا ─────────
+
+async def target_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """انتخاب هدف از لیست، صفحه تایید با شانس برد"""
+    tg_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        users.apply_energy_regen(user)
-        text = await _attack_home_text(s, user)
+        victim = await users.get_by_tg(s, tg_id)
+
+        if victim is None:
+            await s.commit()
+            return await pv_panel(update, alert="🤷 اینو پیدا نکردم")
+
+        sl = pvattack.shield_left(victim)
+        if sl:
+            name = users.display_name(victim)
+            await s.commit()
+            return await pv_panel(update, alert=f"🛡 «{name}» هنوز تو مصونیته")
+
+        if abs(victim.level - user.level) > config.PV_ATTACK_LEVEL_RANGE:
+            name = users.display_name(victim)
+            await s.commit()
+            return await pv_panel(update, alert=f"🎯 «{name}» دیگه تو رنج لولت نیس")
+
+        a_atk, _ = await pvattack.powers(s, user)
+        _, t_dfn = await pvattack.powers(s, victim)
+        chance = pvattack.win_chance(a_atk, t_dfn)
+        name = users.display_name(victim)
+        victim_level = victim.level
         await s.commit()
-    await respond(update, text, kb.attack_home_kb(), alert=alert)
+
+    pct = round(chance * 100)
+    text = (
+        f"<b>⚔️ حمله به «{esc(name)}»</b>\n\n"
+        f"🎯 لول {fa_num(victim_level)}\n"
+        f"🎲 شانس برد {fa_num(pct)} درصد\n"
+        f"⚡ هزینه {fa_num(config.PV_ATTACK_ENERGY_COST)} انرژی\n"
+        f"🛡 بعد حمله طرف 12 ساعت مصونیت می‌گیره\n\n"
+        "می‌زنی؟"
+    )
+    await respond(update, text, kb.confirm_kb(f"cf:patt:x:{tg_id}"))
 
 
-# ───────── پیدا کردن هدف رندوم ─────────
-
-async def find_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        users.apply_energy_regen(user)
-
-        left = combat.cooldown_left(user)
-        if left:
-            await s.commit()
-            return await attack_cb(update, context, alert=f"⏳ هنوز {fa_dur(left)} مونده")
-
-        if user.energy < config.ATTACK_ENERGY_COST:
-            await s.commit()
-            return await attack_cb(update, context, alert="⚡ انرژیت کمه")
-
-        target = await combat.find_target(s, user)
-        if not target:
-            await s.commit()
-            return await attack_cb(update, context, alert="🤷 الان کسی تو سطح تو نیس")
-
-        name = esc(users.display_name(target))
-        text = (
-            "<b>🎯 هدف قفل شد</b>\n\n"
-            f"👤 {name}\n"
-            f"⭐ لول {fa_num(target.level)}\n"
-            f"⚔️ کارنامه {fa_num(target.wins)} برد | {fa_num(target.losses)} باخت\n"
-            f"💵 وضعیت جیبش: {combat.cash_bucket(target.cash)}\n\n"
-            f"هزینه حمله ⚡ {fa_num(config.ATTACK_ENERGY_COST)} انرژی\n"
-            "مطمئنی؟"
-        )
-        target_id = target.id
-        await s.commit()
-
-    await respond(update, text, kb.attack_target_kb(target_id))
-
-
-# ───────── اجرای حمله ─────────
-
-async def attack_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    p = parts(update)
-    target_id = int(p[2])
-    break_shield = len(p) > 3  # cf:att:<id>:brk، خودش تایید کرده سپرش بشکنه
+async def execute_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """تایید نهایی حمله پی‌وی"""
+    tg_id = int(parts(update)[3])
+    dq_done, dq_left, uname = [], 0, ""
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
+        victim = await users.get_by_tg(s, tg_id)
 
-        target = await s.get(User, target_id)
-        if not target:
-            return await attack_cb(update, context, "🤷 هدفت تیک انداخت رفت")
+        if victim is None:
+            await s.commit()
+            return await pv_panel(update, alert="🤷 اینو پیدا نکردم")
 
-        result = await combat.execute_attack(s, user, target, break_shield=break_shield)
-        target_name = esc(users.display_name(target))
-        dq_done, dq_left = [], 0
-        if result["ok"]:
-            from services import quests as dq_svc
-            dq_done, dq_left = await dq_svc.track(s, user, "attack")
+        result = await pvattack.execute(s, user, victim)
+        name = users.display_name(victim)
+
+        if not result["ok"]:
+            await s.commit()
+            reason = result["reason"]
+            if reason == "shield":
+                return await pv_panel(update, alert=f"🛡 «{name}» هنوز تو مصونیته")
+            if reason == "level":
+                return await pv_panel(update, alert=f"🎯 «{name}» دیگه تو رنج لولت نیس")
+            if reason == "energy":
+                return await pv_panel(update, alert="⚡ انرژیت برای حمله کمه")
+            return await pv_panel(update, alert="😅 خودتو نزن رفیق")
+
+        from services import quests as dq_svc
+        dq_done, dq_left = await dq_svc.track(s, user, "attack")
         uname = users.display_name(user)
         await s.commit()
 
-    if not result["ok"]:
-        if result["reason"] == "shield_self":
-            return await respond(
-                update, shield_prompt_text(),
-                kb.shield_break_kb(f"cf:att:{target_id}:brk"),
-            )
-        msg = (
-            f"⏳ هنوز {fa_dur(result['left'])} مونده" if result["reason"] == "cooldown"
-            else f"🛡 طرف سپر محافظ داره، {fa_dur(result['left'])} دیگه میشه زدش" if result["reason"] == "shield_target"
-            else "⚡ انرژیت کمه"
+    if result["won"]:
+        if result["steal"]:
+            loot_line = f"💰 {money(result['steal'])} از جیب «{esc(name)}» غارت کردی"
+        else:
+            loot_line = f"💰 جیب «{esc(name)}» خالی بود"
+        text = (
+            f"<b>⚔️ بردی!</b>\n\n"
+            f"{loot_line}\n"
+            f"✨ {fa_num(result['xp'])} تجربه گرفتی\n"
+            f"🛡 «{esc(name)}» تا 12 ساعت از لیست حمله خارج شد"
         )
-        return await attack_cb(update, context, alert=msg)
+    else:
+        if result["penalty"]:
+            lose_line = f"💸 {money(result['penalty'])} از جیبت رفت تو جیبش"
+        else:
+            lose_line = "💸 جیبت خالی بود، چیزی باخت ندادی"
+        text = (
+            f"<b>🛡 «{esc(name)}» دفاع کرد، باختی</b>\n\n"
+            f"{lose_line}\n"
+            f"✨ {fa_num(result['xp'])} تجربه گرفتی\n"
+            f"🛡 «{esc(name)}» تا 12 ساعت از لیست حمله خارج شد"
+        )
 
-    await respond(update, format_attack_result(result, target_name), kb.attack_result_kb())
+    await respond(update, text, kb.pv_attack_result_kb())
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)

@@ -37,8 +37,14 @@ def plot_build_seconds(plots_count: int) -> int:
 
 def upgrade_price(plot_level: int) -> int:
     """هزینه آپگرید از لول فعلی به لول بعد، جدول رند قیمت"""
-    lv = min(max(plot_level, 1), config.PLOT_MAX_LEVEL)
+    lv = min(max(plot_level, 1), len(config.PLOT_UPGRADE_PRICES))
     return config.PLOT_UPGRADE_PRICES[lv - 1]
+
+
+def plot_upgrade_required_level(plot_level: int) -> int:
+    """گیت لول کاربر برای آپگرید زمین از لول فعلی به لول بعد"""
+    lv = min(max(plot_level, 1), len(config.PLOT_UPGRADE_LEVELS))
+    return config.PLOT_UPGRADE_LEVELS[lv - 1]
 
 
 # ───────── بذر و محصول ─────────

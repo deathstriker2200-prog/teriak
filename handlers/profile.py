@@ -10,13 +10,29 @@ from database import session_scope
 from handlers.common import strip_home
 from keyboards import keyboards as kb
 from models import User
-from services import combat, dogs as dog_svc, economy, farming, teams as team_svc, users
-from utils import bar, esc, fa_num, jalali_str, money
+from services import combat, dogs as dog_svc, economy, farming, users
+from utils import bar, esc, fa_num, fancy_name, jalali_str, money
 
 # ───────── فرمت پروفایل ─────────
 
 def _bar(energy: int) -> str:
     return bar(energy, config.MAX_ENERGY)
+
+
+def _weapon_line(item_keys: list[str]) -> str:
+    """خط سلاح پروفایل، اسلحه‌ها با 🔫 دور اسمشون، سردها با 🔪، دست خالی با 👊"""
+    key = combat.best_weapon_key(item_keys)
+    if not key:
+        return "👊 دست خالی"
+    w = config.WEAPONS[key]
+    return f"🔫 {esc(w['name'])}" if w.get("gun") else f"🔪 {esc(w['name'])}"
+
+
+def _xp_line(user) -> str:
+    """خط لول و تجربه، بعد از مکس فقط تجربه جمع‌شده نوشته میشه"""
+    if user.level >= config.MAX_LEVEL:
+        return f"🌟 لول {fa_num(config.MAX_LEVEL)} 👑 - {fa_num(user.xp)} تجربه"
+    return f"🌟 لول {fa_num(user.level)} - {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))} تجربه"
 
 
 async def _profile_caption(session, user) -> str:
@@ -28,7 +44,6 @@ async def _profile_caption(session, user) -> str:
     growing = sum(1 for p in plots if p.current_status()[0] == "growing")
     ready = sum(1 for p in plots if p.current_status()[0] == "ready")
 
-    weapon = combat.best_weapon_name(item_keys) or "دست خالی"
     armor = combat.best_armor_name(item_keys) or "بدون زره"
 
     rank = (await session.execute(
@@ -36,32 +51,30 @@ async def _profile_caption(session, user) -> str:
     )).scalar_one() + 1
     total = (await session.execute(select(func.count(User.id)))).scalar_one()
 
-    name = esc(users.display_name(user))
+    name = esc(fancy_name(users.display_name(user)))
     uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
     # تاریخ عضویت به شمسی
     joined = jalali_str(user.created_at) if user.created_at else "—"
     # سگ فقط به تعداد نمایش داده میشه، نه اسم نه نژاد
     dog_line = f"🐕 سگ {fa_num(len(user_dogs))} عدد" if user_dogs else "🐕 سگ نداری"
 
-    team = await team_svc.get_team_of(session, user.id)
-    team_line = f"🏴 تیم «{esc(team.name)}»\n" if team else ""
-
     return (
         f"╭━━━━━━━━━━━━━━╮\n"
         f"👤 {name}\n"
         f"╰━━━━━━━━━━━━━━╯\n"
         f"🆔 {uname}\n\n"
-        f"🌟 لول {fa_num(user.level)}، XP {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}\n"
+        f"{_xp_line(user)}\n"
         f"⚡ انرژی {_bar(user.energy)} {fa_num(user.energy)}/{fa_num(config.MAX_ENERGY)}\n"
         f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n"
-        f"🗓 تاریخ عضویت {joined}\n"
-        f"{team_line}\n"
+        f"🗓 تاریخ عضویت {joined}\n\n"
         f"━━━━━━ 💰 دارایی ━━━━━━\n"
         f"🪙 {money(user.cash)}\n"
         f"🏦 بانک {money(user.bank_balance)}\n\n"
         f"━━━━━━ 🏗 اموال ━━━━━━\n"
-        f"🌱 تعداد زمین‌ها {fa_num(len(plots))} | 🌾 در حال رشد {fa_num(growing)} | ✅ آماده برداشت {fa_num(ready)}\n\n"
-        f"🔫 {esc(weapon)}\n"
+        f"🌱 تعداد زمین‌ها {fa_num(len(plots))}\n"
+        f"🌾 در حال رشد {fa_num(growing)}\n"
+        f"✅ آماده برداشت {fa_num(ready)}\n\n"
+        f"{_weapon_line(item_keys)}\n"
         f"🛡 {esc(armor)}\n"
         f"{dog_line}\n\n"
         f"━━━━━━ ⚔️ آمار جنگی ━━━━━━\n"

@@ -22,10 +22,12 @@ from models import Dog, GroupActivity, Plot, Team, TeamDaily, User  # noqa: E402
 from services import (  # noqa: E402
     backup as backup_svc,
     bank as bank_svc,
+    battle as battle_svc,
     combat,
     dogs as dog_svc,
     economy,
     farming,
+    seen as seen_svc,
     shop_svc,
     teams as team_svc,
     users,
@@ -104,7 +106,7 @@ async def main() -> None:
     check("گیت لول زمین‌ها هر کدوم مال خودشون",
           (economy.plot_required_level(0), economy.plot_required_level(1),
            economy.plot_required_level(2), economy.plot_required_level(3),
-           economy.plot_required_level(4)) == (1, 2, 4, 6, 10),
+           economy.plot_required_level(4)) == (1, 5, 10, 15, 20),
           str([economy.plot_required_level(i) for i in range(5)]))
 
     # ── سلاح‌ها و زره‌های جدید ──
@@ -163,7 +165,7 @@ async def main() -> None:
               len(await farming.get_user_plots(s, (await users.get_or_create(s, tg(1001, "ali", "علی")))[0].id)) == 1)
 
         u1.cash = 100000  # شارژ حساب برای تست‌ها
-        check("زمین دوم زیر لول ۲ قفله", (await farming.buy_plot(s, u1))[0] is False or u1.level >= 2)
+        check("زمین دوم زیر لول ۵ قفله", (await farming.buy_plot(s, u1))[0] is False or u1.level >= 5)
         u1.level = 10
         ok, msg = await farming.buy_plot(s, u1)
         check("خرید زمین دوم (۱۰۰۰ تی‌پوینت)", ok and u1.cash == 99000, msg)
@@ -363,147 +365,124 @@ async def main() -> None:
               str(rl6))
         wolf.level = 2
 
-        random.seed(1)
-        amount, b, halved = combat.steal_amount(10000, [], False)
-        check("سرقت بدون مادیفایر 5 تا 10 درصد", 500 <= amount <= 1000 and not halved and b == 0, str(amount))
-        random.seed(1)
-        amount_base, _, _ = combat.steal_amount(10000, [], False)
-        random.seed(1)
-        amount_leg, _, halved_leg = combat.steal_amount(10000, [], True)
-        check("زره افسانه‌ای نصف می‌کنه", halved_leg and abs(amount_leg * 2 - amount_base) <= 1, f"{amount_leg} vs {amount_base}")
+        # ── غارت هر ضربه: درصد بر اساس دمیج نسبت به HP کامل حریف ──
+        st, _ = battle_svc.steal_for_hit(40, 200, 10000, [], [], [])
+        check("غارت = سقف × دمیج نسبت به HP",
+              st == int(10000 * config.BATTLE_STEAL_MAX_PCT * 40 / 200), str(st))
+        check("دمیج کمتر غارت کمتر", battle_svc.steal_for_hit(10, 200, 10000, [], [], [])[0] < st)
+        st_full, _ = battle_svc.steal_for_hit(200, 200, 10000, [], [], [])
+        check("غارت با دمیج کامل به سقف 5% میرسه",
+              st_full == int(10000 * config.BATTLE_STEAL_MAX_PCT), str(st_full))
+        st_leg, meta_leg = battle_svc.steal_for_hit(200, 200, 10000, [], ["legend"], [])
+        check("زره افسانه‌ای غارت رو نصف می‌کنه",
+              meta_leg["halved"] and abs(st_leg * 2 - st_full) <= 1, f"{st_leg} vs {st_full}")
+        check("جیب خالی غارتی نداره", battle_svc.steal_for_hit(50, 200, 0, [], [], [])[0] == 0)
+        st_cap, meta_cap = battle_svc.steal_for_hit(200, 200, 10000, [wolf], [], [])
+        check("بونس گرگ اعمال میشه ولی سقف 5% حفظه",
+              meta_cap["bonus"] > 0 and st_cap <= int(10000 * config.BATTLE_STEAL_MAX_PCT), str(st_cap))
+        check("کانفیگ سقف غارت ضربه 5%", config.BATTLE_STEAL_MAX_PCT == 0.05)
 
-        # ── حمله کامل (سرویس) ──
+        # ── HP: شروع ۲۰۰، هر لول +۲۰، لول ۲۰ → ۵۸۰ ──
+        check("لول 1 با 200 HP شروع می‌کنه", battle_svc.max_hp(1) == 200)
+        check("هر لول 20 HP بیشتر و لول 20 مکس 580ه",
+              battle_svc.max_hp(20) == 580
+              and all(battle_svc.max_hp(i) - battle_svc.max_hp(i - 1) == 20 for i in range(2, 21)))
+        check("جدول HP تو کانفیگ ۲۰ رده داره", len(config.HP_TABLE) == 20)
+        check("سقف لول بازی ۲۰ه", config.MAX_LEVEL == 20)
+
+        # ── دمیج نبرد HP: واریانس ۳۰٪ و قانون زیادی‌قوتی (کریتیکال خاموش که بازه الکی نشکنه) ──
+        random.seed(7)
+        _old_crit = config.BATTLE_CRIT_CHANCE
+        config.BATTLE_CRIT_CHANCE = 0.0
+        try:
+            dms = [battle_svc.roll_damage(150, 100)[0] for _ in range(300)]
+        finally:
+            config.BATTLE_CRIT_CHANCE = _old_crit
+        raw_exp = (config.BATTLE_DMG_BASE + 150 * config.BATTLE_DMG_ATK_FACTOR) * (
+            1 - 100 / (100 + config.BATTLE_MITIGATION_K))
+        v30 = config.BATTLE_DMG_VARIANCE
+        check("دمیج همیشه تو بازه واریانس 30% نوسان داره",
+              all(round(raw_exp * (1 - v30)) <= d <= round(raw_exp * (1 + v30)) for d in dms)
+              and max(dms) > min(dms), f"{min(dms)}..{max(dms)} (خام {raw_exp:.1f})")
+        check("دفاع به اندازه نسبت قانون بزرگ‌تر، هیچ دمیجی نمی‌خوره",
+              battle_svc.roll_damage(10, int(10 * config.BATTLE_NO_DAMAGE_DEF_RATIO))[0] == 0)
+        check("کانفیگ فرمول دمیج و نسبت و واریانس",
+              config.BATTLE_DMG_VARIANCE == 0.30 and config.BATTLE_NO_DAMAGE_DEF_RATIO == 1.8
+              and config.BATTLE_MITIGATION_K == 120 and config.BATTLE_MIN_DAMAGE == 6)
+
+        # ── ضربه کامل نبرد HP (سرویس) ──
         from models import InventoryItem
         s.add(InventoryItem(user_id=u2.id, item_key="legend"))
         await s.flush()
 
-        # ── فرمول شانس قدرت‌محور ──
-        check("شانس با قدرت مساوی 50/50", abs(combat.win_chance(100, 100) - 0.5) < 1e-9)
-        check("شانس به سقف و کف میرسه ولی هیچ‌وقت 100% نیس",
-              combat.win_chance(10000, 1) == config.ATTACK_WIN_MAX_CHANCE
-              and combat.win_chance(1, 10000) == config.ATTACK_WIN_MIN_CHANCE
-              and config.ATTACK_WIN_MAX_CHANCE < 1.0)
-        check("هرچی قدرت بیشتر شانس بیشتر",
-              combat.win_chance(150, 100) > combat.win_chance(120, 100) > combat.win_chance(100, 100))
-        check("شانس دو طرف مکمل همن (جمعشون ۱ه)",
-              abs(combat.win_chance(200, 100) + combat.win_chance(100, 200) - 1.0) < 1e-9
-              and abs(combat.win_chance(120, 100) + combat.win_chance(100, 120) - 1.0) < 1e-9)
-        w_eff = combat.weapon_power(["deagle"], 10)
-        dmgs = [combat.display_damage(w_eff) for _ in range(200)]
-        check("دمیج نمایشی از قدرت سلاحه و مثبته",
-              min(dmgs) >= max(5, w_eff) and max(dmgs) >= min(dmgs), f"{min(dmgs)}..{max(dmgs)} (سلاح {w_eff})")
-        check("دست خالی هم دمیج پایه داره", combat.display_damage(0) >= 5)
-
-        results = {"win": 0, "lose": 0, "halved_count": 0, "bonus_count": 0}
-        chance_sum, chance_n = 0.0, 0
-        xp_win_seen, xp_lose_seen = [], []
-        for _ in range(300):
-            u1.energy = config.MAX_ENERGY
-            u1.last_attack_at = None
-            u2.shield_until = None  # هر حمله به هدف سپر می‌ده، برای حمله بعدی پاکش می‌کنیم
-            u2.cash = 50000
-            res = await combat.execute_attack(s, u1, u2)
-            assert res["ok"], str(res)
-            chance_sum += res["chance"]
-            chance_n += 1
-            if res["win"]:
-                results["win"] += 1
-                xp_win_seen.append(res["xp"])
-                if res["halved"]:
-                    results["halved_count"] += 1
-                if res["bonus"]:
-                    results["bonus_count"] += 1
-            else:
-                results["lose"] += 1
-                xp_lose_seen.append(res["xp"])
-        check("تو فلو کامل هم برد هم باخت دیده میشه", results["win"] > 0 and results["lose"] > 0, str(results))
-        check("زره افسانه‌ای قربانی همیشه نصف می‌کنه", results["halved_count"] == results["win"],
-              f"halved={results['halved_count']} win={results['win']}")
-        check("بونس گرگ تو هر برد اعماله", results["bonus_count"] == results["win"])
-        check("شانس نبرد تو محدوده قانونیه",
-              config.ATTACK_WIN_MIN_CHANCE <= chance_sum / chance_n <= config.ATTACK_WIN_MAX_CHANCE,
-              f"{chance_sum / chance_n:.2%}")
-        check("تجربه برد بین 12 تا 35 و باخت بین 3 تا 7",
-              xp_win_seen and xp_lose_seen
-              and min(xp_win_seen) >= 12 and max(xp_win_seen) <= 35
-              and min(xp_lose_seen) >= 3 and max(xp_lose_seen) <= 7,
-              f"{min(xp_win_seen)}..{max(xp_win_seen)} / {min(xp_lose_seen)}..{max(xp_lose_seen)}")
-        check("کانفیگ تجربه حمله",
-          config.ATTACK_WIN_XP_MIN == 12 and config.ATTACK_WIN_XP_MAX == 35
-              and config.ATTACK_LOSE_XP_MIN == 3 and config.ATTACK_LOSE_XP_MAX == 7)
         u1.energy = config.MAX_ENERGY
         u1.last_attack_at = None
-        u2.shield_until = None
-        res_dc = await combat.execute_attack(s, u1, u2)
-        check("گرگ سیاه دفاع طرف رو خرد می‌کنه", res_dc["defcut"] > 0, str(res_dc["defcut"]))
+        u2.cash = 50000
+        u2.hp = battle_svc.max_hp(u2.level)
+        u2.dead_until = None
+        hp_b, cash_t = u2.hp, u2.cash
+        res = await battle_svc.execute_hit(s, u1, u2)
+        check("ضربه انجام شد و نتیجه کامله",
+              res["ok"] and not res.get("nodmg") and res["dmg"] > 0, str(res))
+        check("HP هدف به اندازه دمیج کم شد",
+              u2.hp == hp_b - res["dmg"] and res["hp_now"] == u2.hp and res["hp_max"] == hp_b,
+              f"{hp_b}->{u2.hp} dmg={res['dmg']}")
+        check("غارت همون لحظه از جیب هدف کم شد",
+              u2.cash == cash_t - res["steal"], f"{cash_t}->{u2.cash} steal={res['steal']}")
+        check("تجربه همون لحظه داده شد", res["xp"] >= config.BATTLE_HIT_XP_BASE)
 
-        # کولدون ۱ دقیقه
+        # گرگ سیاه دفاع طرف رو خرد می‌کنه (مهاجم گرگ داره)
+        check("گرگ سیاه دفاع طرف رو خرد می‌کنه", res["info"]["defcut"] > 0, str(res["info"]["defcut"]))
+
+        # کولدان ۳۰ ثانیه فقط برای مهاجمه
+        res_cd = await battle_svc.execute_hit(s, u1, u2)
+        check("کولدان 30 ثانیه مهاجم فعاله",
+              not res_cd["ok"] and res_cd["reason"] == "cooldown"
+              and 0 < res_cd["left"] <= config.BATTLE_COOLDOWN_SECONDS, str(res_cd.get("left")))
+        check("کانفیگ کولدان ۳۰ ثانیه", config.BATTLE_COOLDOWN_SECONDS == 30)
+        u1.last_attack_at = now_utc() - timedelta(seconds=config.BATTLE_COOLDOWN_SECONDS + 1)
+        u2.hp = battle_svc.max_hp(u2.level)
+        res_ok2 = await battle_svc.execute_hit(s, u1, u2)
+        check("بعد کولدان آزاده", res_ok2["ok"], str(res_ok2)[:80])
+
+        # ── هیچ دمیجی وارد نمیشه وقتی حریف زیادی قویه ──
+        w, _ = await users.get_or_create(s, tg(8860, "weakatt", "تازه‌کار"))
+        d, _ = await users.get_or_create(s, tg(8861, "strongdef", "زره‌پوش"))
+        d.level = 20
+        d.hp = battle_svc.max_hp(20)
+        s.add(InventoryItem(user_id=d.id, item_key="legend"))
+        await s.flush()
+        res_no = await battle_svc.execute_hit(s, w, d)
+        check("حریف زیادی قوی هیچ دمیجی نمی‌خوره",
+              res_no["ok"] and res_no.get("nodmg") and d.hp == battle_svc.max_hp(20), str(res_no)[:80])
+        check("تلاش بی‌نتیجه هم انرژی و کولدان می‌سوزونه",
+              w.energy < config.MAX_ENERGY and battle_svc.cooldown_left(w) > 0)
+
+        # ── شکست = ۱۰ دقیقه بیهوشی و زنده شدن خودکار با HP فول ──
         u1.energy = config.MAX_ENERGY
         u1.last_attack_at = None
-        u2.shield_until = None
-        res = await combat.execute_attack(s, u1, u2)
-        assert res["ok"], str(res)
-        res2 = await combat.execute_attack(s, u1, u2)
-        check("کولدون ۱ دقیقه فعاله", not res2["ok"] and res2["reason"] == "cooldown" and res2["left"] <= 60, str(res2.get("left")))
-        u1.last_attack_at = now_utc() - timedelta(seconds=61)
-        u2.shield_until = None
-        res3 = await combat.execute_attack(s, u1, u2)
-        check("بعد ۱ دقیقه آزاده", res3["ok"], str(res3))
-
-        # ── سپر محافظ ۱۵ دقیقه 🛡 ──
-        check("سپر هدف بعد از حمله فعال شد",
-              u2.shield_until is not None and 14 * 60 < combat.shield_left(u2) <= 15 * 60,
-              str(combat.shield_left(u2)))
+        u2.hp = 1
+        u2.dead_until = None
+        w_b, l_b = u1.wins, u2.losses
+        res_kill = await battle_svc.execute_hit(s, u1, u2)
+        check("ضربه آخر حریف رو زمین زد", res_kill["ok"] and res_kill["killed"] and u2.hp == 0)
+        check("شکست ۱۰ دقیقه بیهوشی میده",
+              u2.dead_until is not None and 9 * 60 < battle_svc.dead_left(u2) <= 10 * 60,
+              str(battle_svc.dead_left(u2)))
+        check("کانفیگ بیهوشی ۶۰۰ ثانیه", config.BATTLE_DEAD_SECONDS == 600)
+        check("برد و باخت فقط موقع شکست ثبت شد", u1.wins == w_b + 1 and u2.losses == l_b + 1)
         u1.energy = config.MAX_ENERGY
         u1.last_attack_at = None
-        res_sh = await combat.execute_attack(s, u1, u2)
-        check("هدف سپردار بلاکه", not res_sh["ok"] and res_sh["reason"] == "shield_target" and res_sh["left"] > 0)
-        check("find_target سپردارها رو کنار می‌ذاره", (await combat.find_target(s, u2)) is None or True)
-        # مهاجم سپردار
-        u1.shield_until = now_utc() + timedelta(minutes=10)
-        u2.shield_until = None
-        u1.energy = config.MAX_ENERGY
-        u1.last_attack_at = None
-        res_ss = await combat.execute_attack(s, u1, u2)
-        check("مهاجم سپردار بدون تایید بلاکه", not res_ss["ok"] and res_ss["reason"] == "shield_self")
-        res_sb = await combat.execute_attack(s, u1, u2, break_shield=True)
-        check("با تایید شکستن سپر حمله انجام شد و سپر اون پاک شد",
-              res_sb["ok"] and u1.shield_until is None, str(res_sb.get("ok")))
-        u2.shield_until = None
-
-        # ضربه بحرانی 💣، شانسشو موقت ۱۰۰% می‌کنیم (تا برد هم بشه رول می‌کنیم که دمیج از سلاح خودمون باشه)
-        old_crit = config.ATTACK_CRIT_CHANCE
-        config.ATTACK_CRIT_CHANCE = 1.0
-        try:
-            w_self = combat.weapon_power(await users.get_item_keys(s, u1.id), u1.level)
-            res_crit = None
-            for _try in range(40):
-                u1.energy = config.MAX_ENERGY
-                u1.last_attack_at = None
-                u2.shield_until = None
-                u2.cash = 50000
-                res_crit = await combat.execute_attack(s, u1, u2)
-                assert res_crit["ok"], str(res_crit)
-                if res_crit["win"]:
-                    break
-            check("تو ۴۰ تا حمله ۹۲% حداقل یه برد هست", res_crit["win"])
-            check("بحرانی فلگ زده شد", res_crit["crit"] is True)
-            check("دمیج بحرانی حداقل 1.5 برابر دمیج پایه سلاحه",
-                  res_crit["dmg"] >= int(max(5, w_self) * config.ATTACK_CRIT_DMG_MULT),
-                  f"{res_crit['dmg']} (پایه {max(5, w_self)})")
-            check("غارت بحرانی سر جاشه", res_crit["amount"] > 0, str(res_crit["amount"]))
-        finally:
-            config.ATTACK_CRIT_CHANCE = old_crit
-
-        # هدف رندوم فقط هم‌لول و بدون سپر
-        u2.shield_until = None
-        t = await combat.find_target(s, u1)  # u1 لول ۱۴ u2 لول ۵ u3 لول ۲۰
-        check("جستجوی رندوم هیچ‌کدوم رو بیرون بازه نمیاره", t is None or abs(t.level - u1.level) <= 2, f"{t}")
-        if t is not None:
-            t.shield_until = now_utc() + timedelta(minutes=5)
-            t2 = await combat.find_target(s, u1)
-            check("هدف سپردار تو جستجوی رندوم نیاد", t2 is None or t2.id != t.id)
-            t.shield_until = None
+        res_dead = await battle_svc.execute_hit(s, u1, u2)
+        check("به بیهوش نمیشه حمله کرد",
+              not res_dead["ok"] and res_dead["reason"] == "dead_target" and res_dead["left"] > 0)
+        res_deadself = await battle_svc.execute_hit(s, u2, u1)
+        check("بیهوش خودش هم نمی‌تونه حمله کنه",
+              not res_deadself["ok"] and res_deadself["reason"] == "dead_self")
+        u2.dead_until = now_utc() - timedelta(seconds=1)
+        check("بعد پایان بیهوشی خودکار با HP فول زنده میشه",
+              battle_svc.revive_if_due(u2) and u2.dead_until is None
+              and u2.hp == battle_svc.max_hp(u2.level))
 
         # ── لول‌آپ بازیکن روی منحنی جدید ──
         lvl_before = u1.level
@@ -523,6 +502,7 @@ async def main() -> None:
               u2x.cash == cash_b + config.LEVEL_CASH_REWARD * u2x.level and u2x.level == lvl_b + 1,
               f"{u2x.cash - cash_b}")
         check("انرژی با لول‌آپ فول شارژ شد", u2x.energy == config.MAX_ENERGY)
+        check("HP با لول‌آپ فول شد", u2x.hp == battle_svc.max_hp(u2x.level), str(u2x.hp))
         await s.commit()
 
     # ═══ متن دقیق کنده‌کاری (هندلر واقعی) ═══
@@ -744,21 +724,25 @@ async def main() -> None:
           str(team_svc.quests_view(daily)))
         await s.commit()
 
-        # هوک واقعی execute_attack → کوئست کشتار ثبت میشه
+        # هوک واقعی execute_hit → زمین زدن حریف روی کوئست کشتار تیم حساب میشه
         kills_b = (await team_svc._daily(s, team_id)).kills
         victim = await users.get_by_tg(s, 1002)
-        won = False
-        for _ in range(80):
-            o.energy = config.MAX_ENERGY
-            o.last_attack_at = None
-            victim.shield_until = None  # هر حمله سپر میده، برای ضربه بعدی پاکش می‌کنیم
-            res = await combat.execute_attack(s, o, victim)
-            assert res["ok"], str(res)
-            if res["win"]:
-                won = True
-                break
+        # زره‌های تست‌های قبلیش رو برمی‌داریم که ضربه حتماً بخوره
+        from models import InventoryItem as _Inv
+        for vi in (await s.execute(select(_Inv).where(_Inv.user_id == victim.id))).scalars().all():
+            await s.delete(vi)
+        await s.flush()
+        o.energy = config.MAX_ENERGY
+        o.last_attack_at = None
+        victim.hp = 1  # یه ضربه با زمین زدنش کافیه
+        victim.dead_until = None
+        res = await battle_svc.execute_hit(s, o, victim)
+        assert res["ok"] and res.get("killed"), str(res)
         kills_a = (await team_svc._daily(s, team_id)).kills
-        check("برد تو حمله واقعی روی کوئست تیم حساب شد", won and kills_a == kills_b + 1, f"{kills_b}→{kills_a}")
+        check("زمین زدن تو نبرد واقعی روی کوئست تیم حساب شد", kills_a == kills_b + 1, f"{kills_b}→{kills_a}")
+        # قربانی رو سرپا میاریم که تست‌های بعدی به مشکل نخورن
+        victim.dead_until = None
+        victim.hp = battle_svc.max_hp(victim.level)
         await s.commit()
 
     # ═══ کنده‌کاری تیمی (استخراج، ۷۰% اعضا) ═══
@@ -871,9 +855,13 @@ async def main() -> None:
         victim = await users.get_by_tg(s, 1002)
         o.energy = config.MAX_ENERGY
         o.last_attack_at = None
-        victim.shield_until = None
-        res_t = await combat.execute_attack(s, o, victim)
-        check("بونس ساختمان حمله تو نتیجه نبرد اومد", res_t["ok"] and res_t.get("tbuff", 0) > 0, str(res_t.get("tbuff")))
+        victim.hp = battle_svc.max_hp(victim.level)
+        victim.dead_until = None
+        res_t = await battle_svc.execute_hit(s, o, victim)
+        check("بونس ساختمان حمله تو نتیجه نبرد اومد",
+              res_t["ok"] and res_t["info"]["tbuff"] > 0, str(res_t["info"].get("tbuff")))
+        # قربانی سرپا بمونه برای تست‌های بعدی
+        victim.dead_until = None
         await s.commit()
 
     # رول‌اور هفتگی: ۳ تیم اول جایزه می‌گیرن و امتیاز هفته ریست میشه
@@ -1013,14 +1001,14 @@ async def main() -> None:
             kb.shop_seed_kb(u1, stock), kb.shop_dog_kb(u1, {d.dog_key for d in dogs}, len(dogs)),
             kb.shop_food_kb(),
             kb.my_dogs_kb(dogs),
-            kb.attack_home_kb(), kb.attack_target_kb(1), kb.attack_result_kb(), kb.rank_kb(),
+            kb.heal_kb(), kb.rank_kb(),
             kb.tx_confirm_kb("weap", "knife", 123),
             kb.bank_kb(u1), kb.team_bld_kb(SimpleNamespace(atk_bld=1, def_bld=2), True, u1.telegram_id),
             kb.team_bld_confirm_kb("atk", u1.telegram_id),
             kb.shelter_kb(u1), kb.casino_kb(), kb.caravan_kb(),
             kb.team_back_kb(), kb.team_mine_kb(), kb.team_bank_kb(),
             kb.release_confirm_kb(dogs[0].id, 424242), kb.dog_card_kb(dogs[0], 3),
-            kb.dquests_kb(), kb.shield_break_kb("cf:att:1:brk"), kb.team_create_confirm_kb(424242),
+            kb.dquests_kb(), kb.team_create_confirm_kb(424242),
         ]
         for k in kbs:
             assert isinstance(k, InlineKeyboardMarkup)
@@ -1087,8 +1075,8 @@ async def main() -> None:
               "🕰 تایم ایران" not in cap and "📅" not in cap)
         check("تاریخ عضویت شمسی با فرمت جدیده", "🗓 تاریخ عضویت 14" in cap and "🗓 عضو 14" not in cap, cap[:200])
         check("یوزرنیم خط خودشو داره", "🆔 @ali" in cap)
-        check("خط زمین‌ها تو پروفایل هست",
-              "🌱 تعداد زمین‌ها 2 | 🌾 در حال رشد 0 | ✅ آماده برداشت 0" in cap, cap[:250])
+        check("خط زمین‌ها تو پروفایل هست (قالب سه‌خطی جدید)",
+              "🌱 تعداد زمین‌ها 2\n🌾 در حال رشد 0\n✅ آماده برداشت 0" in cap, cap[:250])
         u_b = await users.get_by_tg(s, 7711)
         cap2 = await profile_h._profile_caption(s, u_b)
         check("بدون سگ: «سگ نداری»", "🐕 سگ نداری" in cap2)
@@ -1136,48 +1124,55 @@ async def main() -> None:
     check("پارس ادمین‌ها", 1001 in config.ADMIN_IDS and 1003 in config.ADMIN_IDS and 1002 not in config.ADMIN_IDS,
           str(sorted(config.ADMIN_IDS)))
 
-    # ═══ فرمت نتیجه حمله (قالب جدید: 🎯 حمله موفق / 💀 حمله ناموفق) ═══
-    from handlers.common import format_attack_result
-    txt = format_attack_result(
-        {"ok": True, "win": True, "a_pow": 180, "d_pow": 120, "chance": 0.75, "dmg": 64, "crit": False,
-         "amount": 5000, "bonus": 0.06, "halved": True, "defcut": 0.06, "xp": 30, "penalty": 0, "notes": []},
+    # ═══ فرمت متن‌های نبرد HP (قالب دقیق کاربر) ═══
+    from handlers import battle as battle_h
+    txt = battle_h.hit_text(
+        {"ok": True, "nodmg": False, "killed": False, "dmg": 64, "hp_now": 136, "hp_max": 200,
+         "steal": 5000, "meta": {}, "xp": 8, "notes": []},
         "سارا",
     )
-    check("متن برد قالب جدید",
-          "<b>🎯 حمله موفق</b>" in txt and "💥 هههه سارا از پس حملت برنیومد" in txt
-          and "💰 5,000 تی‌پوینت غارت کردی" in txt and "🩸 64 دمیج وارد کردی" in txt
-          and "⚔️ قدرت تو: 180" in txt and "🛡 قدرت حریف: 120" in txt and "🎲 شانس پیروزی: 75%" in txt
-          and "✨ 30 تجربه به دست آوردی" in txt,
-          txt.replace("\n", " | ")[:240])
-    check("مادیفایرها سر جاشن",
-          "غرامت +6%" in txt and "دفاعش -6% خرد شد" in txt and "زره افسانه‌ای" in txt
-          and "ضربه بحرانی" not in txt, txt.replace("\n", " | ")[-220:])
+    check("متن ضربه قالب دقیق جدید رو داره",
+          "<b>💥 به حریف «سارا» حمله کردی</b>" in txt
+          and "🩸 64 دمیج وارد شد" in txt
+          and "❤️ HP حریف" in txt and "136 از 200" in txt
+          and "💰 5,000 تی‌پوینت غارت کردی" in txt
+          and "✨ 8 تجربه گرفتی" in txt
+          and "☠️" not in txt, txt.replace("\n", " | ")[:240])
 
-    txt_crit = format_attack_result(
-        {"ok": True, "win": True, "a_pow": 200, "d_pow": 100, "chance": 0.92, "dmg": 96, "crit": True,
-         "amount": 3000, "bonus": 0, "halved": False, "defcut": 0, "xp": 30, "penalty": 0, "notes": []},
+    txt_k = battle_h.hit_text(
+        {"ok": True, "nodmg": False, "killed": True, "dmg": 40, "hp_now": 0, "hp_max": 200,
+         "steal": 1200, "meta": {}, "xp": 6, "notes": []},
         "ممد",
     )
-    check("ضربه بحرانی توی متن میاد",
-          "🩸 96 دمیج وارد کردی 💣 ضربه بحرانی!" in txt_crit, txt_crit.replace("\n", " | ")[:160])
+    check("ضربه آخر بلوک پایان دوئل رو هم میاره",
+          "🩸 40 دمیج وارد شد" in txt_k
+          and "<b>☠️ حریف «ممد» شکست خورد</b>" in txt_k
+          and "🏆 دوئل به پایان رسید" in txt_k, txt_k.replace("\n", " | ")[-200:])
 
-    txt_lose = format_attack_result(
-        {"ok": True, "win": False, "a_pow": 110, "d_pow": 220, "chance": 0.25, "dmg": 41, "crit": True,
-         "amount": 0, "bonus": 0, "halved": False, "xp": 8, "penalty": 15, "notes": []},
-        "𝑅𝒶𝓅𝒾𝓉",
-    )
-    check("متن باخت قالب جدید",
-          "<b>💀 حمله ناموفق</b>" in txt_lose and "💥 آخ آخ 𝑅𝒶𝓅𝒾𝓉 دهنت رو سرویس کرد" in txt_lose
-          and "🩸 41 دمیج خوردی" in txt_lose and "🎲 شانس پیروزی: 25%" in txt_lose
-          and "⚡ 15 انرژی جریمه شدی" in txt_lose and "✨ 8 تجربه به دست آوردی" in txt_lose,
-          txt_lose.replace("\n", " | ")[:240])
-
-    txt_broke = format_attack_result(
-        {"ok": True, "win": True, "a_pow": 180, "d_pow": 120, "chance": 0.75, "dmg": 10, "crit": False,
-         "amount": 0, "bonus": 0, "halved": False, "defcut": 0, "xp": 12, "penalty": 0, "notes": []},
+    txt_z = battle_h.hit_text(
+        {"ok": True, "nodmg": False, "killed": False, "dmg": 40, "hp_now": 60, "hp_max": 200,
+         "steal": 0, "meta": {}, "xp": 6, "notes": []},
         "ممد",
     )
-    check("جیب خالی هم قالب داره", "💰 جیبش خالی بود بدبخت 🕳" in txt_broke)
+    check("جیب خالی خط خودشو داره", "💰 جیب حریف خالی بود" in txt_z)
+
+    txt_n = battle_h.nodmg_text("زره‌پوش")
+    check("متن زیادی‌قوتی قالب دقیق کاربر",
+          txt_n == "🛡 حریف «زره‌پوش» برای تو زیادی قدرتمنده\n"
+                   "فعلاً نمی‌تونی بهش آسیبی بزنی\n"
+                   "اول تجهیزاتت رو ارتقا بده یا یه حریف ضعیف‌تر پیدا کن", txt_n)
+
+    txt_ds = battle_h.dead_self_text(540)
+    check("متن بیهوشی مهاجم قالب دقیق",
+          txt_ds == "💀 هنوز حالت جا نیومده\n9 دقیقه دیگه دوباره آماده نبرد میشی", txt_ds)
+    txt_dt = battle_h.dead_target_text("سارا", 130)
+    check("متن حمله به بیهوش قالب دقیق",
+          txt_dt == "💀 حریف «سارا» مرده و تا 3 دقیقه دیگه زنده نمیشه\nیه هدف دیگه پیدا کن", txt_dt)
+
+    from handlers import attack as attack_h
+    check("متن راهنمای حمله و پنل لیست پی‌وی",
+          "حمله | شلیک | بنگ | پیو" in battle_h.ATTACK_GUIDE_TEXT
+          and "⚔️ لیست حمله" in attack_h.PANEL_HEADER)
 
     # ═══ دکمه‌های قفل قرمز + افزودن به گروه ═══
     from keyboards import keyboards as kb2
@@ -1210,21 +1205,32 @@ async def main() -> None:
         datas = [b.callback_data for row in txk.inline_keyboard for b in row]
         check("کیبورد تایید متنی owner داره", datas == ["txcf:weap:knife:424242", "txcl:424242"], str(datas))
 
-        tak = kb2.tx_attack_kb(77, 424242)
-        datas = [b.callback_data for row in tak.inline_keyboard for b in row]
-        check("کیبورد تایید حمله", datas == ["txatt:77:424242", "txcl:424242"], str(datas))
+        hk = kb2.heal_kb()
+        hdatas = [b.callback_data for row in hk.inline_keyboard for b in row]
+        htexts = [b.text for row in hk.inline_keyboard for b in row]
+        hstyles = [b.style for row in hk.inline_keyboard for b in row if b.callback_data.startswith("heal:buy:")]
+        check("کیبورد درمان سه آیتم + هوم داره",
+              hdatas == ["heal:buy:band", "heal:buy:kit", "heal:buy:box", "menu:home"]
+              and "🩹 باند کوچک" in htexts[0] and "💉 کیت درمان" in htexts[1] and "🏥 جعبه کمک‌های اولیه" in htexts[2]
+              and "فول" in htexts[2]
+              and all(st == "success" for st in hstyles), str(htexts))
+        check("کاتالوگ درمان سه آیتم و قیمت‌هاش تو کانفیگه",
+              set(config.HEAL_ITEMS) == {"band", "kit", "box"}
+              and config.HEAL_ITEMS["band"]["heal"] == 100
+              and config.HEAL_ITEMS["kit"]["heal"] == 250
+              and config.HEAL_ITEMS["box"]["heal"] is None
+              and config.HEAL_ITEMS["band"]["price"] == 400
+              and config.HEAL_ITEMS["kit"]["price"] == 900
+              and config.HEAL_ITEMS["box"]["price"] == 1800)
 
     # ═══ کولدون کنده‌کاری ۳۰ ثانیه ═══
     check("کنده‌کاری ۳۰ ثانیه‌ایه", config.MINE_COOLDOWN_SECONDS == 30)
 
-    # ═══ کانفیگ نبرد جدید و کوئست‌های روزانه ═══
-    check("کانفیگ شانس حمله قدرت‌محور",
-          config.ATTACK_CHANCE_SCALE == 1.5 and config.ATTACK_WIN_MIN_CHANCE == 0.08
-          and config.ATTACK_WIN_MAX_CHANCE == 0.92)
-    check("کانفیگ ضربه بحرانی",
-          config.ATTACK_CRIT_CHANCE == 0.05 and config.ATTACK_CRIT_DMG_MULT == 1.5
-          and config.ATTACK_CRIT_STEAL_MULT == 1.30)
-    check("سپر محافظ ۱۵ دقیقه‌ایه", config.ATTACK_SHIELD_MINUTES == 15)
+    # ═══ کانفیگ نبرد HP جدید و کوئست‌های روزانه ═══
+    check("کانفیگ نبرد HP",
+          config.BATTLE_COOLDOWN_SECONDS == 30 and config.BATTLE_DMG_VARIANCE == 0.30
+          and config.BATTLE_STEAL_MAX_PCT == 0.05 and config.BATTLE_DEAD_SECONDS == 600
+          and config.MAX_LEVEL == 20 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 580)
     check("۶ کوئست روزانه با عنوان و عدد هدف",
           set(config.DAILY_QUESTS) == {"attack", "harvest", "mine", "plant", "search", "feed"}
           and config.DAILY_QUESTS["attack"]["target"] == 5
@@ -2510,16 +2516,24 @@ async def main() -> None:
             dash_spots.append(f)
     check("ویرگول جای دش توی همه متن‌های بات", not dash_spots, str(dash_spots))
 
-    # ── غارت 5 تا 10 درصد ──
-    check("بازه غارت 5% تا 10%",
-          config.STEAL_MIN_PCT == 0.05 and config.STEAL_MAX_PCT == 0.10)
+    # ── غارت هر ضربه تا ۵٪ بر اساس دمیج ──
+    check("سقف غارت هر ضربه ۵٪", config.BATTLE_STEAL_MAX_PCT == 0.05)
 
-    # ── زمین: مکس لول ۵ و آپگرید گرون‌تر ──
-    check("مکس لول زمین ۵ه", config.PLOT_MAX_LEVEL == 5)
+    # ── زمین: مکس لول ۶، آپگریدهای گرون‌تر با گیت لول ──
+    check("مکس لول زمین ۶ه", config.PLOT_MAX_LEVEL == 6)
     check("قیمت آپگرید زمین جدید و رنده",
-          config.PLOT_UPGRADE_PRICES == [4000, 10000, 22000, 45000]
-          and economy.upgrade_price(1) == 4000 and economy.upgrade_price(4) == 45000,
+          config.PLOT_UPGRADE_PRICES == [5000, 10000, 30000, 100000, 200000]
+          and economy.upgrade_price(1) == 5000 and economy.upgrade_price(4) == 100000
+          and economy.upgrade_price(5) == 200000,
       str(config.PLOT_UPGRADE_PRICES))
+    check("گیت لول آپگرید زمین",
+          config.PLOT_UPGRADE_LEVELS == [3, 5, 10, 15, 20]
+          and economy.plot_upgrade_required_level(1) == 3
+          and economy.plot_upgrade_required_level(2) == 5
+          and economy.plot_upgrade_required_level(3) == 10
+          and economy.plot_upgrade_required_level(4) == 15
+          and economy.plot_upgrade_required_level(5) == 20,
+      str(config.PLOT_UPGRADE_LEVELS))
 
     # ── کولدون برداشت با ویرگول ──
     async with session_scope() as s:
@@ -2560,10 +2574,16 @@ async def main() -> None:
           all(x in HS["shop"] for x in ["پنج بخش اصلی داره", "تایید ✅ یا لغو ❌",
                                         "قوی‌ترینشون توی نبرد", "بعد از خرید مستقیم به سگت داده میشه",
                                         "اول اسم سگ رو ازت می‌خواد", "فاکتور نهایی با نژاد، اسم و قیمت"]))
-    check("هلپ حمله (غارت 5% تا 10% + شانس و بحرانی و سپر)",
-          all(x in HS["attack"] for x in ["بین 5% تا 10%", "🌪 طوفان", "🌫 مه", "15 انرژی", "نصف می‌کنه",
-                                          "شانس 50%", "هیچ‌وقت 100% نمیشه", "ضربه بحرانی",
-                                          "15 دقیقه سپر محافظ", "قدرت سلاحت محاسبه میشه"]))
+    check("هلپ حمله (متن دقیق نبرد HP جدید)",
+          all(x in HS["attack"] for x in [
+              "روی پیام حریف ریپلای کن یا آیدی اون رو وارد کن و یکی از دستورهای حمله رو بفرست",
+              "قدرت سلاح زره سگ لول و تجهیزات روی نتیجه هر ضربه اثر دارن",
+              "هر حمله مقداری از HP حریف رو کم می‌کنه و همون لحظه تی‌پوینت و تجربه می‌گیری",
+              "بعد از هر حمله فقط چند لحظه باید صبر کنی تا دوباره حمله کنی",
+              "اگه HPت کم شد از بخش «تریاکی درمان» استفاده کن",
+              "اگه HP حریف به صفر برسه دوئل تموم میشه و تا چند دقیقه از نبرد خارج میشه",
+              "اگه حریف زره خیلی قوی داشته باشه ممکنه هیچ آسیبی بهش وارد نکنی",
+          ]))
     check("هلپ سگ‌ها",
           all(x in HS["dogs"] for x in ["🐕 پیتبول", "👑 گرگ سیاه شخصیت نداره", "12 به وقت ایران"]))
     check("هلپ تیم (بدون پیشوند + تیم ست بیو)",
@@ -2573,8 +2593,8 @@ async def main() -> None:
                                         "تیم کوئست", "کنده‌کاری تیمی", "تیم ساختمان",
                                         "فاکتورش میاد و با تایید ✅ تیم ساخته میشه"])
           and "تریاکی ست بیو" not in HS["team"] and "تریاکی تیم واریز" not in HS["team"])
-    check("هلپ حمله هر دو شکل دستور رو داره",
-          "«حمله» یا «تریاکی حمله»" in HS["attack"])
+    check("هلپ حمله بخش درمان رو معرفی می‌کنه",
+          "«تریاکی درمان»" in HS["attack"])
     check("هلپ کنده‌کاری شکل پیشونددارش رو هم داره",
           "«تریاکی کنده کاری» هم کار می‌کنه" in HS["mine"] and "«حمله»" in HS["mine"])
     check("هلپ بانک",
@@ -2727,13 +2747,15 @@ async def main() -> None:
           "«تریاکی حمله»" in stx and "«کنده کاری»" in stx and "«تریاکی شاپ»" in stx, stx[:140])
 
     # ── متن‌های راهنما داخل صفحه‌ها هم پیشوند گرفتن ──
-    from handlers import attack as attack_h2, bank as bank_h2
+    from handlers import bank as bank_h2, battle as battle_h2
     async with session_scope() as s:
         uh = await users.get_by_tg(s, 1001)
-        atx = await attack_h2._attack_home_text(s, uh)
         btx = bank_h2._bank_text(uh)
         await s.commit()
-    check("خانه حمله «تریاکی حمله» رو یاد میده", "«تریاکی حمله»" in atx)
+    from handlers import attack as attack_h2
+    check("پنل پی‌وی به نبرد گروهی ارجاع میده",
+          "حمله | شلیک | بنگ | پیو" in battle_h2.ATTACK_GUIDE_TEXT
+          and "توی گروه" in attack_h2.PANEL_FOOTER)
     check("متن بانک دستورها رو با تریاکی می‌گه",
           "«تریاکی واریز 1200»" in btx and "«تریاکی برداشت 1200»" in btx)
     check("noop واریز تیم بدون پیشونده", "«تیم واریز 1200»" in start_h2._NOOP_ANSWERS["depinfo"]
@@ -2753,7 +2775,7 @@ async def main() -> None:
 
     # ── دکمه ساخت زمین: قالب دقیق «🔨 ساخت زمین 4 | 🪙 20,000 TP» ──
     e_plot = SimpleNamespace(id=903, level=1, current_status=lambda: ("empty", 0))
-    fk = kb2.farm_kb(SimpleNamespace(level=8), [e_plot, e_plot, e_plot], 20000, 0)
+    fk = kb2.farm_kb(SimpleNamespace(level=20), [e_plot, e_plot, e_plot], 20000, 0)
     ftexts = [b.text for row in fk.inline_keyboard for b in row]
     fdatas = [b.callback_data for row in fk.inline_keyboard for b in row]
     check("دکمه ساخت زمین قالب دقیق جدید رو داره",
@@ -2765,7 +2787,7 @@ async def main() -> None:
     fk2 = kb2.farm_kb(SimpleNamespace(level=1), [e_plot, e_plot, e_plot], 20000, 0)
     lock_btn = next(b for row in fk2.inline_keyboard for b in row if b.callback_data == "noop:lock")
     check("قفل ساخت زمین قالب جدید + قرمزه",
-          lock_btn.text == f"🔒 ساخت زمین 4 | 🪙 20,000 TP | لول {fa_num(6)}"
+          lock_btn.text == f"🔒 ساخت زمین 4 | 🪙 20,000 TP | لول {fa_num(15)}"
           and lock_btn.style == "danger", lock_btn.text)
 
     # ── تایمرهای مزرعه (ساخت + رشد) قرمزن ──
@@ -2851,9 +2873,9 @@ async def main() -> None:
 
     slash_bot = _SlashBot()
     await bot_mod.on_start(SimpleNamespace(bot=slash_bot))
-    check("set_my_commands با start و help و menu و profile صدا زده میشه",
+    check("set_my_commands با start و help و menu و profile و heal صدا زده میشه",
           slash_bot.cmds is not None
-          and {c.command for c in slash_bot.cmds} == {"start", "help", "menu", "profile"}
+          and {c.command for c in slash_bot.cmds} == {"start", "help", "menu", "profile", "heal"}
           and all(isinstance(c, _BC) for c in slash_bot.cmds),
           str([c.command for c in (slash_bot.cmds or [])]))
 
@@ -3004,69 +3026,545 @@ async def main() -> None:
               f"{n_before}→{len(rest)}" if ed2 else "no edit")
         await s.commit()
 
-    # ── فلوی سپر تو هندلر حمله (alert هدف سپردار + پرامپت شکستن سپر) ──
-    from handlers import attack as attack_h3
+    # ── فلوی کامل نبرد HP گروهی (هندلر واقعی: ریپلای | کولدان | شکست | خودایجاد پروفایل) ──
+    from handlers import battle as battle_h3
+
+    def _group_atk_update(txt, uid, uname, fname, reply_user=None):
+        """آپدیت فیک حمله گروهی با ریپلای اختیاری روی پیام طرف"""
+        msg = _Msg(text=txt, calls=[], chat_id=-100555)
+        msg.reply_to_message = SimpleNamespace(from_user=reply_user) if reply_user else None
+        return SimpleNamespace(
+            message=msg, effective_message=msg,
+            effective_user=SimpleNamespace(id=uid, username=uname, first_name=fname, is_bot=False),
+            effective_chat=SimpleNamespace(id=-100555, type="supergroup"),
+            callback_query=None,
+        )
+
     async with session_scope() as s:
-        sh_a, _ = await users.get_or_create(s, tg(8880, "shatta", "سپری‌زن"))
-        sh_b, _ = await users.get_or_create(s, tg(8881, "shtarg", "سپرخور"))
-        sh_a.level = 10
-        sh_b.level = 10
-        sh_a.cash = 50000
-        sh_b.cash = 50000
-        sh_a.energy = config.MAX_ENERGY
-        sh_a.last_attack_at = None
-        sh_a_id, sh_b_id = sh_a.id, sh_b.id
+        g_atk, _ = await users.get_or_create(s, tg(8890, "gangsta", "گانگستر"))
+        g_atk.level = 10
+        g_atk.cash = 50000
+        g_atk.energy = config.MAX_ENERGY
+        g_atk.last_attack_at = None
         await s.commit()
 
-    upd = _fake_update(f"cf:att:{sh_b_id}", uid=8880)
-    await attack_h3.attack_execute(upd, None)
-    ed = next((c for c in upd.callback_query.calls if c[0] == "edit"), None)
-    check("حمله منویی انجام شد و نتیجه دمیج و شانس داره",
-          ed is not None and "دمیج" in ed[1] and "شانس پیروزی" in ed[1], ed[1][:120] if ed else "-")
+    # حریف هنوز اصلا اکانت نداره، با همین حمله پروفایلش خودکار ساخته میشه
+    vic_tg = SimpleNamespace(id=8891, username="victim1", first_name="قربانی", is_bot=False)
+    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    await battle_h3.attack_cmd(upd, None)
+    htxt = next((c[1] for c in upd.message.calls if "💥" in c[1]), "")
+    check("حمله ریپلای گروهی متن قالب دقیق میاره",
+          "<b>💥 به حریف «قربانی» حمله کردی</b>" in htxt
+          and "🩸" in htxt and "دمیج وارد شد" in htxt
+          and "❤️ HP حریف" in htxt and " از 200" in htxt
+          and "تی‌پوینت غارت کردی" in htxt and "تجربه گرفتی" in htxt,
+          htxt.replace("\n", " | ")[:220])
     async with session_scope() as s:
-        sh_a = await users.get_by_tg(s, 8880)
-        sh_b = await users.get_by_tg(s, 8881)
-        check("هدف بعد از حمله سپر گرفت", combat.shield_left(sh_b) > 0)
-        sh_a.last_attack_at = None
-        sh_a.energy = config.MAX_ENERGY
+        vic = await users.get_by_tg(s, 8891)
+        g_atk = await users.get_by_tg(s, 8890)
+        check("حریف بدون استارت خودکار پروفایل گرفت و HPش کم شد",
+              vic is not None and vic.hp is not None and vic.hp < battle_svc.max_hp(1))
+        check("کولدان مهاجم ست شد", battle_svc.cooldown_left(g_atk) > 0)
         await s.commit()
 
-    # هدف سپردار → الرت
-    upd = _fake_update(f"cf:att:{sh_b_id}", uid=8880)
-    await attack_h3.attack_execute(upd, None)
+    # کولدان: حمله دوباره فوری رد میشه
+    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    await battle_h3.attack_cmd(upd, None)
+    check("حمله توی کولدان رد میشه",
+          "⏳" in upd.message.calls[-1][1] and "دیگه می‌تونی حمله کنی" in upd.message.calls[-1][1])
+
+    # هر ۶ دستور جنگ با ریپلای کار می‌کنن
+    for war in ("شلیک", "بنگ بنگ", "پیو پیو", "پیو", "تریاکی حمله", "تی بنگ"):
+        async with session_scope() as s:
+            g_atk = await users.get_by_tg(s, 8890)
+            g_atk.last_attack_at = None
+            g_atk.energy = config.MAX_ENERGY
+            vic = await users.get_by_tg(s, 8891)
+            vic.hp = battle_svc.max_hp(vic.level)
+            vic.dead_until = None
+            await s.commit()
+        upd = _group_atk_update(war, 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+        await battle_h3.attack_cmd(upd, None)
+        assert any("💥" in c[1] for c in upd.message.calls), f"{war}: {upd.message.calls[-1][1][:80]}"
+    check("هر ۶ دستور جنگ با ریپلای کار می‌کنن", True)
+
+    # بدون ریپلای و بدون آیدی، راهنمای دستورها میاد
+    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر")
+    await battle_h3.attack_cmd(upd, None)
+    check("حمله بدون هدف راهنما میده",
+          "حمله | شلیک | بنگ | پیو" in upd.message.calls[-1][1])
+
+    # خودتو نزن + ربات رو نمیشه زد
+    self_tg = SimpleNamespace(id=8890, username="gangsta", first_name="گانگستر", is_bot=False)
+    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=self_tg)
+    await battle_h3.attack_cmd(upd, None)
+    check("حمله به خودی رد میشه", "خودتو نزن" in upd.message.calls[-1][1])
+    bot_tg = SimpleNamespace(id=999999, username="somebot", first_name="ربات", is_bot=True)
+    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=bot_tg)
+    await battle_h3.attack_cmd(upd, None)
+    check("به ربات نمیشه حمله کرد", "ربات رو نمیشه زد" in upd.message.calls[-1][1])
+
+    # ضربه آخر: قربانی از پا درمیاد
+    async with session_scope() as s:
+        g_atk = await users.get_by_tg(s, 8890)
+        g_atk.last_attack_at = None
+        g_atk.energy = config.MAX_ENERGY
+        vic = await users.get_by_tg(s, 8891)
+        vic.hp = 1
+        vic.dead_until = None
+        await s.commit()
+    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    await battle_h3.attack_cmd(upd, None)
+    ktxt = next((c[1] for c in upd.message.calls if "☠️" in c[1]), "")
+    check("ضربه آخر بلوک ☠️ و 🏆 رو میاره",
+          "دمیج وارد شد" in ktxt
+          and "<b>☠️ حریف «قربانی» شکست خورد</b>" in ktxt and "🏆 دوئل به پایان رسید" in ktxt,
+          ktxt.replace("\n", " | ")[-170:])
+
+    # به مرده نمیشه زد
+    async with session_scope() as s:
+        g_atk = await users.get_by_tg(s, 8890)
+        g_atk.last_attack_at = None
+        g_atk.energy = config.MAX_ENERGY
+        await s.commit()
+    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    await battle_h3.attack_cmd(upd, None)
+    check("حمله به بیهوش پیام دقیق میده",
+          "💀 حریف «قربانی» مرده و تا" in upd.message.calls[-1][1]
+          and "دقیقه دیگه زنده نمیشه" in upd.message.calls[-1][1]
+          and "یه هدف دیگه پیدا کن" in upd.message.calls[-1][1])
+
+    # مرده خودش هم نمی‌تونه بزنه
+    atk_of_vic = SimpleNamespace(id=8890, username="gangsta", first_name="گانگستر", is_bot=False)
+    upd = _group_atk_update("حمله", 8891, "victim1", "قربانی", reply_user=atk_of_vic)
+    await battle_h3.attack_cmd(upd, None)
+    check("بیهوش پیام «حالت جا نیومده» می‌گیره",
+          "💀 هنوز حالت جا نیومده" in upd.message.calls[-1][1]
+          and "دقیقه دیگه دوباره آماده نبرد میشی" in upd.message.calls[-1][1])
+
+    # زنده شدن خودکار قربانی برای تست‌های بعدی
+    async with session_scope() as s:
+        vic = await users.get_by_tg(s, 8891)
+        vic.dead_until = now_utc() - timedelta(seconds=1)
+        battle_svc.revive_if_due(vic)
+        check("قربانی بعد ۱۰ دقیقه با HP فول برگشت",
+              vic.dead_until is None and vic.hp == battle_svc.max_hp(vic.level))
+        await s.commit()
+
+    # حمله با @یوزرنیم به کسی که هنوز استارت نکرده (از رجیستری دیده‌شده‌ها)
+    _IDS = {8891: ("victim1", "قربانی"), 8892: ("stranger8", "غریبه")}
+
+    class _GangBot:
+        async def get_chat_member(self, chat_id, user_id):
+            un, fn = _IDS.get(user_id, (None, "بی‌نام"))
+            return SimpleNamespace(status="member", user=SimpleNamespace(
+                id=user_id, username=un, first_name=fn, is_bot=False))
+
+    fake_ctx = SimpleNamespace(bot=_GangBot())
+    async with session_scope() as s:
+        await seen_svc.remember(s, SimpleNamespace(id=8892, username="stranger8", first_name="غریبه"))
+        g_atk = await users.get_by_tg(s, 8890)
+        g_atk.last_attack_at = None
+        g_atk.energy = config.MAX_ENERGY
+        await s.commit()
+    upd = _group_atk_update("حمله @stranger8", 8890, "gangsta", "گانگستر")
+    await battle_h3.attack_cmd(upd, fake_ctx)
+    atxt = next((c[1] for c in upd.message.calls if "💥" in c[1]), "")
+    check("حمله با @یوزرنیم به غریبه کار می‌کنه",
+          "<b>💥 به حریف «غریبه» حمله کردی</b>" in atxt and "دمیج وارد شد" in atxt,
+          atxt.replace("\n", " | ")[:160])
+    async with session_scope() as s:
+        stn = await users.get_by_tg(s, 8892)
+        check("غریبه هم پروفایل گرفت و HPش کم شد",
+              stn is not None and stn.hp is not None and stn.hp < battle_svc.max_hp(1))
+        await s.commit()
+
+    # یوزرنیم ناشناس → پیدا نکردم
+    upd = _group_atk_update("حمله @nobody_here_x", 8890, "gangsta", "گانگستر")
+    await battle_h3.attack_cmd(upd, fake_ctx)
+    check("یوزرنیم ناشناس «پیدا نکردم» میده", "پیدا نکردم" in upd.message.calls[-1][1])
+
+    # کسی که دیگه تو گروه نیس (get_chat_member خطا بده)
+    class _NoMemBot:
+        async def get_chat_member(self, chat_id, user_id):
+            from telegram.error import BadRequest
+            raise BadRequest("User not found")
+
+    async with session_scope() as s:
+        await seen_svc.remember(s, SimpleNamespace(id=8893, username="gone_user", first_name="رفته"))
+        await s.commit()
+    upd = _group_atk_update("حمله @gone_user", 8890, "gangsta", "گانگستر")
+    await battle_h3.attack_cmd(upd, SimpleNamespace(bot=_NoMemBot()))
+    check("کسی که تو گروه نیس رد میشه", "تو این گروه نیس" in upd.message.calls[-1][1])
+
+    # حمله با آیدی عددی
+    async with session_scope() as s:
+        g_atk = await users.get_by_tg(s, 8890)
+        g_atk.last_attack_at = None
+        g_atk.energy = config.MAX_ENERGY
+        vic = await users.get_by_tg(s, 8891)
+        vic.hp = battle_svc.max_hp(vic.level)
+        vic.dead_until = None
+        await s.commit()
+    upd = _group_atk_update("پیو 8891", 8890, "gangsta", "گانگستر")
+    await battle_h3.attack_cmd(upd, fake_ctx)
+    check("حمله با آیدی عددی هم کار می‌کنه",
+          any("<b>💥 به حریف «قربانی» حمله کردی</b>" in c[1] for c in upd.message.calls))
+
+    # تو پی‌وی حمله، لیست کلاسیک پی‌وی باز میشه
+    upd = _text_update("حمله", uid=8890, uname="gangsta", fname="گانگستر")
+    await battle_h3.attack_cmd(upd, None)
+    pvt = upd.message.calls[-1][1]
+    pvk = upd.message.calls[-1][2].get("reply_markup")
+    check("حمله تو پی‌وی لیست کلاسیک رو نشون میده",
+          "⚔️ لیست حمله" in pvt
+          and pvk is not None
+          and any(b.callback_data == "patt:re" for row in pvk.inline_keyboard for b in row))
+
+    # ═══ این دور: حمله پی‌وی کلاسیک ۱۲ساعته | کریتیکال گروهی ۲٪ | گیت لول و قیمت مزرعه ═══
+    from services import pvattack as pv_svc
+    from handlers import attack as pv_h3
+
+    # ── کانفیگ حمله پی‌وی کلاسیک ──
+    check("کانفیگ حمله پی‌وی کلاسیک",
+          config.PV_ATTACK_ENERGY_COST == 15 and config.PV_ATTACK_LEVEL_RANGE == 2
+          and config.PV_ATTACK_MIN_CHANCE == 0.15 and config.PV_ATTACK_MAX_CHANCE == 0.85
+          and config.PV_BASE_CHANCE == 0.50 and config.PV_ATTACK_SUGGESTIONS == 5)
+    check("مصونیت پی‌وی دقیقا 12 ساعته", config.PV_ATTACK_SHIELD_SECONDS == 12 * 3600,
+          str(config.PV_ATTACK_SHIELD_SECONDS))
+    check("غارت و جریمه پی‌وی تو کانفیگن",
+          config.PV_ATTACK_STEAL_MIN_PCT == 0.08 and config.PV_ATTACK_STEAL_MAX_PCT == 0.20
+          and config.PV_ATTACK_LOSE_PENALTY_PCT == 0.05)
+
+    # ── شانس برد کلاسیک: پایه ۵۰٪ و کف/سقف ──
+    check("شانس پایه با قدرت برابر 50 درصده", pv_svc.win_chance(100, 100) == 0.50)
+    check("قوات غیرمتعادل به کف و سقف کلمپ میشه",
+          pv_svc.win_chance(1, 99999) == config.PV_ATTACK_MIN_CHANCE
+          and pv_svc.win_chance(99999, 1) == config.PV_ATTACK_MAX_CHANCE)
+
+    # ── لیست هدف: فقط ±۲ لول، بدون خودش و بدون مصونیت‌دارها ──
+    async with session_scope() as s:
+        a0, _ = await users.get_or_create(s, tg(9400, "pvhero", "قهرمان"))
+        a0.level = 20
+        for vid, lv in ((9401, 18), (9402, 19), (9403, 21), (9404, 22),
+                        (9405, 17), (9406, 23), (9407, 20)):
+            v, _ = await users.get_or_create(s, tg(vid, f"pv{vid}", f"طرف{vid}"))
+            v.level = lv
+            v.shield_until = None
+        sh = await users.get_by_tg(s, 9407)
+        sh.shield_until = now_utc() + timedelta(hours=1)
+        await s.commit()
+
+        _old_sug = config.PV_ATTACK_SUGGESTIONS
+        config.PV_ATTACK_SUGGESTIONS = 50  # موقتا سقف لیست بلند که همه حوالی‌لول‌ها بیان
+        try:
+            tgts = await pv_svc.find_targets(s, a0)
+        finally:
+            config.PV_ATTACK_SUGGESTIONS = _old_sug
+        tids = {u.telegram_id for u in tgts}
+        check("لیست پی‌وی فقط حوالی لول خودته",
+              {9401, 9402, 9403, 9404} <= tids and 9405 not in tids and 9406 not in tids, str(tids))
+        check("خودش و مصونیت‌دارها تو لیست نمیان",
+              9400 not in tids and 9407 not in tids
+              and all(pv_svc.shield_left(u) <= 0 for u in tgts)
+              and all(abs(u.level - 20) <= 2 for u in tgts), str(tids))
+
+        # ── اجرای برد: انرژی + غارت درصدی + مصونیت ۱۲ساعته + آمار ──
+        atk_u = await users.get_by_tg(s, 9400)
+        vic = await users.get_by_tg(s, 9401)
+        atk_u.energy = config.MAX_ENERGY
+        atk_u.cash = 5000
+        vic.cash = 10000
+        vic.shield_until = None
+        wins_b, losses_b, e_before = atk_u.wins, vic.losses, atk_u.energy
+        _old_wc = pv_svc.win_chance
+        pv_svc.win_chance = lambda a, d: 1.0
+        try:
+            res = await pv_svc.execute(s, atk_u, vic)
+        finally:
+            pv_svc.win_chance = _old_wc
+        lo = int(10000 * config.PV_ATTACK_STEAL_MIN_PCT)
+        hi = int(10000 * config.PV_ATTACK_STEAL_MAX_PCT)
+        check("حمله پی‌وی با شانس کامل برده", res["ok"] and res["won"], str(res))
+        check("انرژی حمله پی‌وی کم میشه", atk_u.energy == e_before - config.PV_ATTACK_ENERGY_COST)
+        check("غارت پی‌وی تو بازه درصده و دقیق جابه‌جا میشه",
+              lo <= res["steal"] <= hi and vic.cash == 10000 - res["steal"]
+              and atk_u.cash == 5000 + res["steal"], f"{res['steal']} تو {lo}..{hi}")
+        check("قربانی 12 ساعت مصونیت گرفت",
+              vic.shield_until is not None and 43140 <= pv_svc.shield_left(vic) <= 43200,
+          str(pv_svc.shield_left(vic)))
+        check("برد و باخت پی‌وی ثبت میشه", atk_u.wins == wins_b + 1 and vic.losses == losses_b + 1)
+
+        # ── حمله دوباره به مصون رد میشه و انرژی نمی‌سوزونه ──
+        res2 = await pv_svc.execute(s, atk_u, vic)
+        check("به مصون دوباره حمله نمیشه", not res2["ok"] and res2["reason"] == "shield")
+        check("مصونیت انرژی نمی‌سوزونه", atk_u.energy == e_before - config.PV_ATTACK_ENERGY_COST)
+
+        # ── اجرای باخت: جریمه ۵٪ از جیب مهاجم به قربانی ──
+        vic2 = await users.get_by_tg(s, 9402)
+        vic2.shield_until = None
+        vic2.cash = 0
+        atk_u.cash = 8000
+        vic2_wins_b = vic2.wins
+        pv_svc.win_chance = lambda a, d: 0.0
+        try:
+            res3 = await pv_svc.execute(s, atk_u, vic2)
+        finally:
+            pv_svc.win_chance = _old_wc
+        pen = int(8000 * config.PV_ATTACK_LOSE_PENALTY_PCT)
+        check("باخت پی‌وی جریمه رو به قربانی میرسونه",
+              res3["ok"] and not res3["won"] and res3["penalty"] == pen
+              and atk_u.cash == 8000 - pen and vic2.cash == pen and vic2.wins == vic2_wins_b + 1,
+          str(res3))
+
+        # ── خارج رنج لول و خودزنی رد میشن ──
+        vic_far = await users.get_by_tg(s, 9405)
+        vic_far.shield_until = None
+        res4 = await pv_svc.execute(s, atk_u, vic_far)
+        check("خارج رنج لول پی‌وی رد میشه", not res4["ok"] and res4["reason"] == "level")
+        res5 = await pv_svc.execute(s, atk_u, atk_u)
+        check("خودزنی پی‌وی رد میشه", not res5["ok"] and res5["reason"] == "self")
+        await s.commit()
+
+    # ── فلوی کامل پی‌وی: دستور → لیست → تایید → اجرا → مصونیت ──
+    async with session_scope() as s:
+        e_atk, _ = await users.get_or_create(s, tg(9410, "pve2e", "ایتوئی"))
+        e_atk.level = 20
+        e_atk.energy = config.MAX_ENERGY
+        for vid, lv in ((9411, 20), (9412, 19)):
+            v, _ = await users.get_or_create(s, tg(vid, f"pv{vid}", f"طرف{vid}"))
+            v.level = lv
+            v.cash = 9000
+            v.shield_until = None
+        await s.commit()
+
+    upd = _text_update("حمله", uid=9410, uname="pve2e", fname="ایتوئی")
+    await battle_h3.attack_cmd(upd, None)
+    plist_txt = upd.message.calls[-1][1]
+    plist_kb = upd.message.calls[-1][2].get("reply_markup")
+    pdata = [b.callback_data for row in plist_kb.inline_keyboard for b in row]
+    check("دستور «حمله» تو پی‌وی لیست دکمه‌دار میده",
+          "⚔️ لیست حمله" in plist_txt and any(d.startswith("patt:go:") for d in pdata), pdata[:6])
+    check("شانس هر هدف تو لیست نوشته میشه", "شانس" in plist_txt and "درصد" in plist_txt)
+
+    upd = _fake_update("patt:go:9411", uid=9410)
+    await pv_h3.target_cb(upd, None)
+    cft = next(c[1] for c in upd.callback_query.calls if c[0] == "edit")
+    cfk = next(c[2].get("reply_markup") for c in upd.callback_query.calls if c[0] == "edit")
+    cfmap = {b.callback_data: b.style for row in cfk.inline_keyboard for b in row}
+    check("تایید پی‌وی شانس، لول و هزینه رو نشون میده",
+          "<b>⚔️ حمله به «طرف9411»</b>" in cft and "شانس برد" in cft and "15 انرژی" in cft
+          and cfmap.get("cf:patt:x:9411") == "success", cft)
+
+    _old_wc = pv_svc.win_chance
+    pv_svc.win_chance = lambda a, d: 1.0
+    try:
+        upd = _fake_update("cf:patt:x:9411", uid=9410)
+        await pv_h3.execute_cb(upd, None)
+    finally:
+        pv_svc.win_chance = _old_wc
+    rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    check("نتیجه برد پی‌وی قالب موردانتظاره",
+          "<b>⚔️ بردی!</b>" in rt and "غارت کردی" in rt and "12 ساعت" in rt, rt)
+    async with session_scope() as s:
+        v1 = await users.get_by_tg(s, 9411)
+        check("قربانی واقعا مصون شد", v1.shield_until is not None and pv_svc.shield_left(v1) > 0)
+
+    upd = _fake_update("patt:go:9411", uid=9410)
+    await pv_h3.target_cb(upd, None)
+    ans = [c for c in upd.callback_query.calls if c[0] == "answer"]
+    check("هدف مصون دیگه قابل انتخاب نیس", ans and "مصونیت" in str(ans[-1][1]),
+          str(upd.callback_query.calls[-1]))
+
+    upd = _fake_update("patt:re", uid=9410)
+    await pv_h3.panel_refresh_cb(upd, None)
+    re_data = next((c[2].get("reply_markup") for c in upd.callback_query.calls if c[0] == "edit"), None)
+    re_btns = {b.callback_data for row in re_data.inline_keyboard for b in row}
+    check("رفرش لیست مصون‌شده رو نمیاره",
+          re_btns is not None and "patt:go:9411" not in re_btns, str(re_btns))
+
+    # ── کریتیکال نبرد گروهی ۲٪ ──
+    check("کانفیگ کریتیکال گروهی 2 درصده",
+          config.BATTLE_CRIT_CHANCE == 0.02 and config.BATTLE_CRIT_MULT == 2.0)
+    random.seed(11)
+    _ocrit = config.BATTLE_CRIT_CHANCE
+    config.BATTLE_CRIT_CHANCE = 1.0
+    try:
+        d_crit = [battle_svc.roll_damage(150, 100) for _ in range(50)]
+    finally:
+        config.BATTLE_CRIT_CHANCE = 0.0
+    check("با شانس کامل همه ضربه‌ها کریتیکال فلگ میخورن", all(c for _, c in d_crit))
+    try:
+        d_norm = [battle_svc.roll_damage(150, 100) for _ in range(50)]
+    finally:
+        config.BATTLE_CRIT_CHANCE = _ocrit
+    check("با شانس صفر هیچ کریتیکالی نیس", all(not c for _, c in d_norm))
+    check("دمیج کریتیکال از معمولی بالاتره",
+          min(d for d, _ in d_crit) > max(d for d, _ in d_norm),
+          f"{min(d for d, _ in d_crit)} vs {max(d for d, _ in d_norm)}")
+
+    ctxt = battle_h3.hit_text(
+        {"dmg": 40, "crit": True, "hp_now": 100, "hp_max": 200,
+         "steal": 0, "xp": 5, "notes": [], "killed": False}, "سارا")
+    check("خط کریتیکال تو متن ضربه گروهی میاد",
+          "⚡ کریتیکال" in ctxt and "🩸 40 دمیج وارد شد" in ctxt, ctxt)
+
+    # ── گیت لول آپگرید زمین (سرویس) ──
+    async with session_scope() as s:
+        fu = await users.get_by_tg(s, 9410)  # لول ۲۰، همه آپگریدها براش بازه
+        fu.cash = 500000
+        p1 = (await farming.get_user_plots(s, fu.id))[0]
+        p1.level = 1
+        ok, msg = await farming.upgrade_plot(s, fu, p1)
+        check("آپگرید زمین لول ۱ به ۲ با قیمت ۵۰۰۰",
+              ok and p1.level == 2 and fu.cash == 500000 - 5000, msg)
+
+        fu2, _ = await users.get_or_create(s, tg(9415, "lowlvl", "کم‌لول"))
+        fu2.level = 1
+        fu2.cash = 999999
+        f2 = (await farming.get_user_plots(s, fu2.id))[0]
+        f2.level = 1
+        ok, msg = await farming.upgrade_plot(s, fu2, f2)
+        check("آپگرید زمین زیر لول ۳ قفله",
+              not ok and "آپگرید به لول 2 لول 3 می‌خواد" in msg and f2.level == 1, msg)
+        await s.commit()
+
+    lk = kb2.farm_kb(SimpleNamespace(level=1),
+                     [SimpleNamespace(id=998, level=1, current_status=lambda: ("empty", 0))], 1000, 0)
+    ltexts = [b.text for row in lk.inline_keyboard for b in row]
+    check("دکمه آپگرید قفل‌شده با لول لازم تو مزرعه دیده میشه",
+          any("🔒 آپگرید | لول 3" in t for t in ltexts), str(ltexts))
+
+    # ── رجیستری دیده‌شده‌ها case-insensitive ──
+    async with session_scope() as s:
+        await seen_svc.remember(s, SimpleNamespace(id=8895, username="CaseName", first_name="کیس"))
+        row = await seen_svc.find_by_username(s, "@casename")
+        check("یوزرنیم case-insensitive پیدا میشه", row is not None and row.telegram_id == 8895)
+        await s.commit()
+
+    # ── فلوی کامل درمان: همون لحظه استفاده، بدون انبار ──
+    async with session_scope() as s:
+        hl, _ = await users.get_or_create(s, tg(8894, "healy", "زخمی"))
+        hl.cash = 5000
+        hl.hp = battle_svc.max_hp(1)
+        await s.commit()
+    upd = _text_update("/heal", uid=8894, uname="healy", fname="زخمی")
+    await battle_h3.heal_cmd(upd, None)
+    check("HP فول پیام دقیق درمان میاره",
+          upd.message.calls[-1][1] == "❤️ سلامتت کامله\nفعلاً نیازی به درمان نداری",
+          upd.message.calls[-1][1][:60])
+
+    async with session_scope() as s:
+        hl = await users.get_by_tg(s, 8894)
+        hl.hp = 100
+        await s.commit()
+    upd = _text_update("تی درمان", uid=8894, uname="healy", fname="زخمی")
+    await battle_h3.heal_cmd(upd, None)
+    hhome = upd.message.calls[-1][1]
+    hhkb = upd.message.calls[-1][2].get("reply_markup")
+    check("صفحه درمان سه آیتم و وضعیت HP رو داره",
+          "<b>❤️ درمان</b>" in hhome and "100 از 200" in hhome
+          and "🩹 باند کوچک" in hhome and "💉 کیت درمان" in hhome and "🏥 جعبه کمک‌های اولیه" in hhome
+          and "همون لحظه استفاده میشه" in hhome
+          and hhkb is not None
+          and any(b.callback_data == "heal:buy:band" for row in hhkb.inline_keyboard for b in row),
+          hhome.replace("\n", " | ")[:230])
+
+    # باند: همون لحظه +100 و قیمتش از جیب رفت
+    upd = _fake_update("heal:buy:band", uid=8894)
+    await battle_h3.heal_buy_cb(upd, None)
+    async with session_scope() as s:
+        hl = await users.get_by_tg(s, 8894)
+        check("باند همون لحظه +100 HP داد و قیمتش کم شد و تو انبار نیس",
+              hl.hp == 200 and hl.cash == 5000 - config.HEAL_ITEMS["band"]["price"])
+        await s.commit()
+
+    # HP فول، خرید رد میشه
+    upd = _fake_update("heal:buy:band", uid=8894)
+    await battle_h3.heal_buy_cb(upd, None)
     ans = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
-    check("زدن هدف سپردار الرت میده",
-          ans is not None and ans[2].get("show_alert") and ans[1] and "سپر محافظ داره" in ans[1][0],
-          str(ans)[10:130] if ans else "no answer")
+    check("خرید با HP فول رد میشه با پیام دقیق",
+          ans is not None and "سلامتت کامله" in str(ans[1]), str(ans)[:130])
 
-    # خودش سپر داره → پرامپت شکستن سپر با دکمه brk
+    # پول کم، جعبه داده نمیشه
     async with session_scope() as s:
-        sh_a = await users.get_by_tg(s, 8880)
-        sh_b = await users.get_by_tg(s, 8881)
-        sh_b.shield_until = None
-        sh_a.shield_until = now_utc() + timedelta(minutes=10)
-        sh_a.last_attack_at = None
-        sh_a.energy = config.MAX_ENERGY
+        hl = await users.get_by_tg(s, 8894)
+        hl.hp = 50
+        hl.cash = 100
         await s.commit()
-    upd = _fake_update(f"cf:att:{sh_b_id}", uid=8880)
-    await attack_h3.attack_execute(upd, None)
-    ed = next((c for c in upd.callback_query.calls if c[0] == "edit"), None)
-    pr_datas = [b.callback_data for row in ed[2]["reply_markup"].inline_keyboard for b in row] if ed else []
-    check("پرامپت شکستن سپر با متن دقیق میاد",
-          ed is not None
-          and "<b>🛡 سپر محافظت هنوز فعاله</b>" in ed[1]
-          and "اگر حمله کنی سپرت از بین میره" in ed[1] and "ادامه میدی؟" in ed[1]
-          and pr_datas == [f"cf:att:{sh_b_id}:brk", "cl"], f"{pr_datas} | {(ed[1][:80] if ed else '-')}")
+    upd = _fake_update("heal:buy:box", uid=8894)
+    await battle_h3.heal_buy_cb(upd, None)
+    ans = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
+    check("پول کم جعبه رو نمی‌ده", ans is not None and "پولت" in str(ans[1]) and "کمه" in str(ans[1]))
 
-    # تایید شکستن سپر → حمله انجام میشه و سپرش پاک میشه
-    upd = _fake_update(f"cf:att:{sh_b_id}:brk", uid=8880)
-    await attack_h3.attack_execute(upd, None)
-    ed = next((c for c in upd.callback_query.calls if c[0] == "edit"), None)
+    # جعبه فول‌کننده
     async with session_scope() as s:
-        sh_a = await users.get_by_tg(s, 8880)
-        check("با brk حمله انجام شد و سپر خودش شکست",
-              ed is not None and "دمیج" in ed[1] and sh_a.shield_until is None,
-              ed[1][:90] if ed else "-")
+        hl = await users.get_by_tg(s, 8894)
+        hl.cash = 5000
+        await s.commit()
+    upd = _fake_update("heal:buy:box", uid=8894)
+    await battle_h3.heal_buy_cb(upd, None)
+    async with session_scope() as s:
+        hl = await users.get_by_tg(s, 8894)
+        check("جعبه کمک‌های اولیه HP رو فول کرد و قیمتش کم شد",
+              hl.hp == battle_svc.max_hp(1) and hl.cash == 5000 - config.HEAL_ITEMS["box"]["price"])
+        await s.commit()
+
+    # بیهوش نمی‌تونه درمان بشه
+    async with session_scope() as s:
+        hl = await users.get_by_tg(s, 8894)
+        hl.dead_until = now_utc() + timedelta(seconds=300)
+        hl.hp = 0
+        await s.commit()
+    upd = _fake_update("heal:buy:band", uid=8894)
+    await battle_h3.heal_buy_cb(upd, None)
+    ans = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
+    check("بیهوش نمی‌تونه درمان بشه", ans is not None and "حالت جا نیومده" in str(ans[1]))
+    async with session_scope() as s:
+        hl = await users.get_by_tg(s, 8894)
+        hl.dead_until = None
+        hl.hp = battle_svc.max_hp(hl.level)
+        await s.commit()
+
+    # ── پروفایل قالب جدید: اسم فانتزی + خطوط اموال + خط تجربه ──
+    from handlers import profile as profile_h2
+    from utils import fancy_name as _fn
+    check("اسم لاتین فانتزی دقیقا مثل نمونه کاربر میشه", _fn("Rapit") == "𝑅𝒶𝓅𝒾𝓉")
+    check("اسم فارسی دست نمی‌خوره", _fn("علی12") == "علی12")
+    async with session_scope() as s:
+        pf = await users.get_by_tg(s, 8890)
+        cap = await profile_h2._profile_caption(s, pf)
+        await s.commit()
+    cap_xp = next((ln for ln in cap.split("\n") if ln.startswith("🌟 لول")), "")
+    check("پروفایل خط لول و تجربه قالب جدید رو داره",
+          cap_xp.startswith("🌟 لول 10 - ") and cap_xp.endswith("تجربه") and "/" in cap_xp, cap_xp)
+    check("پروفایل اموالش سه خطه",
+          "🌱 تعداد زمین‌ها" in cap and "\n🌾 در حال رشد" in cap and "\n✅ آماده برداشت" in cap)
+    check("پروفایل رتبه و آمار جنگی داره",
+          "🏆 رتبه" in cap and "━━━━━━ ⚔️ آمار جنگی ━━━━━━" in cap and "💪 قدرت حمله" in cap)
+
+    async with session_scope() as s:
+        pf2, _ = await users.get_or_create(s, tg(8896, "maxi", "ماکسی"))
+        pf2.level = config.MAX_LEVEL
+        pf2.xp = 10958
+        cap2 = await profile_h2._profile_caption(s, pf2)
+        await s.commit()
+    cap2_xp = next((ln for ln in cap2.split("\n") if ln.startswith("🌟 لول")), "")
+    check("بعد لول مکس فقط تجربه جمع‌شده نوشته میشه",
+          cap2_xp == "🌟 لول 20 👑 - 10,958 تجربه" and "/" not in cap2_xp, cap2_xp)
+
+    # ── سقف لول ۲۰: لول قفل میشه ولی تجربه جمع میشه ──
+    async with session_scope() as s:
+        mx, _ = await users.get_or_create(s, tg(8897, "capp", "سقفی"))
+        mx.level = 19
+        notes = users.add_xp(mx, economy.xp_need(19) * 3)
+        check("لول روی ۲۰ قفل میشه و بقیه تجربه جمع می‌مونه",
+              mx.level == config.MAX_LEVEL and mx.xp > 0 and len(notes) >= 1)
+        check("پیام لول مکس هم اومد", any("👑 لولت مکس شد" in n for n in notes))
+        xp_b = mx.xp
+        notes2 = users.add_xp(mx, 100)
+        check("بعد مکس دیگه لول‌آپ نیس و فقط تجربه جمع میشه",
+              mx.level == config.MAX_LEVEL and mx.xp == xp_b + 100 and notes2 == [])
         await s.commit()
 
     print(f"\n🎉 همه تست‌ها سبز شدن، {PASS} مورد")

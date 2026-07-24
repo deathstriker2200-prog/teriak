@@ -16,7 +16,8 @@ shop:sec:<kind>             → بخش‌های شاپ: weap | arm | seed | dog 
 shop:buy:<kind>:<key>       → cf:shop:buy:<kind>:<key>
 txcf:<kind>:<key>:<tg_id>   → تایید خرید دستور متنی (فقط خودش)
 dogs:feed:<dog_id>          → کارت آمار سگ با همان دکمه‌های غذا (cf:feed:<dog_id>:<food>)
-att:find                    → cf:att:<target_id>
+heal:buy:<key>              → خرید و استفاده همون لحظه آیتم درمان
+patt:go:<tg_id> | patt:re   → حمله پی‌وی کلاسیک: تایید حمله | رفرش لیست، اجرا با cf:patt:x:<tg_id>
 menu:team | team:quests | team:mine | team:top | team:leave | team:disband
 tmcf:<leave|disband>:<tg_id> → تایید ترک/انحلال تیم (فقط خودش)
 dog:card:<dog_id>           → کارت آمار سگ (آمار [اسم])
@@ -93,14 +94,6 @@ def tx_confirm_kb(kind: str, key: str, tg_id: int, dog_name: str | None = None) 
     return InlineKeyboardMarkup([[
         _btn("✅ تایید", data, SUCCESS),
         _btn("❌ لغو", f"txcl:{tg_id}", DANGER),
-    ]])
-
-
-def tx_attack_kb(target_id: int, owner_tg: int) -> InlineKeyboardMarkup:
-    """تایید حمله با ریپلای، فقط مهاجم می‌تونه تایید یا لغو کنه"""
-    return InlineKeyboardMarkup([[
-        _btn("✅ تایید", f"txatt:{target_id}:{owner_tg}", SUCCESS),
-        _btn("❌ لغو", f"txcl:{owner_tg}", DANGER),
     ]])
 
 
@@ -229,7 +222,11 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
 
         if state != "building":
             if plot.level < config.PLOT_MAX_LEVEL:
-                actions.append(_btn(f"⬆️ آپگرید | {money_tp(economy.upgrade_price(plot.level))}", f"farm:up:{plot.id}", PRIMARY))
+                up_req = economy.plot_upgrade_required_level(plot.level)
+                if user.level >= up_req:
+                    actions.append(_btn(f"⬆️ آپگرید | {money_tp(economy.upgrade_price(plot.level))}", f"farm:up:{plot.id}", PRIMARY))
+                else:
+                    actions.append(_btn(f"🔒 آپگرید | لول {fa_num(up_req)}", "noop:uplock", DANGER))
             else:
                 actions.append(_btn("👑 لول مکس", "noop:maxplot"))
         rows.append(actions)
@@ -418,36 +415,38 @@ def team_create_confirm_kb(tg_id: int) -> InlineKeyboardMarkup:
 
 
 
-# ───────── حمله ─────────
+# ───────── درمان ❤️ ─────────
 
-def attack_home_kb() -> InlineKeyboardMarkup:
+def pv_attack_kb(targets: list) -> InlineKeyboardMarkup:
+    """لیست هدف‌های حمله پی‌وی، هر هدف یه دکمه قرمز حمله + رفرش لیست"""
+    rows: list[list[InlineKeyboardButton]] = []
+    for u in targets:
+        name = (u.first_name or u.username or "ناشناس")[:14]
+        rows.append([_btn(f"⚔️ حمله به {name}", f"patt:go:{u.telegram_id}", DANGER)])
+    rows.append([_btn("🔄 لیست جدید", "patt:re", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def pv_attack_result_kb() -> InlineKeyboardMarkup:
+    """بعد نتیجه حمله پی‌وی، برگرد به لیست یا منو"""
     return InlineKeyboardMarkup([
-        [_btn("🎯 پیدا کردن هدف", "att:find", PRIMARY)],
+        [_btn("🔄 لیست حمله", "patt:re", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
 
-def attack_target_kb(target_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [_btn("✅ تایید", f"cf:att:{target_id}", SUCCESS),
-         _btn("❌ لغو", "cl", DANGER)],
-        [_btn("🔄 یه هدف دیگه", "att:find", PRIMARY)],
-    ])
-
-
-def attack_result_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [_btn("⚔️ بخش حمله", "menu:attack", PRIMARY),
-         _btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
-    ])
-
-
-def shield_break_kb(confirm_data: str, cancel_data: str = "cl") -> InlineKeyboardMarkup:
-    """تایید شکستن سپر محافظ برای حمله، با تایید سپر پاک میشه و حمله انجام میشه"""
-    return InlineKeyboardMarkup([
-        [_btn("✅ شکستن سپر و حمله", confirm_data, SUCCESS)],
-        [_btn("❌ انصراف", cancel_data, DANGER)],
-    ])
+def heal_kb() -> InlineKeyboardMarkup:
+    """کیبورد بخش درمان، هر آیتم با یه کلیک خریده و همون لحظه استفاده میشه"""
+    rows: list[list[InlineKeyboardButton]] = []
+    for key, it in config.HEAL_ITEMS.items():
+        gain = "فول" if it["heal"] is None else f"+{fa_num(it['heal'])} HP"
+        rows.append([_btn(
+            f"{it['name']} | {gain} | {money_tp(it['price'])}",
+            f"heal:buy:{key}", SUCCESS,
+        )])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
 
 
 # ───────── رتبه‌بندی ─────────

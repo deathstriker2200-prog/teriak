@@ -33,6 +33,7 @@ async def on_start(app: Application) -> None:
         BotCommand("menu", "منوی اصلی"),
         BotCommand("profile", "پروفایلت"),
         BotCommand("help", "آموزشات بازی"),
+        BotCommand("heal", "درمان و برگردوندن HP"),
     ])
 
     logger.info("دیتابیس آماده شد ✅ | DB: %s", _safe_db())

@@ -11,7 +11,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, common, dogs, dquests, farm, gate, mine, pending, profile, rank, shop, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, battle, common, dogs, dquests, farm, gate, mine, pending, profile, rank, seen, shop, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -26,7 +26,9 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("mine", rf"^کنده[\s‌]*کاری!?$|{T}کنده{S}*کاری!?$", mine.mine_cmd),  # با و بدون پیشوند
     ("shop", rf"{T}شاپ!?$|{T}فروشگاه!?$", textcmd.shop_text),
     ("profile", rf"{T}پروفایل!?$", textcmd.profile_text),
-    ("attack", rf"^حمله!?$|{T}حمله!?$", textcmd.attack_text),  # با و بدون پیشوند
+    # نبرد HP گروهی، همه دستورهای جنگ با و بدون پیشوند (فقط تو گروه اجرا میشه)
+    ("attack", rf"{TP}(?:حمله|شلیک|بنگ(?:{S}+بنگ)?|پیو(?:{S}+پیو)?)(?:{S}+\S+)?!?$", battle.attack_cmd),
+    ("heal", rf"{T}درمان!?$", battle.heal_cmd),
     ("harvest", rf"{T}برداشت{S}*محصول!?$|{T}برداشت!?$", textcmd.harvest_text),
     ("buy_dog", rf"{T}خرید{S}+سگ{S}+(.+)$", textcmd.buy_dog_text),
     ("buy", rf"{T}خرید{S}+(.+)$", textcmd.buy_text),
@@ -70,6 +72,9 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
 def register_handlers(app: Application) -> None:
     fa_text = filters.TEXT & ~filters.COMMAND
 
+    # ── ثبت کاربران دیده‌شده (برای حمله با @یوزرنیم به غریبه‌ها)، بی‌صدا و قبل از همه ──
+    app.add_handler(MessageHandler(filters.ALL, seen.track), group=-4)
+
     # ── گیت عضویت اجباری، قبل از همه هندلرها (غیرفعال که باشه کاملاً عبوریه) ──
     app.add_handler(MessageHandler(filters.TEXT | filters.COMMAND, gate.gate_messages), group=-3)
     app.add_handler(CallbackQueryHandler(gate.gate_confirm, pattern=r"^fj:check$"), group=-3)
@@ -93,6 +98,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("mine", mine.mine_cmd))
     app.add_handler(CommandHandler("admin", admin.admin_cmd))
     app.add_handler(CommandHandler("help", start.help_cmd))
+    app.add_handler(CommandHandler("heal", battle.heal_cmd))
     app.add_handler(CommandHandler("backup", backup.backup_cmd))
     app.add_handler(CommandHandler("upload_backup", backup.upload_backup_cmd))
     app.add_handler(CommandHandler("user", admin.user_cmd))
@@ -117,6 +123,9 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(farm.farm_cb, pattern=r"^menu:farm$"))
     app.add_handler(CallbackQueryHandler(shop.shop_cb, pattern=r"^menu:shop$"))
     app.add_handler(CallbackQueryHandler(attack.attack_cb, pattern=r"^menu:attack$"))
+    app.add_handler(CallbackQueryHandler(attack.target_cb, pattern=r"^patt:go:\d+$"))
+    app.add_handler(CallbackQueryHandler(attack.panel_refresh_cb, pattern=r"^patt:re$"))
+    app.add_handler(CallbackQueryHandler(attack.execute_cb, pattern=r"^cf:patt:x:\d+$"))
     app.add_handler(CallbackQueryHandler(rank.rank_cb, pattern=r"^menu:rank$"))
     app.add_handler(CallbackQueryHandler(dogs.dogs_cb, pattern=r"^menu:dogs$"))
     app.add_handler(CallbackQueryHandler(team.team_cb, pattern=r"^menu:team$"))
@@ -170,9 +179,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(bank.bank_upgrade_confirm, pattern=r"^bank:up$"))
     app.add_handler(CallbackQueryHandler(bank.bank_upgrade_execute, pattern=r"^cf:bank:up$"))
 
-    # ── حمله ──
-    app.add_handler(CallbackQueryHandler(attack.find_cb, pattern=r"^att:find$"))
-    app.add_handler(CallbackQueryHandler(attack.attack_execute, pattern=r"^cf:att:\d+(?::brk)?$"))
+    # ── نبرد HP گروهی + درمان ──
+    app.add_handler(CallbackQueryHandler(battle.heal_buy_cb, pattern=r"^heal:buy:\w+$"))
 
     # ── آموزشات (هلپ دکمه‌دار) ──
     app.add_handler(CallbackQueryHandler(start.help_section_cb, pattern=r"^help:sec:\w+$"))
@@ -180,7 +188,6 @@ def register_handlers(app: Application) -> None:
 
     # ── تایید دستورهای متنی (فقط خود کاربر، اسم سگ اختیاریه) ──
     app.add_handler(CallbackQueryHandler(textcmd.tx_confirm_cb, pattern=r"^txcf:\w+:\w+:\d+(?::.+)?$"))
-    app.add_handler(CallbackQueryHandler(textcmd.tx_attack_cb, pattern=r"^txatt:\d+:\d+(?::brk)?$"))
     app.add_handler(CallbackQueryHandler(textcmd.tx_cancel_cb, pattern=r"^txcl:\d+$"))
 
     # ── ادمین ──

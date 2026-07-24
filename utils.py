@@ -159,3 +159,23 @@ def find_by_name(catalog: dict, query: str):
     if len(partial) == 1:
         return partial[0]
     return None, None
+
+
+# ───────── اسم فانتزی پروفایل ─────────
+# حروف لاتین به Mathematical Bold Script (مثل 𝑅𝒶𝓅𝒾𝓉)، فارسی و بقیه دست نمی‌خورن
+# R بولد اسکریپت تو یونیکد نداره، طبق نمونه پروفایل از 𝑅 استفاده میشه
+_SCRIPT_UPPER = "𝒜ℬ𝒞𝒟ℰℱ𝒢ℋℐ𝒥𝒦ℒℳ𝒩𝒪𝒫𝒬𝑅𝒮𝒯𝒰𝒱𝒲𝒳𝒴𝒵"
+_SCRIPT_LOWER = "𝒶𝒷𝒸𝒹ℯ𝒻ℊ𝒽𝒾𝒿𝓀𝓁𝓂𝓃ℴ𝓅𝓆𝓇𝓈𝓉𝓊𝓋𝓌𝓍𝓎𝓏"
+
+
+def fancy_name(name: str) -> str:
+    """اسم رو با فونت فانتزی لاتین می‌نویسه، حروف فارسی و ایموجی همون میمونن"""
+    out: list[str] = []
+    for ch in name or "":
+        if "A" <= ch <= "Z":
+            out.append(_SCRIPT_UPPER[ord(ch) - 65])
+        elif "a" <= ch <= "z":
+            out.append(_SCRIPT_LOWER[ord(ch) - 97])
+        else:
+            out.append(ch)
+    return "".join(out)

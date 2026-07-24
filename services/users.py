@@ -12,13 +12,16 @@ from utils import fa_num, money, now_utc
 
 
 async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
-    """ثبت‌نام خودکار با اولین تعامل، یه زمین رایگان هم بهت میرسه"""
+    """ثبت‌نام خودکار با اولین تعامل، یه زمین رایگان هم بهت میرسه + HP فول"""
+    from services import battle as battle_svc
+
     user = await get_by_tg(session, tg_user.id)
     if user:
         # اسم/یوزرنیم ممکنه عوض شده باشه
         user.username = tg_user.username
         user.first_name = tg_user.first_name
         user.last_seen_at = now_utc()
+        battle_svc.ensure_hp(user)  # کاربرای قدیمی بدون HP
         return user, False
 
     user = User(
@@ -30,6 +33,7 @@ async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
     await session.flush()  # گرفتن id بدون کامیت
     user.last_seen_at = now_utc()
     session.add(Plot(user_id=user.id))  # زمین اول هدیه خونه‌بختگی 🎁
+    battle_svc.ensure_hp(user)  # HP شروع ۲۰۰
     return user, True
 
 
@@ -104,12 +108,15 @@ async def get_item_keys(session: AsyncSession, user_id: int) -> list[str]:
 def add_xp(user: User, amount: int) -> list[str]:
     """
     اضافه کردن xp + مدیریت لول‌آپ، خروجی: لیست پیام‌های تبریک لول‌آپ
-    جایزه هر لول: اسکناس + شارژ کامل انرژی + لیست چیزایی که باز میشن
+    جایزه هر لول: اسکناس + شارژ کامل انرژی + HP فول + لیست چیزایی که باز میشن
+    بعد از لول مکس فقط تجربه جمع میشه و لول‌آپی اتفاق نمیفته
     """
+    from services import battle as battle_svc
+
     notes: list[str] = []
     user.xp += amount
 
-    while user.xp >= xp_need(user.level):
+    while user.level < config.MAX_LEVEL and user.xp >= xp_need(user.level):
         user.xp -= xp_need(user.level)
         user.level += 1
 
@@ -117,12 +124,15 @@ def add_xp(user: User, amount: int) -> list[str]:
         user.cash += reward
         user.energy = config.MAX_ENERGY
         user.energy_updated_at = now_utc()
+        battle_svc.full_heal(user)  # لول‌آپ یعنی جان تازه
 
         note = (
             f"🎉 <b>تبریک، لول {fa_num(user.level)} شدی</b>\n\n"
             f"💰 {money(reward)} جایزه\n"
             f"⚡ انرژی کاملا شارژ شد"
         )
+        if user.level == config.MAX_LEVEL:
+            note += "\n👑 لولت مکس شد، از این به بعد فقط تجربه جمع میشه"
 
         # چیزایی که با این لول باز میشن
         unlocks: list[str] = []
