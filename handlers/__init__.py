@@ -23,6 +23,7 @@ TP = rf"^(?:(?:تریاکی|تریاک|تی){S}+)?"  # پیشوند اختیار
 # فرمت: (اسم، الگو، هندلر)، تست‌ها روی همین جدول پترن‌ها رو چک می‌کنن
 TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("team_mine", rf"{TP}کنده{S}*کاری{S}*تیمی!?$|{TP}استخراج{S}*تیمی!?$", team.team_mine_text),
+    ("mine_upg", rf"{TP}آپگرید{S}+کنده{S}*کاری!?$|{TP}ابزار{S}*کنده{S}*کاری!?$", mine.mine_tools_cb),  # ارتقای ابزار، صفحه وضعیت ابزار
     ("mine", rf"^کنده[\s‌]*کاری!?$|{T}کنده{S}*کاری!?$", mine.mine_cmd),  # با و بدون پیشوند
     ("shop", rf"{T}شاپ!?$|{T}فروشگاه!?$", textcmd.shop_text),
     ("profile", rf"{T}پروفایل!?$", textcmd.profile_text),
@@ -200,6 +201,9 @@ def register_handlers(app: Application) -> None:
     # ── سیستم‌های جهان (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(world.shelter_up_confirm, pattern=r"^shelter:up$"))
     app.add_handler(CallbackQueryHandler(world.shelter_up_execute, pattern=r"^cf:shelter:up$"))
+    app.add_handler(CallbackQueryHandler(world.resource_sell_cb, pattern=r"^shelter:sell$"))
+    app.add_handler(CallbackQueryHandler(world.sellres_execute, pattern=r"^cf:sellres:(?:wood|iron):\d+$"))
+    app.add_handler(CallbackQueryHandler(world.sellres_cancel, pattern=r"^cl:sellres$"))
     app.add_handler(CallbackQueryHandler(world.casino_bet_confirm, pattern=r"^cas:bet:\d+$"))
     app.add_handler(CallbackQueryHandler(world.casino_execute, pattern=r"^cascf:\d+$"))
     app.add_handler(CallbackQueryHandler(world.caravan_hit_cb, pattern=r"^cv:hit$"))  # دکمه جمعی

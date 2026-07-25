@@ -180,7 +180,7 @@ async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
-# ───────── برداشت (همه آماده‌ها، کولدون ۲ دقیقه) ─────────
+# ───────── برداشت (همه آماده‌ها، کولدان ۲ دقیقه) ─────────
 
 async def harvest_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     dq_done, dq_left, uname = [], 0, ""

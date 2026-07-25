@@ -1,8 +1,10 @@
 """
-گرفتن ورودی معلق کاربر، بعد از «خرید سگ» اسم سگ | بعد از «ساخت تیم» اسم تیم
+گرفتن ورودی معلق کاربر، بعد از «خرید سگ» اسم سگ | بعد از «ساخت تیم» اسم تیم | فروش منابع
 تو گروه -1 رجیستر میشه (قبل از دستورهای متنی) و اگه ورودی مال pending بود
 با ApplicationHandlerStop بقیه هندلرها رو متوقف می‌کنه
 """
+
+import re
 
 from telegram import Update
 from telegram.ext import ApplicationHandlerStop, ContextTypes
@@ -12,6 +14,7 @@ from database import session_scope
 from keyboards import keyboards as kb
 from services import bank as bank_svc
 from services import dogs as dog_svc
+from services import resources as res_svc
 from services import teams, users
 from utils import esc, fa_num, money, normalize_fa, parse_amount
 
@@ -28,7 +31,7 @@ _KNOWN_TEXTS = {
     "بازار سیاه", "بازار", "هواشناسی", "پناهگاه", "مخفیگاه", "شرکت", "کارخانه", "قمار", "قمارخانه", "زمین", "لیدربرد", "رتبه بندی",
 }
 
-_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ", "اسم سگ", "شرکت", "مخفیگاه")
+_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ", "اسم سگ", "شرکت", "مخفیگاه", "آپگرید")
 
 
 async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -203,6 +206,46 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
             raise ApplicationHandlerStop()
 
+        # ── فروش منابع از مخفیگاه (بعد از دکمه 💰 فروش منابع)، «آهن 300» یا «چوب 200» ──
+        if action == "ressell":
+            m = re.match(r"^(چوب|آهن)\s+(\S+)$", norm)
+            amount = parse_amount(m.group(2)) if m else None
+            res = None
+            if m and amount is not None:
+                res = "wood" if m.group(1) == "چوب" else "iron"
+
+            help_txt = (
+                "❌ فرمت درست نیس، اینجوری بنویس\n\n"
+                "«آهن 300»\n«چوب 200»\n\n"
+                "❌ پشیمون شدی بنویس «لغو»"
+            )
+            if res is None:
+                await update.message.reply_html(help_txt)  # pending می‌مونه تا درست بفرسته
+                raise ApplicationHandlerStop()
+
+            have = getattr(user, res, 0)
+            name = "چوب" if res == "wood" else "آهن"
+            emoji = "🪵" if res == "wood" else "⛏️"
+            if amount > have:
+                await update.message.reply_html(
+                    f"❌ فقط {fa_num(have)} تا {name} داری، {fa_num(amount)} تا نمی‌تونی بفروشی\n\n"
+                    "❌ پشیمون شدی بنویس «لغو»"
+                )  # pending می‌مونه تا عدد درست بفرسته
+                raise ApplicationHandlerStop()
+
+            total = amount * res_svc.sell_price(res)
+            user.pending_action = None
+            user.pending_value = None
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>💰 فروش {fa_num(amount)} تا {name}</b>\n\n"
+                f"{emoji} قیمت فروشش میشه {money(total)}\n"
+                f"💵 بعد فروش {money(user.cash + total)} داری\n\n"
+                "می‌فروشیم؟",
+                reply_markup=kb.sellres_confirm_kb(res, amount),
+            )
+            raise ApplicationHandlerStop()
+
         # ── اسم تیم بعد از «ساخت تیم»، فاکتور تایید ساخت میاد ──
         if action == "teamname":
             ok_name, clean, why = teams.validate_team_name(text)
@@ -222,7 +265,8 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_html(
                 f"<b>🏴 ساخت تیم «{esc(display)}»</b>\n\n"
                 f"💸 هزینه ساخت {money(config.TEAM_CREATE_COST)}\n"
-                f"👑 تو رهبرش میشی و تا {fa_num(config.TEAM_MAX_MEMBERS)} نفر عضو میگیره\n\n"
+                f"👑 تو رهبرش میشی و {fa_num(config.TEAM_CAP_BASE)} نفر جا داره\n"
+                "لول تیم که با تجربه اعضا بره بالا جای اعضا بیشتر میشه\n\n"
                 "می‌سازیمش؟",
                 reply_markup=kb.team_create_confirm_kb(update.effective_user.id),
             )

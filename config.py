@@ -123,10 +123,12 @@ RES_WOOD_CAP_BASE = 200        # ظرفیت چوب بدون مخفیگاه
 RES_WOOD_CAP_PER_LEVEL = 150   # هر لول مخفیگاه +اینقدر ظرفیت چوب
 RES_IRON_CAP_BASE = 100        # ظرفیت آهن بدون مخفیگاه
 RES_IRON_CAP_PER_LEVEL = 80    # هر لول مخفیگاه +اینقدر ظرفیت آهن
-# پک‌های فروش منابع تو شاپ (بخش 🎒 منابع)
+# قیمت فروش هر دونه منابع تو مخفیگاه (بخش فروش منابع)
+RES_SELL_PRICES = {"wood": 60, "iron": 150}
+# پک‌های فروش منابع تو شاپ (بخش 🎒 منابع)، خرید تقریبا ۲ برابر فروشه برای همین تولید می‌صرفه
 RES_SHOP = {
-    "wood": {"name": "چوب", "emoji": "🪵", "pack": 25, "price": 1500},
-    "iron": {"name": "آهن", "emoji": "⛏️", "pack": 10, "price": 1500},
+    "wood": {"name": "چوب", "emoji": "🪵", "pack": 25, "price": 3000},
+    "iron": {"name": "آهن", "emoji": "⛏️", "pack": 10, "price": 3000},
 }
 
 # ───────── کنده‌کاری ─────────
@@ -175,14 +177,14 @@ FACTORY_OFFLINE_TICKS = 96      # سقف انباشت آفلاین (۱۶ ساع�
 FACTORIES = {
     "lumber": {
         "name": "چوب‌بری", "emoji": "🪵", "res": "wood",
-        "per_tick": 2,              # هر لول هر تیک ۲ چوب
+        "per_tick": 3,              # هر لول هر تیک ۳ چوب
         "build": (5000, 0),         # ساخت: (تی‌پوینت, چوب)
         "up_tp": 3000,              # هزینه ارتقا به لول N = up_tp × N
         "up_wood": 40,              # چوب ارتقا به لول N = up_wood × N
     },
     "ironmill": {
         "name": "کارخانه آهن", "emoji": "🏭", "res": "iron",
-        "per_tick": 1,              # هر لول هر تیک ۱ آهن
+        "per_tick": 2,              # هر لول هر تیک ۲ آهن
         "build": (8000, 50),        # ساخت: (تی‌پوینت, چوب)
         "up_tp": 4500,
         "up_wood": 60,
@@ -234,7 +236,7 @@ PV_ATTACK_LOSE_PENALTY_PCT = 0.05  # جریمه باخت، این درصد از 
 PV_ATTACK_WIN_XP = 25             # تجربه برد
 PV_ATTACK_LOSE_XP = 6             # تجربه باخت
 PV_ATTACK_VICTIM_XP = 3           # تجربه کمی که قربانی تو پی‌ویش می‌گیره (حمله نکرده، فقط خورده)
-PV_ATTACK_COOLDOWN_SECONDS = 60   # کولدون هر حمله پی‌وی
+PV_ATTACK_COOLDOWN_SECONDS = 60   # کولدان هر حمله پی‌وی
 PV_REROLL_MIN_COST = 25           # هزینه «هدف دیگه» تو لول ۱
 PV_REROLL_MAX_COST = 1000         # هزینه «هدف دیگه» تو مکس لول، بین اینا خطی با لول جست‌وجوگر
 PV_ATTACK_SHIELD_BREAK_COST = 1500  # هزینه شکستن سپر ۱۲ ساعته قربانی (اختیاری مهاجمه)
@@ -258,20 +260,27 @@ HEAL_ITEMS = {
 # چاقو و قمه و میله سردن، بقیه اسلحه‌ن (🔫)
 # بالانس: پلیر برای سلاح باید زحمت بکشه، قیمت‌ها داغون‌تر از قبل
 # iron = آهنی که موقع خرید علاوه بر تی‌پوینت کم میشه
+# sec = دسته سلاح تو شاپ: cold (سرد) | hot (گرم) | special (ویژه)
+WEAPON_SECTIONS = {
+    "cold":    {"name": "سلاح سرد",  "emoji": "🔪"},
+    "hot":     {"name": "سلاح گرم",  "emoji": "🔫"},
+    "special": {"name": "سلاح ویژه", "emoji": "🚀"},
+}
+
 WEAPONS = {
-    "knife":   {"name": "چاقو",              "price": 600,   "iron": 2,  "attack": 6,   "min_level": 1,  "desc": "سلاح کلاسیک محله", "gun": False},
-    "shank":   {"name": "قمه",               "price": 1300,  "iron": 3,  "attack": 11,  "min_level": 2,  "desc": "بلند و ترسناک", "gun": False},
-    "pipe":    {"name": "میله آهنی",          "price": 1800,  "iron": 5,  "attack": 14,  "min_level": 3,  "desc": "سنگین و زخمی", "gun": False},
-    "shocker": {"name": "شوکر دست‌ساز",        "price": 2700,  "iron": 6,  "attack": 18,  "min_level": 4,  "desc": "برق می‌گیرهت ولی اسلحه نیس", "gun": False},
-    "colt":    {"name": "کلت کمری 🔫",        "price": 3900,  "iron": 8,  "attack": 24,  "min_level": 5,  "desc": "اولین اسلحه هر تازه‌کار", "gun": True},
-    "uzi":     {"name": "اوزی 🔫",            "price": 8200,  "iron": 12, "attack": 42,  "min_level": 6,  "desc": "رگباری و پرسرعت", "gun": True},
-    "shotgun": {"name": "شات‌گان 🔫",         "price": 11200, "iron": 16, "attack": 52,  "min_level": 7,  "desc": "از نزدیک ویرانه", "gun": True},
-    "deagle":  {"name": "کلت نقره‌ای 🔫",      "price": 15000, "iron": 20, "attack": 60,  "min_level": 8,  "desc": "خشن و پرسرعت", "gun": True},
-    "ak47":    {"name": "کلاشنیکف 🔫",           "price": 24000, "iron": 28, "attack": 85,  "min_level": 10, "desc": "کلاش افسانه‌ای محله", "gun": True},
-    "svd":     {"name": "دراگونوف 🔫",        "price": 33000, "iron": 34, "attack": 105, "min_level": 11, "desc": "تک‌تیرانداز از پشت بوم", "gun": True},
-    "plasma":  {"name": "شلیک‌کن پلاسما",     "price": 45000, "iron": 42, "attack": 130, "min_level": 12, "desc": "آینده‌گرایانه و کشنده", "gun": True},
-    "minigun": {"name": "گاتلینگ 🔫",         "price": 67000, "iron": 55, "attack": 175, "min_level": 14, "desc": "رگبار تموم‌نشدنی", "gun": True},
-    "rpg":     {"name": "آرپی‌جی 🔫",          "price": 90000, "iron": 70, "attack": 230, "min_level": 16, "desc": "باهاش نصف محله دود میشه", "gun": True},
+    "knife":   {"name": "چاقو",              "price": 600,   "iron": 2,  "attack": 6,   "min_level": 1,  "desc": "سلاح کلاسیک محله", "gun": False, "sec": "cold"},
+    "shank":   {"name": "قمه",               "price": 1300,  "iron": 3,  "attack": 11,  "min_level": 2,  "desc": "بلند و ترسناک", "gun": False, "sec": "cold"},
+    "pipe":    {"name": "میله آهنی",          "price": 1800,  "iron": 5,  "attack": 14,  "min_level": 3,  "desc": "سنگین و زخمی", "gun": False, "sec": "cold"},
+    "shocker": {"name": "شوکر دست‌ساز",        "price": 2700,  "iron": 6,  "attack": 18,  "min_level": 4,  "desc": "برق می‌گیرهت ولی اسلحه نیس", "gun": False, "sec": "cold"},
+    "colt":    {"name": "کلت کمری 🔫",        "price": 3900,  "iron": 8,  "attack": 24,  "min_level": 5,  "desc": "اولین اسلحه هر تازه‌کار", "gun": True, "sec": "hot"},
+    "uzi":     {"name": "اوزی 🔫",            "price": 8200,  "iron": 12, "attack": 42,  "min_level": 6,  "desc": "رگباری و پرسرعت", "gun": True, "sec": "hot"},
+    "shotgun": {"name": "شات‌گان 🔫",         "price": 11200, "iron": 16, "attack": 52,  "min_level": 7,  "desc": "از نزدیک ویرانه", "gun": True, "sec": "hot"},
+    "deagle":  {"name": "کلت نقره‌ای 🔫",      "price": 15000, "iron": 20, "attack": 60,  "min_level": 8,  "desc": "خشن و پرسرعت", "gun": True, "sec": "hot"},
+    "ak47":    {"name": "کلاشنیکف 🔫",           "price": 24000, "iron": 28, "attack": 85,  "min_level": 10, "desc": "کلاش افسانه‌ای محله", "gun": True, "sec": "hot"},
+    "svd":     {"name": "دراگونوف 🔫",        "price": 33000, "iron": 34, "attack": 105, "min_level": 11, "desc": "تک‌تیرانداز از پشت بوم", "gun": True, "sec": "hot"},
+    "plasma":  {"name": "شلیک‌کن پلاسما",     "price": 45000, "iron": 42, "attack": 130, "min_level": 12, "desc": "آینده‌گرایانه و کشنده", "gun": True, "sec": "special"},
+    "minigun": {"name": "گاتلینگ 🔫",         "price": 67000, "iron": 55, "attack": 175, "min_level": 14, "desc": "رگبار تموم‌نشدنی", "gun": True, "sec": "special"},
+    "rpg":     {"name": "آرپی‌جی 🔫",          "price": 90000, "iron": 70, "attack": 230, "min_level": 16, "desc": "باهاش نصف محله دود میشه", "gun": True, "sec": "special"},
 }
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────
@@ -320,31 +329,36 @@ DOG_XP_EXP = 1.35
 RARE_DOG_STEAL_MAX = 0.10       # حداکثر غرامت بیشتر گرگ سیاه (۱۰% با لول مکس)
 RARE_DOG_DEF_CUT_MAX = 0.30     # حداکثر کاهش دفاع حریف توسط گرگ سیاه (۳۰% با لول مکس)
 # قدرت سگ = attack + atk_per_level × (لول-۱) | اسم آیتم فقط نژاده، اسمشو خودت بعد خرید می‌ذاری
-# trait_line = ویژگی اصلی نژاد که تو شاپ نمایش داده میشه
-# افکت نژاد: cooldown_mult (کولدون حمله) | xp_mult (تجربه نبرد) | defense+def_per_level (دفاع کانگال)
+# هر نژاد یه «ویژگی» ثابت داره که درصدیه و با لول سگ رشد می‌کنه تا سقف max (ترتیب: کولدان | دفاع | تجربه | حمله)
+# kind: cooldown (کاهش کولدان حمله) | defense | xp | attack | گرگ سیاه rare با قابلیت‌های خودشه
 DOGS = {
     "pitbull": {
         "name": "پیتبول", "breed": "پیتبول", "price": 2000, "attack": 8, "atk_per_level": 2,
-        "min_level": 1, "rare": False, "trait_line": "💥 قدرت حمله بیشتر",
+        "min_level": 1, "rare": False,
+        "trait": {"kind": "cooldown", "max": 0.10, "emoji": "⚡", "title": "کاهش کولدان حمله"},
+        "trait_line": "🎖 ویژگی: ⚡ کاهش کولدان حمله تا 10%",
     },
     "doberman": {
         "name": "دوبرمن", "breed": "دوبرمن", "price": 6000, "attack": 15, "atk_per_level": 3,
-        "min_level": 3, "rare": False, "trait_line": "⚡ کاهش کولدون حمله",
-        "cooldown_mult": 0.85,
+        "min_level": 3, "rare": False,
+        "trait": {"kind": "defense", "max": 0.10, "emoji": "🛡", "title": "دفاع بیشتر"},
+        "trait_line": "🎖 ویژگی: 🛡 دفاع بیشتر تا 10%",
     },
     "shepherd": {
         "name": "ژرمن شپرد", "breed": "ژرمن شپرد", "price": 15000, "attack": 26, "atk_per_level": 4,
-        "min_level": 6, "rare": False, "trait_line": "🎁 تجربه بیشتر از نبرد",
-        "xp_mult": 1.15,
+        "min_level": 6, "rare": False,
+        "trait": {"kind": "xp", "max": 0.15, "emoji": "🎁", "title": "تجربه بیشتر از نبرد"},
+        "trait_line": "🎖 ویژگی: 🎁 تجربه بیشتر از نبرد تا 15%",
     },
     "kangal": {
         "name": "کانگال", "breed": "کانگال", "price": 40000, "attack": 45, "atk_per_level": 6,
-        "min_level": 10, "rare": False, "trait_line": "🛡 دفاع بیشتر",
-        "defense": 10, "def_per_level": 2,
+        "min_level": 10, "rare": False,
+        "trait": {"kind": "attack", "max": 0.10, "emoji": "💥", "title": "قدرت حمله بیشتر"},
+        "trait_line": "🎖 ویژگی: 💥 قدرت حمله بیشتر تا 10%",
     },
     "blackwolf": {
         "name": "گرگ سیاه", "breed": "گرگ سیاه", "price": 150000, "attack": 70, "atk_per_level": 9,
-        "min_level": 15, "rare": True, "trait_line": "☠ غارت بیشتر",
+        "min_level": 15, "rare": True, "trait_line": "🎖 ویژگی: ☠ غارت بیشتر",
     },
 }
 
@@ -356,12 +370,19 @@ DOG_FOODS = {
 }
 
 # ───────── تیم 🏴 ─────────
-TEAM_CREATE_MIN_LEVEL = 10      # ساخت تیم از لول ۱۰
+TEAM_CREATE_MIN_LEVEL = 5       # ساخت تیم از لول ۵
 TEAM_JOIN_MIN_LEVEL = 3         # درخواست عضویت تو تیم از لول ۳
 TEAM_CREATE_COST = 5000         # هزینه ساخت تیم
-TEAM_MAX_MEMBERS = 10
 TEAM_NAME_MAX = 24
 TEAM_BIO_MAX = 120
+# لول تیم: هر تجربه‌ای که اعضا می‌گیرن (کنده‌کاری | حمله | برداشت | جستجو و…) یه سهمش به تیم هم میرسه
+TEAM_MAX_LEVEL = 10             # لول مکس تیم
+TEAM_XP_SHARE = 1.0             # ضریب تجربه‌ای که از تجربه اعضا به تیم میرسه، ۱ یعنی همون مقدار
+TEAM_XP_CURVE_BASE = 200        # xp لازم تیم برای لول N = این × N^TEAM_XP_CURVE_EXP
+TEAM_XP_CURVE_EXP = 1.6
+# ظرفیت اعضا = TEAM_CAP_BASE + TEAM_CAP_PER_LEVEL × (لول تیم - ۱)، از ۱۰ نفر شروع میشه و هر لول +۱۰
+TEAM_CAP_BASE = 10
+TEAM_CAP_PER_LEVEL = 10
 
 # کوئست‌های روزانه تیم، پیشرفتش جمع همه اعضاست و جایزه به همه میرسه
 # reward = جایزه نقدی هر عضو | bank_reward = جایزه به بانک تیم
@@ -404,7 +425,7 @@ TEAM_DEF_BONUS_PER_LEVEL = 0.03   # هر لول ساختمان دفاع: +۳% د
 DOG_PERSONALITIES = {
     "warrior":  {"emoji": "⚔",  "name": "جنگجو",      "desc": "قدرت سگ بیشتر",          "atk_mult": 0.10},
     "furious":  {"emoji": "😡", "name": "خشمگین",     "desc": "قدرت سگ خیلی بیشتر",      "atk_mult": 0.15},
-    "swift":    {"emoji": "🌀", "name": "چابک",       "desc": "کولدون حمله کمتر",        "cooldown_mult": 0.90},
+    "swift":    {"emoji": "🌀", "name": "چابک",       "desc": "کاهش کولدان حمله",        "cooldown_mult": 0.90},
     "hunter":   {"emoji": "💰", "name": "شکارچی",     "desc": "غرامت جنگی بیشتر",        "steal_bonus": 0.08},
     "wise":     {"emoji": "🧠", "name": "باهوش",      "desc": "تجربه نبرد بیشتر",        "xp_mult": 0.10},
     "obedient": {"emoji": "🤝", "name": "فرمان‌بردار", "desc": "قدرت و تجربه کمی بیشتر", "atk_mult": 0.05, "xp_mult": 0.05},
@@ -515,6 +536,8 @@ SHELTER_RAID_CUT_PER_LEVEL = 0.05  # هر لول ۵% از خسارت یورش ک
 SHELTER_DODGE_PER_LEVEL = 0.04     # هر لول ۴% شانس فرار کامل از یورش
 SHELTER_SEED_CAP_BASE = 15         # ظرفیت انبار هر بذر بدون پناهگاه
 SHELTER_SEED_CAP_PER_LEVEL = 10    # هر لول پناهگاه +۱۰ ظرفیت هر بذر
+# لول بازیکن لازم برای ارتقای پناهگاه به لول ۱..۱۰
+SHELTER_UPGRADE_MIN_LEVELS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
 
 # ───────── یورش پلیس 🚔 ─────────
 POLICE_ROLL_SECONDS = 7200         # هر ۲ ساعت یه موج احتمالی

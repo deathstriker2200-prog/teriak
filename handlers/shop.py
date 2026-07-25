@@ -28,10 +28,34 @@ def _sections_text(cash: int, level: int) -> str:
     )
 
 
-def _weap_text(user) -> str:
-    """باکس هر سلاح: نام | دمیج | آهن | قیمت | وضعیت"""
-    lines = ["<b>🛒 فروشگاه</b>", "", "🔫 سلاح‌ها", "", "برای خرید روی آیتم موردنظر بزن", ""]
+def _weap_home_text(user) -> str:
+    """صفحه انتخاب دسته سلاح، هر دسته قفلش جداست"""
+    lines = ["<b>🛒 فروشگاه</b>", "", "🔫 سلاح‌ها", "", "روی بخش مورد نظر بزن", ""]
+    for sec, sc in config.WEAPON_SECTIONS.items():
+        keys = [k for k, w in config.WEAPONS.items() if w.get("sec", "cold") == sec]
+        if not keys:
+            continue
+        minlvl = min(config.WEAPONS[k]["min_level"] for k in keys)
+        first, last = config.WEAPONS[keys[0]]["name"], config.WEAPONS[keys[-1]]["name"]
+        locked = user.level < minlvl
+        head = f"🔒 {sc['emoji']} {sc['name']} (قفل)" if locked else f"{sc['emoji']} {sc['name']}"
+        lines += [SEP, ""]
+        lines.append(head)
+        lines.append(f"▫️ از {first} تا {last}")
+        if locked:
+            lines.append(f"⭕️ بازگشایی در سطح {fa_num(minlvl)}")
+        lines.append("")
+    lines.append(SEP)
+    return "\n".join(lines)
+
+
+def _wsec_text(user, sec: str) -> str:
+    """باکس هر سلاح یه دسته: نام | دمیج | آهن | قیمت | وضعیت"""
+    sc = config.WEAPON_SECTIONS.get(sec) or config.WEAPON_SECTIONS["cold"]
+    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", "", "برای خرید روی آیتم موردنظر بزن", ""]
     for key, w in config.WEAPONS.items():
+        if w.get("sec", "cold") != sec:
+            continue
         locked = user.level < w["min_level"]
         lines += [SEP, ""]
         lines.append(f"🔒 {w['name']} (قفل)" if locked else f"🔫 {w['name']}")
@@ -60,14 +84,14 @@ def _arm_text(user) -> str:
 
 
 def _dog_text() -> str:
-    """فقط ویژگی اصلی هر نژاد، بدون توضیح طولانی"""
+    """فقط ویژگی اصلی هر نژاد، بدون توضیح طولانی، قیمت با تی‌پوینت کامل"""
     lines = ["<b>🛒 فروشگاه</b>", "", "🐕 سگ‌ها", "", "برای خرید روی سگ موردنظر بزن", ""]
     for key, d in config.DOGS.items():
         crown = "👑 " if d.get("rare") else ""
         lines += [SEP, ""]
         lines.append(f"{crown}🐕 {d['name']}")
         lines.append(d["trait_line"])
-        lines.append(f"💰 {money_tp(d['price'])}")
+        lines.append(f"💰 {money(d['price'])}")
         lines.append("")
     lines.append(SEP)
     lines.append("")
@@ -102,6 +126,8 @@ def _res_text(user) -> str:
         f"⛏️ آهن {fa_num(user.iron)} از {fa_num(res_svc.iron_cap(user))}",
         "",
         "چوب و آهن از کنده‌کاری، شاپ و کارخانه به دست میان",
+        "خریدش گرونه ولی تولیدش می‌صرفه",
+        "فروش منابع اضافه هم از بخش مخفیگاه انجام میشه",
         "برای خرید روی پک موردنظر بزن",
     ])
 
@@ -142,7 +168,9 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
 
 async def _section_text(session, user, kind: str) -> str:
     if kind == "weap":
-        return _weap_text(user)
+        return _weap_home_text(user)
+    if kind.startswith("w") and kind[1:] in config.WEAPON_SECTIONS:
+        return _wsec_text(user, kind[1:])
     if kind == "arm":
         return _arm_text(user)
     if kind == "arti":
@@ -188,7 +216,9 @@ async def render_section(update: Update, kind: str, alert: str | None = None) ->
 
         item_keys = set(await users.get_item_keys(s, user.id))
         if kind == "weap":
-            markup = kb.shop_weap_kb(user, item_keys)
+            markup = kb.shop_weap_sections_kb(user)
+        elif kind.startswith("w") and kind[1:] in config.WEAPON_SECTIONS:
+            markup = kb.shop_weap_kb(user, item_keys, kind[1:])
         elif kind == "arm":
             markup = kb.shop_arm_kb(user, item_keys)
         elif kind == "seed":
@@ -295,6 +325,9 @@ async def buy_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         user, _ = await users.get_or_create(s, update.effective_user)
         _, alert = await shop_svc.purchase(s, user, kind, key)
         await s.commit()
+    # اسلحه برمی‌گرده به دسته خودش (سرد | گرم | ویژه)
+    if kind == "weap" and key in config.WEAPONS:
+        kind = f"w{config.WEAPONS[key].get('sec', 'cold')}"
     # توجه: CallbackQuery تلگرام قابل تغییر نیس، به جای دست‌کاری data بخش رو مستقیم رندر می‌کنیم
     await render_section(update, kind, alert=alert)
 

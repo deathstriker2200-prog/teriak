@@ -55,7 +55,7 @@ class User(Base):
     ironmill_level: Mapped[int] = mapped_column(Integer, default=0)
     company_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # کولدونهای سیستم‌های جهان
+    # کولدانهای سیستم‌های جهان
     last_search_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_casino_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -69,7 +69,7 @@ class User(Base):
     # مصونیت حمله پی‌وی — بعد اینکه بهت حمله شد تا این زمان از لیست حمله‌های پی‌وی خارجی (۱۲ ساعت)
     shield_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # آخرین حمله پی‌وی که خودت زدی — کولدون حمله پی‌وی روی این حساب میشه
+    # آخرین حمله پی‌وی که خودت زدی — کولدان حمله پی‌وی روی این حساب میشه
     pv_attack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # نبرد HP گروهی — جان دائمی بین نبردها میمونه | NULL یعنی هنوز مقداردهی نشده (فول حساب میشه)
@@ -202,6 +202,10 @@ class Team(Base):
     # امتیاز تیم — با برد حمله و برداشت جمع میشه | هفتگی برای رقابت ریست میشه
     points: Mapped[int] = mapped_column(Integer, default=0)
     week_points: Mapped[int] = mapped_column(Integer, default=0)
+
+    # لول و تجربه تیم — از تجربه‌ای که اعضا می‌گیرن سهم می‌بره | ظرفیت و گیت ساختمان باهاش تعیین میشه
+    level: Mapped[int] = mapped_column(Integer, default=1)
+    xp: Mapped[int] = mapped_column(Integer, default=0)
 
     # ساختمان‌های تیم — رهبر با بانک تیم آپگریدشون می‌کنه و بونسش به همه اعضاست
     atk_bld: Mapped[int] = mapped_column(Integer, default=0)  # لول ساختمان حمله

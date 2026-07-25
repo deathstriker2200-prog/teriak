@@ -244,6 +244,8 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     xp = int(xp * dog_svc.battle_xp_mult(info["a_dogs"]))
     xp = int(xp * user_svc.artifact_xp_mult(user_svc.artifact_keys(info["a_items"])))
     notes = user_svc.add_xp(attacker, xp)
+    from services import teams as team_svc
+    notes += await team_svc.add_team_xp(session, attacker, xp)
     notes += await dog_svc.add_battle_xp(info["a_dogs"], config.DOG_BATTLE_XP_HIT)
 
     killed = target.hp <= 0

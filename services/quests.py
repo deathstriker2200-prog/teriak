@@ -124,6 +124,8 @@ async def track(session: AsyncSession, user: User, kind: str, n: int = 1) -> tup
                 user.cash += r["amount"]
             elif r["type"] == "xp":
                 notes = add_xp(user, r["amount"])
+                from services import teams as team_svc
+                notes += await team_svc.add_team_xp(session, user, r["amount"])
             else:
                 await add_seed_stock(session, user.id, r["seed"], r["amount"])
             q["notes"] = notes

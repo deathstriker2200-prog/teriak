@@ -15,7 +15,7 @@ from keyboards import keyboards as kb
 from models import GroupActivity
 from services import combat, dogs as dog_svc, users
 from services import world as world_svc
-from utils import esc, fa_dur, fa_num, money, money_tp, now_utc
+from utils import bar, esc, fa_dur, fa_num, money, money_tp, now_utc
 
 
 # ═════════ جستجو 🔍 ═════════
@@ -114,6 +114,7 @@ async def _shelter_text(user) -> str:
     cut = world_svc.shelter_raid_cut(user.shelter_level)
     dodge = world_svc.shelter_dodge_chance(user.shelter_level)
     cap = world_svc.seed_storage_cap(user)
+    wcap, icap = res_svc.wood_cap(user), res_svc.iron_cap(user)
     lines = [
         "<b>🏚 پناهگاه</b>",
         "",
@@ -123,15 +124,71 @@ async def _shelter_text(user) -> str:
         f"🎲 شانس فرار کامل از یورش {fa_num(int(dodge * 100))}%",
         f"📦 ظرفیت انبار هر بذر {fa_num(cap)} تا",
         "",
-        f"🪵 ظرفیت چوب {fa_num(res_svc.wood_cap(user))} | ⛏️ آهن {fa_num(res_svc.iron_cap(user))}",
+        f"🪵 چوب {bar(user.wood, wcap)} {fa_num(user.wood)}/{fa_num(wcap)}",
+        f"⛏️ آهن {bar(user.iron, icap)} {fa_num(user.iron)}/{fa_num(icap)}",
         "",
         "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30% محصولات انبار رو نابود می‌کنه، پناهگاه جلوته",
         "با ارتقا، ظرفیت بذر و چوب و آهن هم بیشتر میشه",
+        "چوب و آهن اضافه رو هم می‌تونی از بخش فروش منابع بفروشی",
     ]
     if user.shelter_level < config.SHELTER_MAX_LEVEL:
         price = world_svc.shelter_price(user.shelter_level + 1)
-        lines.append(f"\n⬆️ ارتقای بعدی: لول {fa_num(user.shelter_level + 1)} | {money(price)}")
+        req = world_svc.shelter_upgrade_min_level(user.shelter_level + 1)
+        lock = f" (سطح {fa_num(req)} می‌خواد)" if user.level < req else ""
+        lines.append(f"\n⬆️ ارتقای بعدی: لول {fa_num(user.shelter_level + 1)} | {money(price)}{lock}")
     return "\n".join(lines)
+
+
+# ═════════ فروش منابع 💰 (بخش مخفیگاه) ═════════
+
+def _resource_sell_text(user) -> str:
+    wood_price = res_svc.sell_price("wood")
+    iron_price = res_svc.sell_price("iron")
+    return "\n".join([
+        "<b>💰 فروش منابع</b>",
+        "",
+        f"🪵 چوب {fa_num(user.wood)} تا داری | دونه‌ای {money(wood_price)}",
+        f"⛏️ آهن {fa_num(user.iron)} تا داری | دونه‌ای {money(iron_price)}",
+        "",
+        "این همه قیمت فروششونه",
+        "بنویس چی و چقدر می‌خوای بفروشی، مثلا «آهن 300» یا «چوب 200»",
+        "بعدش مبلغشو می‌گیری و تایید می‌کنی",
+        "",
+        "❌ پشیمون شدی بنویس «لغو»",
+    ])
+
+
+async def resource_sell_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        user.pending_action = "ressell"
+        user.pending_value = None
+        text = _resource_sell_text(user)
+        await s.commit()
+    await respond(update, text, kb.sell_menu_kb())
+
+
+async def sellres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _, _, res, amount = parts(update)
+    name = "چوب" if res == "wood" else "آهن"
+    emoji = "🪵" if res == "wood" else "⛏️"
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, err, total = res_svc.sell_resource(user, res, int(amount))
+        cash = user.cash
+        await s.commit()
+    if not ok:
+        return await respond(update, err, kb.sell_menu_kb())
+    text = (
+        f"<b>💰 {money(total)} گرفتی</b>\n\n"
+        f"{emoji} {fa_num(int(amount))} {name} فروخته شد\n"
+        f"💵 نقدینگی {money(cash)}"
+    )
+    await respond(update, text, kb.sell_menu_kb())
+
+
+async def sellres_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await shelter_cmd(update, context)
 
 
 async def shelter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

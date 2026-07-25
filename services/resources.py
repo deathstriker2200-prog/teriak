@@ -45,6 +45,26 @@ def take_res(user: User, res: str, amount: int) -> bool:
     return True
 
 
+# ───────── فروش منابع (بخش مخفیگاه 💰) ─────────
+
+def sell_price(res: str) -> int:
+    """قیمت فروش هر دونه منابع، خریدش از شاپ تقریبا دبله برای همین تولید می‌صرفه"""
+    return config.RES_SELL_PRICES[res]
+
+
+def sell_resource(user: User, res: str, amount: int) -> tuple[bool, str, int]:
+    """فروش منابع از مخفیگاه، خروجی: (اوکی, پیام خطا، مبلغ واریزی)"""
+    if res not in config.RES_SELL_PRICES:
+        return False, "❌ همچین جنسی فروختی نیس", 0
+    if amount <= 0:
+        return False, "❌ تعدادشو درست بگو", 0
+    if not take_res(user, res, amount):
+        return False, "❌ این همه نداری که بفروشی", 0
+    total = amount * sell_price(res)
+    user.cash += total
+    return True, "", total
+
+
 # ───────── ابزارها (تبر/کلنگ) ─────────
 
 def tool_level(user: User, tool_key: str) -> int:

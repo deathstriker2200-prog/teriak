@@ -31,10 +31,10 @@ def shield_left(user: User) -> int:
     return max(0, int(left))
 
 
-# ───────── کولدون مهاجم ⏳ ─────────
+# ───────── کولدان مهاجم ⏳ ─────────
 
 def cooldown_left(user: User) -> int:
-    """ثانیه مونده از کولدون حمله پی‌وی، صفر یعنی آماده حمله‌ست"""
+    """ثانیه مونده از کولدان حمله پی‌وی، صفر یعنی آماده حمله‌ست"""
     if not user.pv_attack_at:
         return 0
     end = user.pv_attack_at + timedelta(seconds=config.PV_ATTACK_COOLDOWN_SECONDS)
@@ -94,7 +94,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     همه چک‌ها + رول شانس + تغییرات دیتابیس یه حمله پی‌وی (بدون کامیت)
     reason: self | level | shield | energy | cooldown
     هر حمله، برد یا باخت، قربانی رو 12 ساعت مصون می‌کنه
-    کولدون مهاجم ثبت میشه و به قربانی هم یه تجربه ناچیز میرسه
+    کولدان مهاجم ثبت میشه و به قربانی هم یه تجربه ناچیز میرسه
     """
     if victim.id == attacker.id:
         return {"ok": False, "reason": "self"}
@@ -149,10 +149,13 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
 
     xp = int(xp * user_svc.artifact_xp_mult(artis))
     notes = user_svc.add_xp(attacker, xp)
+    from services import teams as team_svc
+    notes += await team_svc.add_team_xp(session, attacker, xp)
     # قربانی هم یه تجربه ناچیز می‌گیره، حمله نکرده ولی خورده
     victim_xp = config.PV_ATTACK_VICTIM_XP
     if victim_xp:
         user_svc.add_xp(victim, victim_xp)
+        await team_svc.add_team_xp(session, victim, victim_xp)
     return {
         "ok": True,
         "won": won,

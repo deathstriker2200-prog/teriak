@@ -74,6 +74,11 @@ def tools_text(user) -> str:
 # ───────── ضربه ─────────
 
 async def _do_roll(update: Update) -> None:
+    # تو گروه فقط پیام نتیجه میره، منوی دکمه‌دار نمی‌فرستیم
+    chat = update.effective_chat
+    in_group = chat is not None and chat.type in ("group", "supergroup")
+    kb_out = None if in_group else kb.mine_kb()
+
     dq_done, dq_left, uname = [], 0, ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -83,7 +88,6 @@ async def _do_roll(update: Update) -> None:
         if user.last_mine_at and now - user.last_mine_at < cooldown:
             left = cooldown - (now - user.last_mine_at)
             text = _tired_text(left.total_seconds())
-            kb_out = kb.mine_kb()
         else:
             loot = res_svc.mine_loot(user)
             user.cash += loot["cash"]
@@ -92,6 +96,8 @@ async def _do_roll(update: Update) -> None:
             loot["wood"], loot["iron"] = got_w, got_i
             user.last_mine_at = now
             notes = users.add_xp(user, loot["xp"])
+            from services import teams as team_svc
+            notes += await team_svc.add_team_xp(s, user, loot["xp"])
 
             from services import quests as dq_svc
             dq_done, dq_left = await dq_svc.track(s, user, "mine")
@@ -100,7 +106,6 @@ async def _do_roll(update: Update) -> None:
             text = _loot_text(loot, user)
             if notes:
                 text += "\n\n" + "\n".join(notes)
-            kb_out = kb.mine_kb()
         await s.commit()
 
     await respond(update, text, kb_out)

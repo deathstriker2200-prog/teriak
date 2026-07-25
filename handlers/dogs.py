@@ -49,9 +49,9 @@ async def _dogs_text(session, user, dogs: list[Dog]) -> str:
                 f"\n{lvl_txt}"
                 f"\n💪 قدرت حمله {fa_num(atk)}"
             )
-            rare_lines = dog_svc.rare_ability_lines(d)
-            if rare_lines:
-                entry += "\n" + "\n".join(rare_lines)
+            trait_lines = dog_svc.trait_ability_lines(d)
+            if trait_lines:
+                entry += "\n" + "\n".join(esc(x) for x in trait_lines)
             else:
                 entry += f"\n🎖 {esc(d.cfg.get('trait_line', '—'))}"
             per = dog_svc.personality_of(d)
@@ -92,9 +92,9 @@ def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
     else:
         xp_line = f"✨تجربه {fa_num(dog.xp)}/{fa_num(need)} {bar(dog.xp, need)}"
 
-    # قابلیت: گرگ سیاه با اعداد مقیاس لول | بقیه متن ثابت نژاد
-    rare_lines = dog_svc.rare_ability_lines(dog)
-    ability_block = "\n".join(rare_lines) if rare_lines else f"🎖 {esc(dog.cfg.get('trait_line', '—'))}"
+    # قابلیت: گرگ سیاه با اعداد مقیاس لول | بقیه ویژگی نژاد با درصد فعلی
+    trait_lines = dog_svc.trait_ability_lines(dog)
+    ability_block = "\n".join(esc(x) for x in trait_lines) if trait_lines else f"🎖 {esc(dog.cfg.get('trait_line', '—'))}"
 
     per = dog_svc.personality_of(dog)
     per_line = ""

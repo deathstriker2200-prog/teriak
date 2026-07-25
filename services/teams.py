@@ -29,6 +29,45 @@ def team_name_norm(name: str) -> str:
     return normalize_fa(name)
 
 
+# ───────── لول و ظرفیت تیم ⭐ ─────────
+
+def team_xp_need(level: int) -> int:
+    """xp لازم تیم برای رفتن از لول فعلی به بعدی"""
+    return int(config.TEAM_XP_CURVE_BASE * (level ** config.TEAM_XP_CURVE_EXP))
+
+
+def team_capacity(team) -> int:
+    """ظرفیت اعضا بر اساس لول تیم، از ۱۰ نفر شروع میشه و هر لول +۱۰"""
+    level = getattr(team, "level", 1) or 1
+    return config.TEAM_CAP_BASE + config.TEAM_CAP_PER_LEVEL * (level - 1)
+
+
+async def add_team_xp(session: AsyncSession, user: User, amount: int) -> list[str]:
+    """
+    سهم تیم از تجربه‌ای که هر عضو می‌گیره (کنده‌کاری | حمله | برداشت و…)
+    خروجی: لیست پیام‌های تبریک لول‌آپ تیم
+    """
+    if amount <= 0:
+        return []
+    team = await get_team_of(session, user.id)
+    if not team:
+        return []
+
+    notes: list[str] = []
+    team.xp = (team.xp or 0) + int(amount * config.TEAM_XP_SHARE)
+    while (team.level or 1) < config.TEAM_MAX_LEVEL and team.xp >= team_xp_need(team.level):
+        team.xp -= team_xp_need(team.level)
+        team.level += 1
+        notes.append(
+            f"🎉 <b>تیم «{team.name}» لول {fa_num(team.level)} شد</b>\n\n"
+            f"👥 ظرفیت اعضا شد {fa_num(team_capacity(team))} نفر\n"
+            f"🏗 ساختمان‌ها تا لول {fa_num(team.level)} ارتقا پیدا می‌کنن"
+        )
+        if team.level >= config.TEAM_MAX_LEVEL:
+            notes.append("👑 تیمتون به مکس لول رسید")
+    return notes
+
+
 # ───────── کوئری پایه ─────────
 
 async def get_team_by_name(session: AsyncSession, name: str) -> Team | None:
@@ -137,7 +176,7 @@ async def request_join(session: AsyncSession, user: User, name: str) -> tuple[bo
         return False, f"🤷 تیمی با اسم «{normalize_fa(name)}» پیدا نشد"
 
     count = await member_count(session, team.id)
-    if count >= config.TEAM_MAX_MEMBERS:
+    if count >= team_capacity(team):
         return False, f"🏴 تیم «{team.name}» پره"
 
     dup = await session.execute(
@@ -196,8 +235,9 @@ async def accept_request(session: AsyncSession, req: TeamRequest, target: User) 
     if await get_membership(session, target.id):
         await session.delete(req)
         return False, "👤 طرف الان تو تیم دیگه‌ای عضو شد، درخواستش پاک شد"
+    team = await session.get(Team, req.team_id)
     count = await member_count(session, req.team_id)
-    if count >= config.TEAM_MAX_MEMBERS:
+    if team is not None and count >= team_capacity(team):
         await session.delete(req)
         return False, "🏴 تیم پر شده بود، درخواست پاک شد"
     session.add(TeamMember(team_id=req.team_id, user_id=target.id, role="member"))
@@ -476,7 +516,7 @@ async def team_mine_join(session: AsyncSession, user: User) -> dict:
         sess = None
 
     if not sess:
-        # کولدون بعد از آخرین کنده‌کاری موفق
+        # کولدان بعد از آخرین کنده‌کاری موفق
         if team.last_team_mine_at:
             cd = timedelta(minutes=config.TEAM_MINE_COOLDOWN_MINUTES)
             if now - team.last_team_mine_at < cd:
@@ -663,6 +703,14 @@ async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tupl
     level = team.atk_bld if kind == "atk" else team.def_bld
     if level >= config.TEAM_BUILDING_MAX_LEVEL:
         return False, f"⭐ {title} مکس لوله"
+
+    # لول ساختمان نمی‌تونه از لول خود تیم جلوتر بره
+    team_level = team.level or 1
+    if level + 1 > team_level:
+        return False, (
+            f"🔒 ارتقا به لول {fa_num(level + 1)} لول تیم {fa_num(level + 1)} می‌خواد\n"
+            f"الان تیمتون لول {fa_num(team_level)} ـه، با تجربه اعضا لول تیم بالا میره"
+        )
 
     cost = building_cost(level + 1)
     if team.bank < cost:

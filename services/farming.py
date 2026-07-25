@@ -1,4 +1,4 @@
-"""منطق مزرعه: خرید زمین | کاشت با بذر | برداشت با کولدون | آپگرید"""
+"""منطق مزرعه: خرید زمین | کاشت با بذر | برداشت با کولدان | آپگرید"""
 
 from datetime import timedelta
 
@@ -110,7 +110,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 # ───────── برداشت (همه آماده‌ها، هر ۲ دقیقه یه بار) ─────────
 
 def harvest_cooldown_left(user: User) -> int:
-    """ثانیه مونده از کولدون برداشت، زمان‌بندی برای هر کاربر جدا ذخیره میشه"""
+    """ثانیه مونده از کولدان برداشت، زمان‌بندی برای هر کاربر جدا ذخیره میشه"""
     if not user.last_harvest_at:
         return 0
     left = config.HARVEST_COOLDOWN_SECONDS - (now_utc() - user.last_harvest_at).total_seconds()
@@ -170,6 +170,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
 
     # قلاب کوئست تیم، برداشت هر عضو حساب میشه
     from services import teams as team_svc
+    notes += await team_svc.add_team_xp(session, user, total_xp)
     quest_msg = await team_svc.record_harvest(session, user, len(ready))
 
     # قلاب کوئست روزانه، به تعداد محصول برداشت‌شده

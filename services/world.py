@@ -407,11 +407,20 @@ def seed_storage_cap(user: User) -> int:
     return config.SHELTER_SEED_CAP_BASE + config.SHELTER_SEED_CAP_PER_LEVEL * user.shelter_level
 
 
+def shelter_upgrade_min_level(target_level: int) -> int:
+    """لول بازیکن لازم برای ارتقای پناهگاه به لول target_level (۱..۱۰)"""
+    idx = min(max(target_level, 1), config.SHELTER_MAX_LEVEL) - 1
+    return config.SHELTER_UPGRADE_MIN_LEVELS[idx]
+
+
 async def upgrade_shelter(session: AsyncSession, user: User) -> tuple[bool, str]:
     """ارتقای پناهگاه از جیب"""
     if user.shelter_level >= config.SHELTER_MAX_LEVEL:
         return False, "⭐ پناهگاهت مکس لوله"
     next_level = user.shelter_level + 1
+    req = shelter_upgrade_min_level(next_level)
+    if user.level < req:
+        return False, f"🔒 ارتقا به لول {fa_num(next_level)} سطح {fa_num(req)} می‌خواد"
     price = shelter_price(next_level)
     if user.cash < price:
         return False, f"❌ ارتقا {money(price)} هزینه داره و پولت کمه"
@@ -518,7 +527,7 @@ def caravan_active(chat_id: int) -> dict | None:
 
 
 def caravan_hit_left(chat_id: int, user_id: int) -> int:
-    """ثانیه مونده از کولدون ضربه (هر ۱ دقیقه)"""
+    """ثانیه مونده از کولدان ضربه (هر ۱ دقیقه)"""
     last = CARAVAN_HITS.get((chat_id, user_id))
     if not last:
         return 0
@@ -564,6 +573,8 @@ async def caravan_attack(session: AsyncSession, chat_id: int, user: User, dmg: i
     cash_gain = dmg * config.CARAVAN_MONEY_PER_DMG
     user.cash += cash_gain
     notes = add_xp(user, config.CARAVAN_HIT_XP)
+    from services import teams as team_svc
+    notes += await team_svc.add_team_xp(session, user, config.CARAVAN_HIT_XP)
 
     res = {
         "status": "hit",

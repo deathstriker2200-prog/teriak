@@ -70,6 +70,8 @@ _NEW_COLUMNS = {
         ("week_points", "INTEGER NOT NULL DEFAULT 0"),
         ("atk_bld", "INTEGER NOT NULL DEFAULT 0"),
         ("def_bld", "INTEGER NOT NULL DEFAULT 0"),
+        ("level", "INTEGER NOT NULL DEFAULT 1"),
+        ("xp", "INTEGER NOT NULL DEFAULT 0"),
     ],
 }
 

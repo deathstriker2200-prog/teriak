@@ -59,39 +59,77 @@ def dog_attack(dog: Dog) -> int:
 
 
 def dog_defense(dog: Dog) -> int:
-    """دفاع سگ (کانگال 🛡 + سرسخت 🪨)"""
-    cfg = config.DOGS.get(dog.dog_key, {})
-    dfn = cfg.get("defense", 0) + cfg.get("def_per_level", 0) * max(0, dog.level - 1)
+    """دفاع سگ از شخصیتش (سرسخت 🪨)، ویژگی نژادی درصدیه و توی combat_stats اعمال میشه"""
+    dfn = 0
     per = personality_of(dog)
     if per and per.get("def_flat"):
         dfn += per["def_flat"]
     return dfn
 
 
-def breed_cooldown_mult(dogs: list[Dog]) -> float:
-    """دوبرمن ⚡ + چابک 🌀، کولدون حمله رو کم می‌کنن (بهترین اثر حساب میشه)"""
-    best = 1.0
+# ───────── ویژگی نژادها 🎖 (درصدی و مقیاس لول) ─────────
+
+def trait_value(dog: Dog) -> float:
+    """مقدار فعلی ویژگی نژاد سگ، از صفر تا max بر اساس لولش (مثل گرگ سیاه)"""
+    tr = config.DOGS.get(dog.dog_key, {}).get("trait")
+    if not tr:
+        return 0.0
+    ratio = min(1.0, dog.level / config.DOG_MAX_LEVEL)
+    return ratio * tr["max"]
+
+
+def _best_trait(dogs: list[Dog], kind: str) -> float:
+    best = 0.0
     for d in dogs:
-        m = config.DOGS.get(d.dog_key, {}).get("cooldown_mult", 1.0)
-        best = min(best, m)
+        tr = config.DOGS.get(d.dog_key, {}).get("trait")
+        if tr and tr["kind"] == kind:
+            best = max(best, trait_value(d))
+    return best
+
+
+def breed_cooldown_mult(dogs: list[Dog]) -> float:
+    """پیتبول ⚡ + چابک 🌀، کولدان حمله رو کم می‌کنن (بهترین اثر حساب میشه)"""
+    best = 1.0 - _best_trait(dogs, "cooldown")
+    for d in dogs:
         per = personality_of(d)
         if per and per.get("cooldown_mult"):
             best = min(best, per["cooldown_mult"])
-    return best
+    return max(0.5, best)
 
 
 def battle_xp_mult(dogs: list[Dog]) -> float:
     """ژرمن شپرد 🎁 + باهوش 🧠 + فرمان‌بردار 🤝، تجربه نبرد بیشتر"""
-    best = 1.0
-    for d in dogs:
-        m = config.DOGS.get(d.dog_key, {}).get("xp_mult", 1.0)
-        best = max(best, m)
+    best = 1.0 + _best_trait(dogs, "xp")
     bonus = 0.0
     for d in dogs:
         per = personality_of(d)
         if per and per.get("xp_mult"):
             bonus = max(bonus, per["xp_mult"])
     return best + bonus
+
+
+def trait_atk_pct(dogs: list[Dog]) -> float:
+    """کانگال 💥، درصد بونس قدرت حمله صاحبش"""
+    return _best_trait(dogs, "attack")
+
+
+def trait_def_pct(dogs: list[Dog]) -> float:
+    """دوبرمن 🛡، درصد بونس دفاع صاحبش"""
+    return _best_trait(dogs, "defense")
+
+
+def trait_ability_lines(dog: Dog) -> list[str]:
+    """
+    خط ویژگی سگ با درصد فعلی لولش، مثل «🎖 ویژگی ⚡ کاهش کولدان حمله 5%»
+    گرگ سیاه خط‌های قابلیت خودشو داره
+    """
+    if config.DOGS.get(dog.dog_key, {}).get("rare"):
+        return rare_ability_lines(dog)
+    tr = config.DOGS.get(dog.dog_key, {}).get("trait")
+    if not tr:
+        return []
+    pct = round(trait_value(dog) * 100)
+    return [f"🎖 ویژگی {tr['emoji']} {tr['title']} {fa_num(pct)}%"]
 
 
 async def add_battle_xp(dogs: list[Dog], amount: int) -> list[str]:

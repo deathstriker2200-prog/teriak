@@ -55,6 +55,10 @@ def combat_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
     atk += sum(dog_svc.dog_attack(d) for d in dogs)
     dfn += sum(dog_svc.dog_defense(d) for d in dogs)
 
+    # ویژگی نژادی سگ‌ها: کانگال 💥 حمله و دوبرمن 🛡 دفاع رو درصدی بیشتر می‌کنن
+    atk = int(atk * (1 + dog_svc.trait_atk_pct(dogs)))
+    dfn = int(dfn * (1 + dog_svc.trait_def_pct(dogs)))
+
     artis = users.artifact_keys(levels)
     atk = int(atk * users.artifact_atk_mult(artis))
     dfn = int(dfn * users.artifact_def_mult(artis))

@@ -1,5 +1,7 @@
 """
-تیم 🏴، ساخت (لول ۱۰) | درخواست عضویت (لول ۳، با تایید مدیران) | آمار با «تیم [اسم]» | بیو | ترک/انحلال
+تیم 🏴، ساخت (لول ۵) | درخواست عضویت (لول ۳، با تایید مدیران) | آمار با «تیم [اسم]» | بیو | ترک/انحلال
+تیم هم لول داره، تجربه اعضا از کنده‌کاری و حمله و برداشت به تیم هم میرسه (مکس لول ۱۰)
+هر لول تیم +۱۰ ظرفیت عضوه و لول ساختمان‌ها هم به لول تیم وابسته‌ست
 کوئست روزانه گروهی با «تیم کوئست» | کنده‌کاری تیمی با «کنده کاری تیمی» (حداقل ۳ نفر، ۷۰% اعضا)
 امتیاز تیمی + لیدربرد هفتگی («تیم لیدربرد») | ساختمان حمله/دفاع با آپگرید رهبر («تیم ساختمان»)
 بانک تیم («تیم بانک») + کمک مالی اعضا («تیم واریز 1200») | لیست اعضا («تیم عضویت»)
@@ -21,7 +23,7 @@ from handlers.common import has_prefix, parts, respond, strip_bot_cmd, strip_hom
 from keyboards import keyboards as kb
 from models import TeamMember, TeamRequest, User
 from services import teams, users
-from utils import esc, fa_dur, fa_num, jalali_str, money, money_tp, parse_amount
+from utils import bar, esc, fa_dur, fa_num, jalali_str, money, money_tp, parse_amount
 
 
 # ───────── متن‌ها ─────────
@@ -46,7 +48,13 @@ def _team_stats_text(data: dict) -> str:
         lines.append(f"📜 <i>{esc(team.bio)}</i>")
     lines.append("")
     lines.append(f"👑 رهبر: {esc(data['owner_name'])}")
-    lines.append(f"👥 اعضا: {fa_num(data['count'])} از {fa_num(config.TEAM_MAX_MEMBERS)}")
+    tlevel = team.level or 1
+    if tlevel >= config.TEAM_MAX_LEVEL:
+        lines.append(f"⭐ لول تیم {fa_num(tlevel)} 👑 مکس")
+    else:
+        need = teams.team_xp_need(tlevel)
+        lines.append(f"⭐ لول تیم {fa_num(tlevel)} | ✨ {bar(team.xp or 0, need)} {fa_num(team.xp or 0)}/{fa_num(need)}")
+    lines.append(f"👥 اعضا: {fa_num(data['count'])} از {fa_num(teams.team_capacity(team))}")
     lines.append(f"🏦 خزانه: {money(team.bank)}")
     lines.append("")
     lines.append("━━━━━━ 📊 آمار تیم ━━━━━━")
@@ -545,12 +553,16 @@ async def team_mine_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # ───────── ساختمان‌های تیم («تیم ساختمان» / «تیم ساخت» + دکمه) ─────────
 
 def _buildings_text(team) -> str:
+    tlevel = team.level or 1
+
     def _line(kind_emoji: str, title: str, level: int, per_level: float) -> list[str]:
         pct_now = int(per_level * level * 100)
         out = [f"{kind_emoji} <b>{title}</b>، لول {fa_num(level)}"]
         out.append(f"قدرت فعلی: +{fa_num(pct_now)}% برای همه اعضا")
         if level >= config.TEAM_BUILDING_MAX_LEVEL:
             out.append("⭐ مکس لوله")
+        elif level + 1 > tlevel:
+            out.append(f"🔒 به لول تیم {fa_num(level + 1)} نیاز داره")
         else:
             cost = teams.building_cost(level + 1)
             pct_next = int(per_level * (level + 1) * 100)
@@ -558,6 +570,8 @@ def _buildings_text(team) -> str:
         return out
 
     lines = [f"<b>🏗 ساختمان‌های تیم «{esc(team.name)}»</b>", ""]
+    lines.append(f"⭐ لول تیم: {fa_num(tlevel)}، لول ساختمان از لول تیم جلوتر نمی‌زنه")
+    lines.append("")
     lines += _line("⚔️", "ساختمان حمله", team.atk_bld or 0, config.TEAM_ATK_BONUS_PER_LEVEL)
     lines.append("")
     lines += _line("🛡", "ساختمان دفاع", team.def_bld or 0, config.TEAM_DEF_BONUS_PER_LEVEL)
