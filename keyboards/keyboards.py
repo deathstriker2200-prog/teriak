@@ -19,6 +19,9 @@ dogs:feed:<dog_id>          → کارت آمار سگ با همان دکمه‌
 heal:buy:<key>              → خرید و استفاده همون لحظه آیتم درمان
 patt:go                     → 🎯 هدف شانسی پی‌وی، پیش‌نمایش قربانی → patt:hit:<user_id> حمله | patt:next:<user_id> هدف دیگه (هزینه‌دار) | patt:back بازگشت | patt:break:<user_id> شکستن سپر
 menu:team | team:quests | team:mine | team:top | team:leave | team:disband
+team:mng | team:req         → 👑 مدیریت تیم (رهبر/مدیر) و لیست درخواست‌های عضویت
+treq:<ok|no>:<req_id>       → قبول/رد درخواست عضویت توسط مدیر
+team:kick | tkick:<member_id> | tkcl → جریان اخراج عضو (سرچ → تایید → اجرا)
 tmcf:<leave|disband>:<tg_id> → تایید ترک/انحلال تیم (فقط خودش)
 dog:card:<dog_id>           → کارت آمار سگ (آمار [اسم])
 noop:<context>              → دکمه‌های اطلاعاتی
@@ -30,7 +33,7 @@ import config
 from models import Dog, Plot, User
 from services import economy
 from services.dogs import dog_xp_need
-from utils import fa_dur, fa_num, money_tp
+from utils import fa_dur, fa_num, money_tp, short_name
 
 PRIMARY = "primary"
 SUCCESS = "success"
@@ -58,10 +61,13 @@ def main_menu_kb() -> InlineKeyboardMarkup:
          _btn("⚔️ حمله", "menu:attack", PRIMARY)],
         [_btn("🐕 سگ‌های من", "menu:dogs", PRIMARY),
          _btn("🏴 تیم من", "menu:team", PRIMARY)],
-        [_btn("🏦 بانک", "menu:bank", PRIMARY),
-         _btn("📊 رتبه‌بندی", "menu:rank", PRIMARY)],
-        [_btn("📅 کوئست‌های روزانه", "menu:dquests", PRIMARY),
-         _btn("📖 راهنما", "help:menu", PRIMARY)],
+        [_btn("⛏ کنده کاری", "menu:mine", PRIMARY),
+         _btn("🏭 شرکت", "menu:company", PRIMARY)],
+        [_btn("🏚 مخفیگاه", "menu:shelter", PRIMARY),
+         _btn("🏦 بانک", "menu:bank", PRIMARY)],
+        [_btn("📊 رتبه‌بندی", "menu:rank", PRIMARY),
+         _btn("📅 کوئست‌های روزانه", "menu:dquests", PRIMARY)],
+        [_btn("📖 راهنما", "help:menu", PRIMARY)],
     ]
     if BOT_USERNAME:
         rows.append([InlineKeyboardButton(
@@ -161,15 +167,15 @@ def admin_user_kb(tg_id: int) -> InlineKeyboardMarkup:
 # ───────── آموزشات (هلپ دکمه‌دار) 📖 ─────────
 # key → عنوان دکمه، متن کامل هر بخش تو handlers/start.py (HELP_SECTIONS)
 HELP_MENU = [
-    ("farm",   "🌱 کاشت و برداشت"),
-    ("shop",   "🛒 شاپ"),
-    ("attack", "⚔️ حمله"),
-    ("dogs",   "🐕 سگ‌ها"),
-    ("team",   "🏴 تیم"),
-    ("bank",   "🏦 بانک"),
-    ("mine",   "⛏ کنده‌کاری"),
-    ("world",  "🌍 جستجو و رویدادها"),
-    ("eco",    "⭐ لول و اقتصاد"),
+    ("start",     "📖 شروع بازی"),
+    ("battle",    "⚔️ نبرد"),
+    ("farm",      "🌱 مزرعه"),
+    ("dogs",      "🐕 سگ‌ها"),
+    ("company",   "🏭 شرکت"),
+    ("shelter",   "🏚 مخفیگاه"),
+    ("team",      "👥 تیم"),
+    ("resources", "🎒 منابع"),
+    ("shop",      "🛒 فروشگاه"),
 ]
 
 
@@ -276,8 +282,12 @@ def seeds_kb(user: User, plot: Plot, stock: dict[str, int]) -> InlineKeyboardMar
 
 def shop_sections_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [_btn("🔪 سلاح‌ها", "shop:sec:weap", PRIMARY),
+        [_btn("🔫 سلاح‌ها", "shop:sec:weap", PRIMARY),
          _btn("🛡 زره‌ها", "shop:sec:arm", PRIMARY)],
+        [_btn("⬆️ ارتقای سلاح", "shop:sec:wup", PRIMARY),
+         _btn("⬆️ ارتقای زره", "shop:sec:aup", PRIMARY)],
+        [_btn("🧿 آرتیفکت", "shop:sec:arti", PRIMARY),
+         _btn("🎒 منابع", "shop:sec:res", PRIMARY)],
         [_btn("🌱 بذرها", "shop:sec:seed", PRIMARY),
          _btn("🐕 سگ‌ها", "shop:sec:dog", PRIMARY)],
         [_btn("🍖 غذای سگ", "shop:sec:food", PRIMARY)],
@@ -285,22 +295,89 @@ def shop_sections_kb() -> InlineKeyboardMarkup:
     ])
 
 
-def _buy_row(key: str, item: dict, owned: bool, locked_level: int | None) -> list[InlineKeyboardButton]:
-    if owned:
-        return [_btn(f"✅ {item['name']}", "noop:own")]
-    if locked_level is not None:
-        return [_btn(f"🔒 {item['name']} | لول {fa_num(locked_level)}", "noop:lock", DANGER)]
-    return [_btn(f"{item['name']} | {money_tp(item['price'])}", f"shop:buy:ROW:{key}", PRIMARY)]
+def shop_res_kb() -> InlineKeyboardMarkup:
+    """بخش منابع شاپ، خرید پک چوب و آهن"""
+    rows = []
+    for key, r in config.RES_SHOP.items():
+        rows.append([_btn(
+            f"{r['emoji']} {r['name']} ×{fa_num(r['pack'])} | {money_tp(r['price'])}",
+            f"shop:buy:res:{key}", SUCCESS,
+        )])
+    rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def shop_arti_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
+    """آرتیفکت‌های آخر بازی، سبز قابل خرید و قرمز قفل"""
+    rows = []
+    for key, a in config.ARTIFACTS.items():
+        if f"arti_{key}" in owned:
+            rows.append([_btn(f"✅ {a['emoji']} {a['name']}", "noop:own")])
+        elif user.level < config.ARTIFACT_MIN_LEVEL:
+            rows.append([_btn(
+                f"🔒 {a['emoji']} {a['name']} | لول {fa_num(config.ARTIFACT_MIN_LEVEL)}",
+                "noop:lock", DANGER,
+            )])
+        else:
+            rows.append([_btn(
+                f"{a['emoji']} {a['name']} | {money_tp(a['price'])}",
+                f"shop:buy:arti:{key}", SUCCESS,
+            )])
+    rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def gear_up_kb(kind: str, owned_lvls: dict[str, int], user: User) -> InlineKeyboardMarkup:
+    """لیست آیتم‌های قابل ارتقا (فقط مال خودت)، با قیمت و لول بعدی"""
+    from services import economy
+    catalog = economy.gear_catalog(kind)
+    emoji = "🔫" if kind == "weap" else "🛡"
+    rows = []
+    for key, lv in sorted(owned_lvls.items()):
+        if key not in catalog:
+            continue
+        item = catalog[key]
+        if lv >= config.GEAR_UPG_MAX:
+            rows.append([_btn(f"👑 {item['name']} | لول مکس", "noop:maxgear")])
+            continue
+        req = economy.gear_upg_min_level(lv)
+        if user.level < req:
+            rows.append([_btn(
+                f"🔒 {item['name']} لول {fa_num(lv)} | ⬆️ از لول {fa_num(req)}",
+                "noop:lock", DANGER,
+            )])
+            continue
+        tp = economy.gear_upg_tp(kind, key, lv)
+        iron = economy.gear_upg_iron(kind, key, lv)
+        rows.append([_btn(
+            f"⬆️ {item['name']} به لول {fa_num(lv + 1)} | {money_tp(tp)} + ⛏️ {fa_num(iron)}",
+            f"gup:{kind}:{key}", SUCCESS,
+        )])
+    rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def gear_up_confirm_kb(kind: str, key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"cf:gup:{kind}:{key}", SUCCESS),
+        _btn("❌ لغو", f"cl:gup:{kind}", DANGER),
+    ]])
 
 
 def shop_weap_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
+    """سبز یعنی قابل خرید | قرمز یعنی هنوز قفله"""
     rows = []
     for key, w in config.WEAPONS.items():
-        locked = w["min_level"] if user.level < w["min_level"] else None
-        row = _buy_row(key, w, key in owned, locked)
-        if w["min_level"] <= user.level and key not in owned:
-            row[0] = _btn(f"🔪 {w['name']} | +{fa_num(w['attack'])} | {money_tp(w['price'])}", f"shop:buy:weap:{key}", PRIMARY)
-        rows.append(row)
+        if key in owned:
+            rows.append([_btn(f"✅ {w['name']}", "noop:own")])
+        elif user.level < w["min_level"]:
+            rows.append([_btn(f"🔒 {w['name']} | لول {fa_num(w['min_level'])}", "noop:lock", DANGER)])
+        else:
+            rows.append([_btn(
+                f"🔫 {w['name']} | {money_tp(w['price'])} + ⛏️ {fa_num(w['iron'])}",
+                f"shop:buy:weap:{key}", SUCCESS,
+            )])
+    rows.append([_btn("⬆️ ارتقای سلاح", "shop:sec:wup", PRIMARY)])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -308,11 +385,16 @@ def shop_weap_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
 def shop_arm_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
     rows = []
     for key, a in config.ARMORS.items():
-        locked = a["min_level"] if user.level < a["min_level"] else None
-        row = _buy_row(key, a, key in owned, locked)
-        if a["min_level"] <= user.level and key not in owned:
-            row[0] = _btn(f"🛡 {a['name']} | +{fa_num(a['defense'])} | {money_tp(a['price'])}", f"shop:buy:arm:{key}", PRIMARY)
-        rows.append(row)
+        if key in owned:
+            rows.append([_btn(f"✅ {a['name']}", "noop:own")])
+        elif user.level < a["min_level"]:
+            rows.append([_btn(f"🔒 {a['name']} | لول {fa_num(a['min_level'])}", "noop:lock", DANGER)])
+        else:
+            rows.append([_btn(
+                f"🛡 {a['name']} | {money_tp(a['price'])}",
+                f"shop:buy:arm:{key}", SUCCESS,
+            )])
+    rows.append([_btn("⬆️ ارتقای زره", "shop:sec:aup", PRIMARY)])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -329,7 +411,7 @@ def shop_seed_kb(user: User, stock: dict[str, int]) -> InlineKeyboardMarkup:
             have_txt = f" | 📦 ×{fa_num(have)}" if have else ""
             rows.append([_btn(
                 f"{s.get('emoji', '🌱')} {s['name']} | {money_tp(s['price'])}{have_txt}",
-                f"shop:buy:seed:{key}", PRIMARY,
+                f"shop:buy:seed:{key}", SUCCESS,
             )])
     rows.append([_btn("🌱 مزرعه من", "menu:farm", PRIMARY)])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
@@ -347,7 +429,7 @@ def shop_dog_kb(user: User, owned_keys: set[str], dogs_count: int) -> InlineKeyb
             crown = "👑 " if d.get("rare") else ""
             rows.append([_btn(
                 f"{crown}🐕 {d['name']} | +{fa_num(d['attack'])} | {money_tp(d['price'])}",
-                f"shop:buy:dog:{key}", PRIMARY,
+                f"shop:buy:dog:{key}", SUCCESS,
             )])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
@@ -475,8 +557,8 @@ def dquests_kb() -> InlineKeyboardMarkup:
 
 # ───────── تیم ─────────
 
-def team_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
-    """کیبورد صفحه «تیم من»"""
+def team_kb(is_owner: bool = False, is_manager: bool = False) -> InlineKeyboardMarkup:
+    """کیبورد صفحه «تیم من»، دکمه 👑 مدیریت تیم فقط جلوی رهبر و مدیرانه"""
     rows: list[list[InlineKeyboardButton]] = [
         [_btn("📜 کوئست‌های امروز", "team:quests", PRIMARY),
          _btn("⛏ کنده‌کاری تیمی", "team:mine", PRIMARY)],
@@ -484,6 +566,8 @@ def team_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
          _btn("🏦 بانک تیم", "team:bank", PRIMARY)],
         [_btn("🏆 لیدربرد", "team:top", PRIMARY)],
     ]
+    if is_manager:
+        rows.append([_btn("👑 مدیریت تیم", "team:mng", PRIMARY)])
     if is_owner:
         rows.append([_btn("💥 انحلال تیم", "team:disband", DANGER)])
     else:
@@ -491,6 +575,36 @@ def team_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
     rows.append([_btn("🔃 رفرش", "menu:team", PRIMARY)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
+
+
+def team_manage_kb() -> InlineKeyboardMarkup:
+    """صفحه 👑 مدیریت تیم، فقط رهبر و مدیران"""
+    return InlineKeyboardMarkup([
+        [_btn("📨 درخواست‌های عضویت", "team:req", PRIMARY)],
+        [_btn("👢 اخراج عضو", "team:kick", DANGER)],
+        [_btn("🔙 تیم من", "menu:team", PRIMARY)],
+    ])
+
+
+def team_requests_kb(reqs: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    """لیست درخواست‌های عضویت، هر درخواست یه ردیف ✅ قبول و ❌ رد داره (اسم روی قبوله)"""
+    rows: list[list[InlineKeyboardButton]] = []
+    for rid, name in reqs[:10]:
+        rows.append([
+            _btn(f"✅ قبول {short_name(name)}", f"treq:ok:{rid}", SUCCESS),
+            _btn("❌ رد", f"treq:no:{rid}", DANGER),
+        ])
+    rows.append([_btn("🔃 رفرش", "team:req", PRIMARY)])
+    rows.append([_btn("🔙 مدیریت", "team:mng", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def kick_confirm_kb(member_id: int) -> InlineKeyboardMarkup:
+    """تایید اخراج عضو تیم (✅ اخراج / ❌ انصراف)، با قفل مالکیت توسط respond ردیف میشه"""
+    return InlineKeyboardMarkup([
+        [_btn("✅ اخراج", f"tkick:{member_id}", DANGER)],
+        [_btn("❌ انصراف", "tkcl", PRIMARY)],
+    ])
 
 
 def team_bld_kb(team, is_owner: bool, tg_id: int) -> InlineKeyboardMarkup:
@@ -590,6 +704,54 @@ def team_bank_kb() -> InlineKeyboardMarkup:
 
 
 # ───────── پناهگاه 🏚 ─────────
+
+def mine_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("⛏ بکَن", "mine:roll", SUCCESS)],
+        [_btn("🪓 ارتقای تبر", "mine:upg:axe", PRIMARY),
+         _btn("⛏️ ارتقای کلنگ", "mine:upg:pick", PRIMARY)],
+        [_btn("🎒 وضعیت ابزار", "mine:tools", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def mine_up_confirm_kb(tool_key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"cf:mine:upg:{tool_key}", SUCCESS),
+        _btn("❌ لغو", f"cl:mine:upg:{tool_key}", DANGER),
+    ]])
+
+
+def company_kb(user: User) -> InlineKeyboardMarkup:
+    """ساخت/ارتقای چوب‌بری و کارخانه آهن"""
+    from services import company as company_svc
+    rows: list[list[InlineKeyboardButton]] = []
+    for key, cfg in config.FACTORIES.items():
+        lv = company_svc.factory_level(user, key)
+        if lv <= 0:
+            tp, wood = company_svc.build_cost(key)
+            label = f"🔨 ساخت {cfg['emoji']} {cfg['name']} | {money_tp(tp)}"
+            if wood:
+                label += f" + 🪵 {fa_num(wood)}"
+            rows.append([_btn(label, f"comp:build:{key}", SUCCESS)])
+        elif lv >= config.FACTORY_MAX_LEVEL:
+            rows.append([_btn(f"👑 {cfg['emoji']} {cfg['name']} | لول مکس", "noop:maxfac")])
+        else:
+            tp, wood = company_svc.upgrade_cost(key, lv + 1)
+            rows.append([_btn(
+                f"⬆️ {cfg['emoji']} {cfg['name']} به لول {fa_num(lv + 1)} | {money_tp(tp)} + 🪵 {fa_num(wood)}",
+                f"comp:upg:{key}", SUCCESS,
+            )])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def company_confirm_kb(action: str, key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"cf:comp:{action}:{key}", SUCCESS),
+        _btn("❌ لغو", f"cl:comp:{action}:{key}", DANGER),
+    ]])
+
 
 def shelter_kb(user: User) -> InlineKeyboardMarkup:
     from services.world import shelter_price

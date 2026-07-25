@@ -95,6 +95,42 @@ async def get_item_keys(session: AsyncSession, user_id: int) -> list[str]:
     return list((await session.execute(q)).scalars())
 
 
+async def get_item_levels(session: AsyncSession, user_id: int) -> dict[str, int]:
+    """کلید آیتم → لول ارتقاش (سلاح/زره)، پیش‌فرض ۱"""
+    q = select(InventoryItem.item_key, InventoryItem.level).where(InventoryItem.user_id == user_id)
+    return {k: lv or 1 for k, lv in (await session.execute(q)).all()}
+
+
+def artifact_keys(item_keys: list[str] | dict) -> set[str]:
+    """کلید آرتیفکت‌های مالک از روی کلیدهای انبار (arti_<key>)"""
+    keys = item_keys.keys() if isinstance(item_keys, dict) else item_keys
+    return {k[5:] for k in keys if k.startswith("arti_") and k[5:] in config.ARTIFACTS}
+
+
+def artifact_atk_mult(artis: set[str]) -> float:
+    return 1 + sum(config.ARTIFACTS[k].get("atk_mult", 0) for k in artis)
+
+
+def artifact_def_mult(artis: set[str]) -> float:
+    return 1 + sum(config.ARTIFACTS[k].get("def_mult", 0) for k in artis)
+
+
+def artifact_xp_mult(artis: set[str]) -> float:
+    return 1 + sum(config.ARTIFACTS[k].get("xp_mult", 0) for k in artis)
+
+
+def artifact_steal_bonus(artis: set[str]) -> float:
+    return sum(config.ARTIFACTS[k].get("steal_bonus", 0) for k in artis)
+
+
+def artifact_luck(artis: set[str]) -> float:
+    """شانس بهتر جستجو و شکار کمیاب، بهترین شبدر"""
+    best = 1.0
+    for k in artis:
+        best = max(best, config.ARTIFACTS[k].get("luck", 1.0))
+    return best
+
+
 def add_xp(user: User, amount: int) -> list[str]:
     """
     اضافه کردن xp + مدیریت لول‌آپ، خروجی: لیست پیام‌های تبریک لول‌آپ

@@ -59,11 +59,13 @@ def revive_if_due(user: User) -> bool:
 
 # ───────── کولدان مهاجم ⏳ ─────────
 
-def cooldown_left(user: User) -> int:
-    """ثانیه مونده از کولدان حمله، فقط مهاجم می‌گیره"""
+async def cooldown_left(session: AsyncSession, user: User) -> int:
+    """ثانیه مونده از کولدان حمله، فقط مهاجم می‌گیره | دوبرمن ⚡ و چابک 🌀 کوتاهش می‌کنن"""
     if not user.last_attack_at:
         return 0
-    left = config.BATTLE_COOLDOWN_SECONDS - (now_utc() - user.last_attack_at).total_seconds()
+    dogs = await dog_svc.get_user_dogs(session, user.id)
+    cd = config.BATTLE_COOLDOWN_SECONDS * dog_svc.breed_cooldown_mult(dogs)
+    left = cd - (now_utc() - user.last_attack_at).total_seconds()
     return max(0, int(left))
 
 
@@ -147,6 +149,7 @@ def roll_damage(atk: int, dfn: int) -> tuple[int, bool]:
 def steal_for_hit(
     dmg: int, victim_max_hp: int, victim_cash: int,
     attacker_dogs: list, victim_items: list[str], victim_dogs: list,
+    attacker_items=None,
 ) -> tuple[int, dict]:
     """
     مبلغ غارت یه ضربه بر اساس دمیج نسبت به HP کامل حریف
@@ -161,6 +164,7 @@ def steal_for_hit(
     amount = float(victim_cash) * pct
 
     bonus = dog_svc.rare_steal_bonus(attacker_dogs) + dog_svc.personality_steal_bonus(attacker_dogs)
+    bonus += user_svc.artifact_steal_bonus(user_svc.artifact_keys(attacker_items or []))
     if bonus:
         amount *= 1 + bonus
         meta["bonus"] = bonus
@@ -208,7 +212,7 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     if d_target:
         return {"ok": False, "reason": "dead_target", "left": d_target}
 
-    cd = cooldown_left(attacker)
+    cd = await cooldown_left(session, attacker)
     if cd:
         return {"ok": False, "reason": "cooldown", "left": cd}
 
@@ -229,14 +233,18 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     target.hp = max(0, (target.hp or 0) - dmg)
 
     steal, meta = steal_for_hit(
-        dmg, hp_max, target.cash, info["a_dogs"], info["t_items"], info["t_dogs"]
+        dmg, hp_max, target.cash, info["a_dogs"], info["t_items"], info["t_dogs"],
+        info["a_items"],
     )
     if steal:
         target.cash -= steal
         attacker.cash += steal
 
     xp = xp_for_hit(dmg)
+    xp = int(xp * dog_svc.battle_xp_mult(info["a_dogs"]))
+    xp = int(xp * user_svc.artifact_xp_mult(user_svc.artifact_keys(info["a_items"])))
     notes = user_svc.add_xp(attacker, xp)
+    notes += await dog_svc.add_battle_xp(info["a_dogs"], config.DOG_BATTLE_XP_HIT)
 
     killed = target.hp <= 0
     if killed:

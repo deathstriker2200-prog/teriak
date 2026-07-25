@@ -41,6 +41,12 @@ def upgrade_price(plot_level: int) -> int:
     return config.PLOT_UPGRADE_PRICES[lv - 1]
 
 
+def upgrade_wood(plot_level: int) -> int:
+    """چوب لازم برای آپگرید زمین از لول فعلی به بعدی"""
+    lv = min(max(plot_level, 1), len(config.PLOT_UPGRADE_WOOD))
+    return config.PLOT_UPGRADE_WOOD[lv - 1]
+
+
 def plot_upgrade_required_level(plot_level: int) -> int:
     """گیت لول کاربر برای آپگرید زمین از لول فعلی به لول بعد"""
     lv = min(max(plot_level, 1), len(config.PLOT_UPGRADE_LEVELS))
@@ -49,21 +55,21 @@ def plot_upgrade_required_level(plot_level: int) -> int:
 
 # ───────── بذر و محصول ─────────
 
-def plot_yield_mult(plot_level: int) -> float:
-    """ضریب درآمد زمین تو لولش، هر لول ۲۵% بیشتر (×۱٫۲۵)"""
-    return config.PLOT_YIELD_PER_LEVEL ** max(0, plot_level - 1)
-
-
 def plot_speed_mult(plot_level: int) -> float:
     """ضریب سرعت رشد زمین تو لولش، هر لول ۴۰% سرعت بیشتر (زمان ÷۱٫۴۰)"""
     return config.PLOT_SPEED_PER_LEVEL ** max(0, plot_level - 1)
 
 
+def plot_quality_bonus(plot_level: int) -> float:
+    """شانس اضافه محصول ۵ ستاره بر اساس لول زمین، اثر مستقیم روی قیمت نیس"""
+    return config.PLOT_Q5_PER_LEVEL * max(0, plot_level - 1)
+
+
 def crop_yield(seed_key: str, plot_level: int = 1, user_level: int = 1) -> int:
-    """درآمد برداشت با ضریب لول زمین و بونس لول کاربر"""
+    """درآمد برداشت با بونس لول کاربر | لول زمین روی قیمت اثر مستقیم نداره (فقط کیفیت و سرعت)"""
     base = config.SEEDS[seed_key]["sell"]
     user_mult = 1 + config.LEVEL_YIELD_BONUS * max(0, user_level - 1)
-    return int(base * plot_yield_mult(plot_level) * user_mult)
+    return int(base * user_mult)
 
 
 def crop_grow_seconds(seed_key: str, plot_level: int = 1) -> int:
@@ -74,6 +80,41 @@ def crop_grow_seconds(seed_key: str, plot_level: int = 1) -> int:
 
 def is_seed_unlocked(seed_key: str, user_level: int) -> bool:
     return user_level >= config.SEEDS[seed_key]["min_level"]
+
+
+# ───────── ارتقای سلاح و زره ⬆️ ─────────
+
+def gear_catalog(kind: str) -> dict:
+    return config.WEAPONS if kind == "weap" else config.ARMORS
+
+
+def gear_stat(kind: str, key: str, level: int) -> int:
+    """استت آیتم با لول ارتقاش، هر لول یه ضریب روی استت پایه"""
+    item = gear_catalog(kind)[key]
+    base = item["attack"] if kind == "weap" else item["defense"]
+    return int(base * (1 + config.GEAR_UPG_STAT_PER_LEVEL * max(0, level - 1)))
+
+
+def gear_upg_tp(kind: str, key: str, from_level: int) -> int:
+    """تی‌پوینت ارتقا از لول فعلی به بعدی، بسته به ارزش خود آیتم"""
+    price = gear_catalog(kind)[key]["price"]
+    return int(price * config.GEAR_UPG_TP_PER_LEVEL * from_level)
+
+
+def gear_upg_iron(kind: str, key: str, from_level: int) -> int:
+    """آهن ارتقا از لول فعلی به بعدی"""
+    if kind == "weap":
+        base = gear_catalog(kind)[key].get("iron", 0)
+    else:
+        rank = list(gear_catalog(kind).keys()).index(key)
+        base = config.GEAR_UPG_IRON_ARMOR_BASE + rank * 2
+    return base + config.GEAR_UPG_IRON_STEP * max(0, from_level - 1)
+
+
+def gear_upg_min_level(from_level: int) -> int:
+    """گیت لول بازیکن برای رفتن به لول بعدی آیتم"""
+    idx = min(max(from_level - 1, 0), len(config.GEAR_UPG_LEVELS) - 1)
+    return config.GEAR_UPG_LEVELS[idx]
 
 
 # ───────── کنده‌کاری ─────────

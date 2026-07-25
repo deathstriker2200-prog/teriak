@@ -76,8 +76,7 @@ def weather_announce_text(key: str) -> str:
     w = weather_of(key)
     lines = ["<b>🌦 وضعیت آب و هوای جدید</b>", ""]
     if key == "normal":
-        lines.append(f"{w['emoji']} هوا به حالت عادی برگشت")
-        lines.append("محله به روال خودش برگشته")
+        lines.append("🏙️ هوای محله صافِ صاف شد الان دیگه هیچ افکت خاصی فعال نیست")
     else:
         lines.append(f"{w['emoji']} {w['name']} آغاز شد")
         for b in w.get("announce", []):

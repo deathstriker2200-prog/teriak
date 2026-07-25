@@ -1,14 +1,17 @@
 """
-تیم 🏴، ساخت (لول ۱۰) | جوین (لول ۵) | آمار با «تیم [اسم]» | بیو | ترک/انحلال
+تیم 🏴، ساخت (لول ۱۰) | درخواست عضویت (لول ۳، با تایید مدیران) | آمار با «تیم [اسم]» | بیو | ترک/انحلال
 کوئست روزانه گروهی با «تیم کوئست» | کنده‌کاری تیمی با «کنده کاری تیمی» (حداقل ۳ نفر، ۷۰% اعضا)
 امتیاز تیمی + لیدربرد هفتگی («تیم لیدربرد») | ساختمان حمله/دفاع با آپگرید رهبر («تیم ساختمان»)
 بانک تیم («تیم بانک») + کمک مالی اعضا («تیم واریز 1200») | لیست اعضا («تیم عضویت»)
+👑 مدیریت تیم (فقط رهبر و مدیران): 📨 درخواست‌های عضویت (قبول/رد با دکمه یا «تیم درخواست @یوزر قبول|رد»)
+👢 اخراج عضو با سرچ آیدی/یوزرنیم/اسم (دکمه «تیم کیک @یوزر») | «تیم ادمین @یوزر» فقط رهبر
 دستورهای تیم با هر دو شکل «تریاکی تیم ...» و «تیم ...» کار می‌کنن
 """
 
 import re
 
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
@@ -16,6 +19,7 @@ import config
 from database import session_scope
 from handlers.common import has_prefix, parts, respond, strip_bot_cmd, strip_home
 from keyboards import keyboards as kb
+from models import TeamMember, TeamRequest, User
 from services import teams, users
 from utils import esc, fa_dur, fa_num, jalali_str, money, money_tp, parse_amount
 
@@ -64,7 +68,7 @@ def _team_stats_text(data: dict) -> str:
         u = by_id.get(m.user_id)
         if not u or shown >= 12:
             continue
-        tag = "👑" if m.role == "owner" else "🔸"
+        tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = u.first_name or u.username or "؟"
         lines.append(f"{tag} {esc(name)} | لول {fa_num(u.level)}")
         shown += 1
@@ -144,11 +148,13 @@ async def render_my_team(update: Update, alert: str | None = None) -> None:
             return await respond(update, _no_team_text(), kb.team_no_kb(), alert=alert)
 
         data = await teams.team_stats_data(s, team)
-        is_owner = membership.role == "owner"
         text = _team_stats_text(data)
         await s.commit()
 
-    await respond(update, text, kb.team_kb(is_owner), alert=alert)
+    await respond(update, text, kb.team_kb(
+        is_owner=membership.role == "owner",
+        is_manager=teams.is_manager(membership),
+    ), alert=alert)
 
 
 async def team_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -331,8 +337,8 @@ async def team_create_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         f"⛏ کنده‌کاری تیمی با «کنده کاری تیمی»\n"
         f"✏️ بیوی تیم با «تیم ست بیو [متن]»\n"
         f"📊 آمار تیم با «تیم من»\n\n"
-        f"به رفقات بگو بنویسن «جوین تیم {esc(res)}» 😈",
-        kb.team_kb(is_owner=True),
+        f"به رفقات بگو بنویسن «جوین تیم {esc(res)}» و همینجا درخواستشون رو قبول کن 😈",
+        kb.team_kb(is_owner=True, is_manager=True),
     )
 
 
@@ -349,17 +355,15 @@ async def join_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        ok, res = await teams.join_team(s, user, arg)
+        ok, res = await teams.request_join(s, user, arg)
         await s.commit()
 
     if ok:
         text = (
-            f"<b>🏴 خوش اومدی به تیم «{esc(res)}»</b>\n\n"
-            "📜 کوئست‌های روزانه با «تیم کوئست»\n"
-            "⛏ کنده‌کاری تیمی با «کنده کاری تیمی»\n"
-            "📊 آمار تیم با «تیم من»"
+            f"<b>📨 درخواست عضویت برای تیم «{esc(res)}» ارسال شد</b>\n\n"
+            "منتظر تأیید مدیران باش"
         )
-        return await respond(update, text, kb.team_kb(is_owner=False))
+        return await respond(update, text)
     await respond(update, res)
 
 
@@ -607,7 +611,7 @@ async def roster_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         u = by_id.get(m.user_id)
         if not u:
             continue
-        tag = "👑" if m.role == "owner" else "🔸"
+        tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = esc(u.first_name or u.username or "؟")
         lines.append(f"{tag} {name} | لول {fa_num(u.level)} | ⚔️ {fa_num(u.wins)} برد")
     lines.append("")
@@ -741,3 +745,299 @@ async def team_upgrade_execute(update: Update, context: ContextTypes.DEFAULT_TYP
 async def team_profile_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """«تیم پروفایل»، همون آمار کامل تیم خودم با لول ساختمان‌ها و قدرتشون"""
     await render_my_team(update)
+
+
+# ───────── 👑 مدیریت تیم (فقط رهبر و مدیران) ─────────
+
+async def _dm(context, tg: int | None, text: str) -> None:
+    """پی‌وی خبر به کاربر، بلاک‌کرده یا استارت‌نکرده بی‌خیال"""
+    if not tg:
+        return
+    bot = getattr(context, "bot", None)
+    if bot is None:
+        return
+    try:
+        await bot.send_message(tg, text, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+
+
+async def _require_manager(update: Update):
+    """(کاربر, عضویت, تیم) مدیر رو می‌ده، نبود پیام مناسب می‌فرسته و None برمی‌گرده"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        m = await teams.get_membership(s, user.id)
+        team = await teams.get_team_of(s, user.id)
+        await s.commit()
+    if not m or not team:
+        await respond(update, _no_team_text(), kb.team_no_kb())
+        return None
+    if not teams.is_manager(m):
+        await render_my_team(update, alert="👑 این بخش فقط مال رهبر و مدیران تیمه")
+        return None
+    return user, m, team
+
+
+async def render_manage(update: Update, alert: str | None = None) -> None:
+    """صفحه 👑 مدیریت تیم"""
+    got = await _require_manager(update)
+    if not got:
+        return
+    user, m, team = got
+    async with session_scope() as s:
+        n = len(await teams.get_requests(s, team.id))
+    text = (
+        f"<b>👑 مدیریت تیم «{esc(team.name)}»</b>\n\n"
+        f"📨 {fa_num(n)} درخواست عضویت تو صفه"
+    )
+    await respond(update, text, kb.team_manage_kb(), alert=alert)
+
+
+async def team_manage_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await render_manage(update)
+
+
+async def render_requests(update: Update, alert: str | None = None) -> None:
+    """صفحه 📨 درخواست‌های عضویت با دکمه قبول/رد برای تک تک"""
+    got = await _require_manager(update)
+    if not got:
+        return
+    user, m, team = got
+    async with session_scope() as s:
+        reqs = await teams.get_requests(s, team.id)
+        await s.commit()
+
+    lines = ["<b>📨 درخواست‌های عضویت</b>", ""]
+    if not reqs:
+        lines.append("درخواستی تو صف نیس")
+    else:
+        for i, (r, u) in enumerate(reqs, 1):
+            uname = f" | @{u.username}" if u.username else ""
+            lines.append(f"{fa_num(i)}. 👤 {esc(users.display_name(u))}{uname} | ⭐ لول {fa_num(u.level)}")
+        lines += [
+            "",
+            "با دکمه‌ها قبول یا ردشون کن",
+            "یا با دستور: «تیم درخواست @یوزر قبول» / «رد»",
+        ]
+    markup = kb.team_requests_kb([(r.id, users.display_name(u)) for r, u in reqs])
+    await respond(update, "\n".join(lines), markup, alert=alert)
+
+
+async def team_requests_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await render_requests(update)
+
+
+async def _resolve_request(update: Update, context, req, target, team, accept: bool) -> str:
+    """قبول/رد درخواست + دی‌ام به کاربر، متن نتیجه برای اعلان/جواب مدیر برمی‌گرده"""
+    tn = esc(team.name)
+    an = esc(users.display_name(target))
+    async with session_scope() as s:
+        req = await s.get(TeamRequest, req.id)
+        target = await users.get_by_tg(s, target.telegram_id) if target else None
+        if req is None or target is None:
+            await s.commit()
+            return "🤷 این درخواست دیگه نیس (قبول یا رد شده)"
+        if accept:
+            ok, why = await teams.accept_request(s, req, target)
+            await s.commit()
+            if not ok:
+                await _dm(context, target.telegram_id, f"<b>❌ درخواستت برای تیم «{tn}» قبول نشد</b>")
+                return why
+        else:
+            await teams.reject_request(s, req)
+            await s.commit()
+    if accept:
+        await _dm(context, target.telegram_id,
+                  f"<b>🎉 درخواستت برای تیم «{tn}» قبول شد</b>\n\nخوش اومدی به تیم 🏴")
+        return f"✅ «{an}» عضو تیم شد"
+    await _dm(context, target.telegram_id, f"<b>❌ درخواستت برای تیم «{tn}» رد شد</b>")
+    return "❌ درخواست رد شد"
+
+
+async def team_request_resolve_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """دکمه‌های ✅ قبول و ❌ رد تو لیست 📨 درخواست‌های عضویت"""
+    act, req_id = parts(update)[1], int(parts(update)[2])
+    got = await _require_manager(update)
+    if not got:
+        return
+    user, m, team = got
+    async with session_scope() as s:
+        row = await teams.get_request(s, req_id)
+        if not row:
+            await s.commit()
+            return await render_requests(update, alert="🤷 این درخواست دیگه نیس (قبول یا رد شده)")
+        req, target = row
+        if req.team_id != team.id:
+            await s.commit()
+            return await render_my_team(update, alert="👑 این درخواست مال تیم تو نیس")
+        await s.commit()
+
+    msg = await _resolve_request(update, context, req, target, team, accept=(act == "ok"))
+    await render_requests(update, alert=msg)
+
+
+async def team_request_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«تیم درخواست @یوزر قبول|رد|اکسپت|ریجکت»، نسخه متنی دکمه‌ها"""
+    txt = strip_bot_cmd(update.message.text or "")
+    m2 = re.match(r"^تیم[\s‌]+درخواست[\s‌]+(\S+)(?:[\s‌]+(قبول|رد|اکسپت|ریجکت))?$", txt)
+    if not m2:
+        return await respond(update, "🤷 این‌جوری بنویس: «تیم درخواست @یوزر قبول» یا «تیم درخواست @یوزر رد»")
+    query, act = m2.group(1), m2.group(2)
+    if not act:
+        return await respond(update, "🤷 آخرش رو بگو: «قبول» یا «رد» (اکسپت و ریجکت هم جوابه)")
+    accept = act in ("قبول", "اکسپت")
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        team = await teams.get_team_of(s, user.id)
+        if not me or not team or not teams.is_manager(me):
+            await s.commit()
+            return await respond(update, "👑 این بخش فقط مال رهبر و مدیران تیمه")
+        row = await teams.find_request_by_query(s, me.team_id, query)
+        if not row:
+            await s.commit()
+            return await respond(update, f"🤷 درخواستی از «{esc(query)}» تو صف نیس")
+        req, target = row
+        await s.commit()
+
+    msg = await _resolve_request(update, context, req, target, team, accept)
+    await respond(update, msg, kb.team_back_kb())
+
+
+# ───────── 👢 اخراج عضو ─────────
+
+KICK_PROMPT = (
+    "👢 آیدی عددی یا @یوزرنیم یا بخشی از اسم عضو رو بفرست\n\n"
+    "❌ پشیمون شدی بنویس «لغو»"
+)
+
+
+async def team_kick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """دکمه 👢 اخراج عضو تو مدیریت تیم، ورودی بعدی کاربر سرچ میشه"""
+    got = await _require_manager(update)
+    if not got:
+        return
+    user, m, team = got
+    async with session_scope() as s:
+        u2 = await users.get_by_tg(s, user.telegram_id)
+        u2.pending_action = "teamkick"
+        u2.pending_value = None
+        await s.commit()
+    await respond(update, KICK_PROMPT)
+
+
+async def kick_search_respond(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
+    """جستجوی عضو و نمایش صفحه تایید اخراج، مخاطب تایید فقط خود مدیره"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        team = await teams.get_team_of(s, user.id)
+        if not me or not team or not teams.is_manager(me):
+            await s.commit()
+            return await respond(update, "👑 این بخش فقط مال رهبر و مدیران تیمه")
+
+        hit = await teams.find_team_member(s, me.team_id, query)
+        if not hit:
+            await s.commit()
+            return await respond(update, "🤷 عضوی با این مشخصات تو تیم پیدا نشد", kb.team_back_kb())
+        mrow, target = hit
+        okk, why = teams.can_kick(me, mrow)
+        if not okk:
+            await s.commit()
+            return await respond(update, why, kb.team_back_kb())
+
+        mid = mrow.id
+        name = esc(users.display_name(target))
+        uname = target.username
+        lvl = target.level
+        tg_id = target.telegram_id
+        await s.commit()
+
+    lines = [
+        "<b>👤 عضو پیدا شد</b>", "",
+        f"🏴 {name}",
+        f"🆔 {fa_num(tg_id)}",
+    ]
+    if uname:
+        lines.append(f"🔗 @{uname}")
+    lines += [f"⭐ لول {fa_num(lvl)}", "", "واقعاً از تیم اخراج شود؟"]
+    await respond(update, "\n".join(lines), kb.kick_confirm_kb(mid))
+
+
+async def team_kick_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«تیم کیک @یوزر»، اسم یا آیدی عددی هم جوابه"""
+    txt = strip_bot_cmd(update.message.text or "")
+    m2 = re.match(r"^تیم[\s‌]+کیک[\s‌]+(.+)$", txt)
+    if not m2:
+        return await respond(update, "🤷 این‌جوری بنویس: «تیم کیک @یوزر» (اسم یا آیدی هم میشه)")
+    await kick_search_respond(update, context, m2.group(1))
+
+
+async def team_kick_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """✅ اخراج از صفحه تایید"""
+    mid = int(parts(update)[1])
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        team = await teams.get_team_of(s, user.id)
+        if not me or not team or not teams.is_manager(me):
+            await s.commit()
+            return await render_my_team(update, alert="👑 این بخش فقط مال رهبر و مدیران تیمه")
+
+        mrow = await s.get(TeamMember, mid)
+        if not mrow or mrow.team_id != me.team_id:
+            await s.commit()
+            return await render_manage(update, alert="🤷 عضو دیگه تو تیم نیس")
+        okk, why = teams.can_kick(me, mrow)
+        target = await s.get(User, mrow.user_id)
+        if not okk:
+            await s.commit()
+            return await render_manage(update, alert=why)
+
+        target_tg = target.telegram_id if target else None
+        name = esc(users.display_name(target)) if target else "؟"
+        tname = esc(team.name)
+        await s.delete(mrow)
+        await s.commit()
+
+    await _dm(context, target_tg, f"<b>👢 از تیم «{tname}» اخراج شدی</b>")
+    await render_manage(update, alert=f"👢 «{name}» از تیم اخراج شد")
+
+
+async def team_kick_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """❌ انصراف از اخراج، برگشت به مدیریت"""
+    await render_manage(update)
+
+
+# ───────── 🛡 مدیر گذاشتن (فقط رهبر) ─────────
+
+async def team_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«تیم ادمین @یوزر»، عضو عادی ↔ مدیر، فقط رهبر"""
+    txt = strip_bot_cmd(update.message.text or "")
+    m2 = re.match(r"^تیم[\s‌]+ادمین[\s‌]+(.+)$", txt)
+    if not m2:
+        return await respond(update, "🤷 این‌جوری بنویس: «تیم ادمین @یوزر»")
+    query = m2.group(1)
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        team = await teams.get_team_of(s, user.id)
+        ok, why, target, made = await teams.toggle_admin(s, user, query)
+        if not ok:
+            await s.commit()
+            return await respond(update, why)
+        target_tg = target.telegram_id
+        name = esc(users.display_name(target))
+        tname = esc(team.name if team else "؟")
+        await s.commit()
+
+    if made:
+        await _dm(context, target_tg, f"<b>🎉 تو تیم «{tname}» مدیر شدی</b>\n\nبخش 👑 مدیریت تیم برات بازه")
+        return await respond(
+            update,
+            f"<b>🛡 «{name}» مدیر تیم شد</b>\n\nبه 📨 درخواست‌های عضویت و بخش مدیریت دسترسی داره",
+            kb.team_back_kb(),
+        )
+    await _dm(context, target_tg, f"<b>👤 مدیریتت تو تیم «{tname}» گرفته شد</b>")
+    await respond(update, f"<b>👤 «{name}» دیگه مدیر نیس</b>", kb.team_back_kb())

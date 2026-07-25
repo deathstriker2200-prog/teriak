@@ -119,6 +119,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
 
     a_atk, _ = await powers(session, attacker)
     _, t_dfn = await powers(session, victim)
+    artis = user_svc.artifact_keys(await user_svc.get_item_keys(session, attacker.id))
     chance = win_chance(a_atk, t_dfn)
     won = random.random() < chance
 
@@ -131,6 +132,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         attacker.wins += 1
         victim.losses += 1
         pct = random.uniform(config.PV_ATTACK_STEAL_MIN_PCT, config.PV_ATTACK_STEAL_MAX_PCT)
+        pct *= 1 + user_svc.artifact_steal_bonus(artis)
         steal = max(0, int(victim.cash * pct))
         if steal:
             victim.cash -= steal
@@ -145,6 +147,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
             victim.cash += penalty
         xp = config.PV_ATTACK_LOSE_XP
 
+    xp = int(xp * user_svc.artifact_xp_mult(artis))
     notes = user_svc.add_xp(attacker, xp)
     # قربانی هم یه تجربه ناچیز می‌گیره، حمله نکرده ولی خورده
     victim_xp = config.PV_ATTACK_VICTIM_XP

@@ -78,7 +78,10 @@ async def main() -> None:
 
     check("قیمت و قدرت همه سلاح‌ها مثبته", all(w["price"] > 0 and w["attack"] > 0 for w in config.WEAPONS.values()))
     check("همه آیتم‌ها desc و min_level دارن",
-          all(i.get("desc") and "min_level" in i for i in list(config.WEAPONS.values()) + list(config.ARMORS.values()) + list(config.SEEDS.values()) + list(config.DOGS.values())))
+          all(i.get("desc") and "min_level" in i for i in list(config.WEAPONS.values()) + list(config.ARMORS.values()) + list(config.SEEDS.values())))
+    check("همه نژادها trait_line و min_level دارن",
+          all(d.get("trait_line") and "min_level" in d for d in config.DOGS.values()))
+    check("همه سلاح‌ها آهن خرید دارن", all(w.get("iron", 0) > 0 for w in config.WEAPONS.values()))
 
     # ═══ منحنی تجربه ═══
     needs = [economy.xp_need(l) for l in range(1, 21)]
@@ -131,8 +134,14 @@ async def main() -> None:
     y1 = economy.crop_yield("teriak", 1, 1)
     y2 = economy.crop_yield("teriak", 2, 1)
     y3 = economy.crop_yield("teriak", 1, 11)
-    check("برداشت با لول زمین بیشتره", y2 > y1, f"{y1}→{y2}")
+    check("لول زمین روی قیمت محصول اثر مستقیم نداره", y2 == y1, f"{y1}→{y2}")
     check("برداشت با لول کاربر بیشتره (۲% هر لول)", y3 > y1, f"{y1}→{y3}")
+    check("لول زمین شانس محصول افسانه‌ای رو بیشتر می‌کنه",
+          economy.plot_quality_bonus(1) == 0
+          and abs(economy.plot_quality_bonus(6) - 5 * config.PLOT_Q5_PER_LEVEL) < 1e-9
+          and config.PLOT_Q5_PER_LEVEL == 0.03)
+    check("لول زمین هنوز رشد رو سریع‌تر می‌کنه",
+          economy.plot_speed_mult(2) > economy.plot_speed_mult(1))
 
     rolls = [economy.mine_roll() for _ in range(20000)]
     low = sum(1 for r in rolls if r <= config.MINE_COMMON_MAX) / len(rolls)
@@ -230,12 +239,19 @@ async def main() -> None:
         ok, msg = await shop_svc.purchase(s, u1, "weap", "plasma")
         check("سلاح قفل‌روی‌لول رد میشه", not ok and "لول" in msg)
         u1.cash = 500000
+        u1.iron = 1000
         ok, msg = await shop_svc.purchase(s, u1, "weap", "deagle")
         u1.level = 5
         check("سلاح بالاتر از لول قفله", not ok)
         u1.level = 15
+        u1.iron = 0
+        ok, msg = await shop_svc.purchase(s, u1, "weap", "deagle")
+        check("بدون آهن سلاح خریده نمیشه", not ok and "آهن" in msg, msg)
+        u1.iron = 1000
+        iron_b = u1.iron
         ok, msg = await shop_svc.purchase(s, u1, "weap", "deagle")
         check("با لول کافی خریده", ok)
+        check("آهن سلاح از انبار کم شد", u1.iron == iron_b - config.WEAPONS["deagle"]["iron"], str(u1.iron))
         ok, msg = await shop_svc.purchase(s, u1, "weap", "deagle")
         check("خرید تکراری سلاح رد میشه", not ok)
 
@@ -456,7 +472,7 @@ async def main() -> None:
         check("حریف زیادی قوی هیچ دمیجی نمی‌خوره",
               res_no["ok"] and res_no.get("nodmg") and d.hp == battle_svc.max_hp(20), str(res_no)[:80])
         check("تلاش بی‌نتیجه هم انرژی و کولدان می‌سوزونه",
-              w.energy < config.MAX_ENERGY and battle_svc.cooldown_left(w) > 0)
+              w.energy < config.MAX_ENERGY and (await battle_svc.cooldown_left(s, w)) > 0)
 
         # ── شکست = ۱۰ دقیقه بیهوشی و زنده شدن خودکار با HP فول ──
         u1.energy = config.MAX_ENERGY
@@ -657,13 +673,30 @@ async def main() -> None:
         check("اسم تکراری بلاکه (حتی با فاصله عادی)",
               (await team_svc.create_team(s, m2, "فوتبالیست ها"))[0] is False)
 
-        check("زیر لول ۵ جوین بلاکه", (await team_svc.join_team(s, m1, "فوتبالیست‌ها"))[0] is False)
-        m1.level = 5
-        ok, name1 = await team_svc.join_team(s, m1, "فوتبالیست‌ها")
-        check("جوین ممبر۱", ok and name1 == "فوتبالیست‌ها", str(name1))
-        ok, name2 = await team_svc.join_team(s, m2, "فوتبالیست ها")
-        check("جوین با فاصله عادی (نرمالایز اسم)", ok, str(name2))
-        check("جوین دوباره بلاکه", (await team_svc.join_team(s, m2, "فوتبالیست‌ها"))[0] is False)
+        check("گیت لول عضویت تیم ۳ـه", config.TEAM_JOIN_MIN_LEVEL == 3)
+        m1.level = 2
+        check("زیر لول ۳ جوین بلاکه", (await team_svc.request_join(s, m1, "فوتبالیست‌ها"))[0] is False)
+        m1.level = 3
+        ok, name1 = await team_svc.request_join(s, m1, "فوتبالیست‌ها")
+        check("جوین عضویت مستقیم نیس، درخواست ثبت میشه", ok and name1 == "فوتبالیست‌ها", str(name1))
+        m1m = await team_svc.get_membership(s, m1.id)
+        check("بعد درخواست هنوز عضو تیم نیس", m1m is None)
+        ok, name2 = await team_svc.request_join(s, m2, "فوتبالیست ها")
+        check("درخواست با فاصله عادی (نرمالایز اسم)", ok, str(name2))
+        check("درخواست دوبل به همون تیم بلاکه", (await team_svc.request_join(s, m2, "فوتبالیست‌ها"))[0] is False)
+        t0 = await team_svc.get_team_of(s, o.id)
+        reqs = await team_svc.get_requests(s, t0.id)
+        check("لیست درخواست‌ها دوتاست", len(reqs) == 2, str(len(reqs)))
+
+        # قبول خلاف قوانین بدون مجوز نیس، خود سرویس عضویت و ظرفیت رو چک می‌کنه
+        req1, u1_r = next(x for x in reqs if x[1].telegram_id == 7706)
+        ok_acc, why_acc = await team_svc.accept_request(s, req1, u1_r)
+        check("قبول درخواست ممبر۱ عضوش می‌کنه", ok_acc and (await team_svc.get_membership(s, m1.id)) is not None)
+        req2, u2_r = next(x for x in reqs if x[1].telegram_id == 7707)
+        ok_acc2, _ = await team_svc.accept_request(s, req2, u2_r)
+        check("قبول درخواست ممبر۲ هم عضوش می‌کنه", ok_acc2 and (await team_svc.get_membership(s, m2.id)) is not None)
+        reqs2 = await team_svc.get_requests(s, t0.id)
+        check("بعد قبول صف خالیه", len(reqs2) == 0)
 
         check("بیو رو فقط رهبر می‌ذاره", (await team_svc.set_bio(s, o, "بهترین تیم محله 🏆"))[0] is True
               and (await team_svc.set_bio(s, m1, "x"))[0] is False)
@@ -677,6 +710,310 @@ async def main() -> None:
         team_id = team.id
         check("ظرفیت تیم ۱۰ نفره", config.TEAM_MAX_MEMBERS == 10)
         await s.commit()
+
+    # ═══ 👑 مدیریت تیم: درخواست عضویت | قبول/رد | اخراج | ادمین ═══
+    from handlers import team as team_h5
+    from keyboards import keyboards as kb_t5
+
+    class _TQ(SimpleNamespace):
+        async def answer(self, *a, **k):
+            self.calls.append(("answer", a, k))
+        async def edit_message_text(self, text, **k):
+            self.calls.append(("edit", text, k))
+
+    def _tfake(data, uid):
+        q = _TQ(data=data, message=SimpleNamespace(photo=None), calls=[])
+        async def _qreply(text, **k):
+            q.calls.append(("reply", text, k))
+        q.message.reply_html = _qreply
+        return SimpleNamespace(
+            callback_query=q,
+            effective_message=q.message,
+            effective_user=SimpleNamespace(id=uid, username="x", first_name="ایکس"),
+            effective_chat=SimpleNamespace(type="private"),
+        )
+
+    def _tgroup(txt, uid, uname, fname):
+        msg = _Msg(text=txt, calls=[], chat_id=-8451, message_id=976)
+        return SimpleNamespace(
+            message=msg, effective_message=msg,
+            effective_user=SimpleNamespace(id=uid, username=uname, first_name=fname),
+            effective_chat=SimpleNamespace(type="supergroup", id=-8451), callback_query=None,
+        )
+
+    class _TBot:
+        def __init__(self):
+            self.sent = []
+        async def send_message(self, chat_id, text, **k):
+            self.sent.append((chat_id, text))
+
+    tctx = SimpleNamespace(bot=_TBot())
+
+    # ── سرچ فازی عضو داخل تیم ──
+    async with session_scope() as s:
+        k1, _ = await users.get_or_create(s, tg(7710, "vqur", "قربانی تیم"))
+        k1.level = 5
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        from models import TeamMember as _TM, TeamRequest as _TR
+        s.add(_TM(team_id=t0.id, user_id=k1.id, role="member"))
+        await s.commit()
+        hit_id = await team_svc.find_team_member(s, t0.id, "7710")
+        hit_un = await team_svc.find_team_member(s, t0.id, "@vqur")
+        hit_name = await team_svc.find_team_member(s, t0.id, "قربانی")
+        hit_part = await team_svc.find_team_member(s, t0.id, "ربان")
+        check("سرچ عضو با آیدی و یوزرنیم و اسم و بخشی از اسم",
+              all(h is not None and h[1].telegram_id == 7710 for h in (hit_id, hit_un, hit_name, hit_part)))
+        check("سرچ مزخرف هیچی نمیاره", (await team_svc.find_team_member(s, t0.id, "xyznosuch")) is None)
+
+        # ── قوانین اخراج و ادمین ──
+        me_o = await team_svc.get_membership(s, (await users.get_by_tg(s, 7705)).id)
+        t_m = await team_svc.get_membership(s, k1.id)
+        okk, _ = team_svc.can_kick(me_o, t_m)
+        check("رهبر می‌تونه عضو عادی رو اخراج کنه", okk)
+        m_admin = await team_svc.get_membership(s, k1.id)
+        m_admin.role = "admin"
+        me2 = await team_svc.get_membership(s, (await users.get_by_tg(s, 7706)).id)
+        me2.role = "admin"
+        okk2, why2 = team_svc.can_kick(me2, m_admin)
+        check("مدیر نمی‌تونه مدیر دیگه رو اخراج کنه", not okk2 and "رهبر" in why2)
+        me2.role = "member"
+        m_admin.role = "member"
+        okk3, _ = team_svc.can_kick(me2, me_o)
+        check("رهبر که اخراج نمیشه", not okk3)
+        await s.commit()
+
+    # ── کیبورد تیم: دکمه مدیریت فقط جلوی رهبر و مدیر ──
+    kk_owner = kb_t5.team_kb(is_owner=True, is_manager=True)
+    kk_member = kb_t5.team_kb()
+    kk_admin = kb_t5.team_kb(is_manager=True)
+    d_owner = [b.callback_data for row in kk_owner.inline_keyboard for b in row]
+    d_member = [b.callback_data for row in kk_member.inline_keyboard for b in row]
+    d_admin = [b.callback_data for row in kk_admin.inline_keyboard for b in row]
+    check("دکمه 👑 مدیریت تیم فقط مال رهبر و مدیره",
+          "team:mng" in d_owner and "team:mng" in d_admin
+          and "team:mng" not in d_member and "team:disband" in d_owner and "team:leave" in d_admin)
+
+    # ─«جوین تیم» پیام ثبت درخواست دقیق رو میده ──
+    async with session_scope() as s:
+        j1, _ = await users.get_or_create(s, tg(7712, "nwj1", "تازه‌کار۲"))
+        j1.level = 3
+        await s.commit()
+    upd = _text_update("جوین تیم فوتبالیست‌ها", uid=7712, uname="nwj1", fname="تازه‌کار۲")
+    await team_h5.join_team_text(upd, tctx)
+    check("پیام ثبت درخواست عضویت دقیقه",
+          upd.message.calls[-1][1] == "<b>📨 درخواست عضویت برای تیم «فوتبالیست‌ها» ارسال شد</b>\n\nمنتظر تأیید مدیران باش",
+          upd.message.calls[-1][1][:80])
+
+    # ── صفحه مدیریت و لیست درخواست‌ها ──
+    upd = _tfake("team:mng", uid=7705)
+    await team_h5.team_manage_cb(upd, tctx)
+    mt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه مدیریت تیم اسم تیم و شمار درخواست رو داره",
+          "👑 مدیریت تیم «فوتبالیست‌ها»" in mt and "1 درخواست عضویت تو صفه" in mt, mt[:80])
+
+    upd = _tfake("team:req", uid=7705)
+    await team_h5.team_requests_cb(upd, tctx)
+    rt5 = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    rkb5 = next((c[2].get("reply_markup") for c in upd.callback_query.calls if c[0] == "edit"), None)
+    rdata5 = [b.callback_data for row in rkb5.inline_keyboard for b in row] if rkb5 else []
+    async with session_scope() as s:
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        rid12 = (await team_svc.get_requests(s, t0.id))[0][0].id
+    check("لیست 📨 درخواست‌ها اسم و لول کاربر رو داره و دکمه قبول و رد",
+          "تازه‌کار۲" in rt5 and "@nwj1" in rt5 and "لول 3" in rt5
+          and f"treq:ok:{rid12}" in rdata5 and f"treq:no:{rid12}" in rdata5, rt5[:90])
+
+    # ── عضو عادی نمی‌تونه صفحه مدیریت رو ببینه ──
+    upd = _tfake("team:mng", uid=7706)
+    await team_h5.team_manage_cb(upd, tctx)
+    ans5 = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
+    check("صفحه مدیریت برای عضو عادی قفله",
+          ans5 is not None and ans5[1] and "فقط مال رهبر و مدیران" in str(ans5[1][0]), str(ans5)[:70])
+
+    # ── قبول با دکمه: عضو میشه + دی‌ام به کاربر + الرت به مدیر ──
+    nsent = len(tctx.bot.sent)
+    upd = _tfake(f"treq:ok:{rid12}", uid=7705)
+    await team_h5.team_request_resolve_cb(upd, tctx)
+    ans5 = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
+    async with session_scope() as s:
+        m12 = await team_svc.get_membership(s, (await users.get_by_tg(s, 7712)).id)
+    dm5 = tctx.bot.sent[-1] if tctx.bot.sent else (0, "")
+    check("قبول با دکمه کاربر رو عضو می‌کنه و بهش دی‌ام میره",
+          m12 is not None and len(tctx.bot.sent) == nsent + 1
+          and dm5[0] == 7712 and "قبول شد" in dm5[1] and "فوتبالیست‌ها" in dm5[1]
+          and ans5 is not None and ans5[1] and "عضو تیم شد" in str(ans5[1][0]), dm5[1][:70])
+
+    # ── رد با دکمه: پاک میشه + دی‌ام رد ──
+    async with session_scope() as s:
+        j2, _ = await users.get_or_create(s, tg(7713, "nwj2", "ردشده"))
+        j2.level = 3
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        await team_svc.request_join(s, j2, "فوتبالیست‌ها")
+        await s.commit()
+        rid13 = (await team_svc.get_requests(s, t0.id))[0][0].id
+    nsent = len(tctx.bot.sent)
+    upd = _tfake(f"treq:no:{rid13}", uid=7705)
+    await team_h5.team_request_resolve_cb(upd, tctx)
+    dm5 = tctx.bot.sent[-1] if tctx.bot.sent else (0, "")
+    async with session_scope() as s:
+        m13 = await team_svc.get_membership(s, (await users.get_by_tg(s, 7713)).id)
+        rq13 = await team_svc.get_requests(s, t0.id)
+    check("رد با دکمه درخواست رو پاک می‌کنه و دی‌ام رد میره",
+          m13 is None and len(rq13) == 0 and len(tctx.bot.sent) == nsent + 1
+          and dm5[0] == 7713 and "رد شد" in dm5[1], dm5[1][:70])
+
+    # ─«تیم درخواست @یوزر قبول» و قفل سطح دسترسی ──
+    async with session_scope() as s:
+        j3, _ = await users.get_or_create(s, tg(7714, "nwj3", "متنی"))
+        j3.level = 3
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        await team_svc.request_join(s, j3, "فوتبالیست‌ها")
+        await s.commit()
+    upd = _tgroup("تیم درخواست @nwj3 قبول", 7705, "ownx", "رهبر")
+    await team_h5.team_request_text(upd, tctx)
+    gtxt = upd.message.calls[-1][1]
+    async with session_scope() as s:
+        m14 = await team_svc.get_membership(s, (await users.get_by_tg(s, 7714)).id)
+    check("تیم درخواست قبول متنی عضوش می‌کنه",
+          m14 is not None and "عضو تیم شد" in gtxt, gtxt[:70])
+    upd = _tgroup("تیم درخواست @nwj3 رد", 7706, "mm1", "ممبر۱")
+    await team_h5.team_request_text(upd, tctx)
+    check("عضو عادی دستور درخواست نداره",
+          "فقط مال رهبر و مدیران تیمه" in upd.message.calls[-1][1])
+
+    # ── ریجکت/اکسپت هم جوابه ──
+    async with session_scope() as s:
+        j4, _ = await users.get_or_create(s, tg(7716, "nwj4", "چهارم"))
+        j4.level = 3
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        await team_svc.request_join(s, j4, "فوتبالیست‌ها")
+        await s.commit()
+    nsent = len(tctx.bot.sent)
+    upd = _tgroup("تیم درخواست @nwj4 ریجکت", 7705, "ownx", "رهبر")
+    await team_h5.team_request_text(upd, tctx)
+    check("ریجکت به زبان لاتین هم جوابه",
+          "رد شد" in upd.message.calls[-1][1] and len(tctx.bot.sent) == nsent + 1)
+
+    # ─«تیم کیک» صفحه تایید میاره و اجرا عضو رو حذف می‌کنه ──
+    upd = _tgroup("تیم کیک @vqur", 7705, "ownx", "رهبر")
+    await team_h5.team_kick_text(upd, tctx)
+    ktxt = upd.message.calls[-1][1]
+    kkb = upd.message.calls[-1][2].get("reply_markup")
+    kd = [b.callback_data for row in kkb.inline_keyboard for b in row] if kkb else []
+    async with session_scope() as s:
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        mid10 = (await team_svc.get_membership(s, (await users.get_by_tg(s, 7710)).id)).id
+    check("تیم کیک صفحه تایید عضو پیدا شد رو میده",
+          "👤 عضو پیدا شد" in ktxt and "قربانی تیم" in ktxt and "واقعاً از تیم اخراج شود؟" in ktxt
+          and kd == [f"tkick:{mid10}", "tkcl"], ktxt[:80])
+
+    nsent = len(tctx.bot.sent)
+    upd = _tfake(f"tkick:{mid10}", uid=7705)
+    await team_h5.team_kick_execute(upd, tctx)
+    ans5 = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
+    async with session_scope() as s:
+        m10 = await team_svc.get_membership(s, (await users.get_by_tg(s, 7710)).id)
+    dm5 = tctx.bot.sent[-1] if tctx.bot.sent else (0, "")
+    check("اخراج عضو حذفش می‌کنه و دی‌ام میره",
+          m10 is None and len(tctx.bot.sent) == nsent + 1 and dm5[0] == 7710 and "اخراج شدی" in dm5[1]
+          and ans5 is not None and ans5[1] and "اخراج شد" in str(ans5[1][0]), dm5[1][:60])
+
+    # انصراف از اخراج برمی‌گردونه به صفحه مدیریت
+    upd = _tfake("tkcl", uid=7705)
+    await team_h5.team_kick_cancel(upd, tctx)
+    rt5 = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    check("انصراف اخراج برمی‌گرده صفحه مدیریت", "👑 مدیریت تیم" in rt5, rt5[:60])
+
+    # ── جریان pending دکمه 👢 اخراج عضو ──
+    async with session_scope() as s:
+        k2, _ = await users.get_or_create(s, tg(7715, "vqur2", "قربانی۲"))
+        k2.level = 4
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        s.add(_TM(team_id=t0.id, user_id=k2.id, role="member"))
+        await s.commit()
+    upd = _tfake("team:kick", uid=7705)
+    await team_h5.team_kick_cb(upd, tctx)
+    edit5 = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    check("دکمه اخراج عضو جست‌وجو می‌خواد", "آیدی عددی" in edit5 and "بخشی از اسم" in edit5, edit5[:80])
+
+    from handlers import pending as pending_h5
+    upd = _text_update("قربانی۲", uid=7705, uname="ownx", fname="رهبر")
+    try:
+        await pending_h5.capture(upd, tctx)
+        _stopped = False
+    except Exception:
+        _stopped = True
+    ctext = upd.message.calls[-1][1]
+    async with session_scope() as s:
+        o5 = await users.get_by_tg(s, 7705)
+        pend5 = o5.pending_action
+    check("pending اخراج با بخشی از اسم صفحه تایید رو میاره و pending پاک میشه",
+          "👤 عضو پیدا شد" in ctext and "قربانی۲" in ctext and pend5 is None, ctext[:70])
+
+    # مدیر نمی‌تونه مدیر رو اخراج کنه (رهبر می‌تونه)
+    async with session_scope() as s:
+        o_own = await users.get_by_tg(s, 7706)
+        m_adm = await team_svc.get_membership(s, o_own.id)
+        m_adm.role = "admin"
+        o5 = await users.get_by_tg(s, 7715)
+        m_t = await team_svc.get_membership(s, o5.id)
+        m_t.role = "admin"
+        await s.commit()
+    upd = _tgroup("تیم کیک @vqur2", 7706, "mm1", "ممبر۱")
+    await team_h5.team_kick_text(upd, tctx)
+    check("مدیر نمی‌تونه مدیر دیگه رو اخراج کنه",
+          "اخراج مدیر فقط با رهبره" in upd.message.calls[-1][1])
+    async with session_scope() as s:
+        m_adm = await team_svc.get_membership(s, (await users.get_by_tg(s, 7706)).id)
+        m_adm.role = "member"
+        m_t = await team_svc.get_membership(s, (await users.get_by_tg(s, 7715)).id)
+        m_t.role = "member"
+        await s.commit()
+
+    # ─«تیم ادمین @یوزر» فقط با رهبره و رفت‌وبرگشته ──
+    nsent = len(tctx.bot.sent)
+    upd = _tgroup("تیم ادمین @mm1", 7705, "ownx", "رهبر")
+    await team_h5.team_admin_text(upd, tctx)
+    gtxt = upd.message.calls[-1][1]
+    async with session_scope() as s:
+        m_adm = await team_svc.get_membership(s, (await users.get_by_tg(s, 7706)).id)
+    check("رهبر عضو رو مدیر می‌کنه و دی‌ام میره",
+          m_adm is not None and m_adm.role == "admin" and "مدیر تیم شد" in gtxt
+          and len(tctx.bot.sent) == nsent + 1 and tctx.bot.sent[-1][0] == 7706, gtxt[:60])
+    upd = _tgroup("تیم ادمین @ownx", 7706, "mm1", "ممبر۱")
+    await team_h5.team_admin_text(upd, tctx)
+    check("مدیر نمی‌تونه مدیر بذاره (فقط رهبر)",
+          "فقط رهبر می‌تونه مدیر بذاره" in upd.message.calls[-1][1])
+
+    # مدیر تازه صفحه مدیریت رو می‌بینه
+    upd = _tfake("team:mng", uid=7706)
+    await team_h5.team_manage_cb(upd, tctx)
+    rt5 = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
+    check("مدیر هم صفحه مدیریت رو می‌بینه", "👑 مدیریت تیم" in rt5, rt5[:50])
+
+    # _tfake یوزرنیم ۷۷۰۶ رو x کرده بود، برش می‌گردونیم mm1
+    async with session_scope() as s:
+        (await users.get_by_tg(s, 7706)).username = "mm1"
+        await s.commit()
+
+    upd = _tgroup("تیم ادمین @mm1", 7705, "ownx", "رهبر")
+    await team_h5.team_admin_text(upd, tctx)
+    async with session_scope() as s:
+        m_adm = await team_svc.get_membership(s, (await users.get_by_tg(s, 7706)).id)
+    check("مدیریت گرفته هم میشه", m_adm is not None and m_adm.role == "member"
+          and "دیگه مدیر نیس" in upd.message.calls[-1][1])
+
+    # پاکسازی اعضای اضافه‌شده، تیم برای تست‌های بعدی دوباره ۳ نفره‌ست
+    async with session_scope() as s:
+        for tgid in (7712, 7714, 7715):
+            u = await users.get_by_tg(s, tgid)
+            m = await team_svc.get_membership(s, u.id)
+            if m:
+                await s.delete(m)
+        await s.commit()
+        t0 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 7705)).id)
+        n_back = await team_svc.member_count(s, t0.id)
+        check("بعد تست مدیریت، تیم دوباره ۳ نفره‌ست", n_back == 3, str(n_back))
 
     # ═══ کوئست‌های روزانه گروهی ═══
     async with session_scope() as s:
@@ -1345,6 +1682,7 @@ async def main() -> None:
         flow, _ = await users.get_or_create(s, _fake_update("x").effective_user)
         flow.cash = 200000
         flow.level = 15
+        flow.iron = 1000
         await s.commit()
 
     upd = _fake_update("shop:buy:weap:pipe")
@@ -1567,7 +1905,8 @@ async def main() -> None:
               and "🌱 سرعت رشد گیاه ها 20% کاهش پیدا کرد، تا 2 ساعت آینده" in txth,
               txth.replace("\n", " | ")[:120])
         check("برگشت هوای عادی هم اعلام میشه",
-              "هوا به حالت عادی برگشت" in world_svc.weather_announce_text("normal"))
+              world_svc.weather_announce_text("normal") ==
+              "<b>🌦 وضعیت آب و هوای جدید</b>\n\n🏙️ هوای محله صافِ صاف شد الان دیگه هیچ افکت خاصی فعال نیست")
         view = await world_svc.weather_view(s)
         check("ویوی آب و هوا ساخته میشه", view["key"] in config.WEATHERS and view["left"] > 0)
         await s.commit()
@@ -2192,11 +2531,18 @@ async def main() -> None:
                                        "مجموع تی‌پوینت"]), stats_txt[:60])
 
     # ── شخصیت سگ‌ها 💫 ──
-    check("۵ شخصیت تعریف شدن",
-          set(config.DOG_PERSONALITIES) == {"loyal", "warrior", "guard", "hunter", "lucky"})
+    check("شخصیت‌ها تعریف شدن",
+          set(config.DOG_PERSONALITIES) == {"loyal", "warrior", "furious", "swift", "hunter",
+                                            "wise", "obedient", "guard", "tough", "lucky"})
     check("گرگ سیاه شخصیت نمی‌گیره", dog_svc.roll_personality("blackwolf") is None)
     pers = {dog_svc.roll_personality("doberman") for _ in range(200)}
-    check("شخصیت رندوم از بین همون ۵ تاست", pers and pers <= set(config.DOG_PERSONALITIES) and len(pers) >= 3, str(pers))
+    check("دوبرمن فقط از استخر خودش شخصیت می‌گیره",
+          pers == {"swift", "hunter"}, str(pers))
+    pers2 = {dog_svc.roll_personality("pitbull") for _ in range(200)}
+    check("پیتبول فقط جنگجو یا خشمگین میشه", pers2 == {"warrior", "furious"}, str(pers2))
+    check("استخر هر نژاد مجزاست",
+          config.DOG_PERSONALITY_POOLS["kangal"] == ["guard", "tough"]
+          and config.DOG_PERSONALITY_POOLS["shepherd"] == ["wise", "obedient"])
 
     # ── رها کردن سگ 🕊 ──
     async with session_scope() as s:
@@ -2285,7 +2631,7 @@ async def main() -> None:
           "📈 وضعیت بازار سیاه" in mtxt and "ارزش خرید" in mtxt and "🔴" in mtxt and "🟢" in mtxt
           and "نشان می‌ده" in mtxt)
     check("خط محصول با قیمت فروش و پایه",
-          "🟢46% | قیمت فروش: 613 | قیمت پایه: 420" in mtxt, mtxt.splitlines()[6][:90])
+          "🟢46% | قیمت فروش: 438 | قیمت پایه: 300" in mtxt, mtxt.splitlines()[6][:90])
     check("محصول افت کرده 🔴 می‌گیره", "🔴12%" in mtxt and "📉 قارچ" in mtxt)
     check("تایمر ری‌رول بازار", "⏳ بازار 3 ساعت و 59 دقیقه دیگه ری‌رول میشه" in mtxt)
 
@@ -2332,28 +2678,28 @@ async def main() -> None:
     check("دکمه 🔙 آموزشات هست",
           "help:menu" in b_datas and any("آموزشات" in t for t in b_texts), str(b_texts))
     check("کیبورد برگشت هومم داره (تو گروه strip میشه)", "menu:home" in b_datas)  # تو گروه strip میشه
-    for must in ("تیم", "حمله", "سگ", "کاشت", "بانک"):
+    for must in ("تیم", "نبرد", "سگ", "مزرعه", "شرکت", "مخفیگاه", "منابع", "فروشگاه", "شروع بازی"):
         check(f"بخش «{must}» تو منوی هلپ هست", any(must in title for _, title in kb2.HELP_MENU))
 
-    # بخش سگ‌ها — متن کورییت‌شده کاربر: قابلیت هر نژاد + شخصیت‌ها (اعداد لاتین)
+    # بخش سگ‌ها — ویژگی اصلی هر نژاد بدون اعداد دقیق (بالانس‌پذیر)
     dog_sec = start_h2.HELP_SECTIONS["dogs"]
-    check("بخش سگ‌ها قابلیت هر نژاد رو داره",
+    check("بخش سگ‌ها ویژگی اصلی هر نژاد رو داره",
           all(x in dog_sec for x in [
-              "🐕 پیتبول", "قدرت حمله بیشتر",
-              "🐕 دوبرمن", "سرعت حمله بیشتر",
-              "🐕 ژرمن شپرد", "شانس پیدا کردن هدف بهتر",
-              "🐕 کانگال", "قدرت حمله بسیار بالا",
-              "👑 گرگ سیاه", "تا 30% دفاع حریف",
+              "پیتبول", "قدرت حمله بیشتر",
+              "دوبرمن", "کولدون حمله",
+              "ژرمن شپرد", "تجربه بیشتر از نبرد",
+              "کانگال", "دفاع بیشتر",
+              "گرگ سیاه", "غارت بیشتر",
           ]))
-    check("بخش سگ‌ها شخصیت‌ها رو داره",
-          all(x in dog_sec for x in [
-              "🦴 وفادار", "5% قدرت بیشتر",
-              "⚔ جنگجو", "10% قدرت بیشتر",
-              "🛡 نگهبان", "10% کاهش سکه از دست رفته",
-              "💰 شکارچی", "8% سکه بیشتر",
-              "🍀 خوش‌شانس", "شانس بیشتر برای پیدا کردن جایزه در جستجو",
-              "👑 گرگ سیاه شخصیت نداره",
-          ]))
+    check("بخش سگ‌ها استخر شخصیت مخصوص نژاد رو توضیح میده",
+          "شخصیت‌های مخصوص خودش" in dog_sec)
+    check("بخش سگ‌ها تجربه از نبرد و تغییر اسم رو داره",
+          "از نبرد تجربه" in dog_sec and "اسم سگ" in dog_sec)
+    check("بخش شرکت و منابع و مخفیگاه تو هلپ هستن",
+          all(k in start_h2.HELP_SECTIONS for k in ("company", "resources", "shelter", "start", "battle", "shop")))
+    check("تو متن هلپ درصد و ضریب دقیق نیس",
+          "%" not in start_h2.HELP_SECTIONS["company"] and "%" not in start_h2.HELP_SECTIONS["farm"]
+          and "×" not in start_h2.HELP_SECTIONS["resources"])
 
     upd = _text_update("تریاکی راهنما", uid=8811, uname="helpr", fname="هلپر")
     await start_h2.help_cmd(upd, None)
@@ -2378,7 +2724,7 @@ async def main() -> None:
     await start_h2.help_section_cb(upd, None)
     edittext = next(c[1] for c in upd.callback_query.calls if c[0] == "edit")
     check("بخش تیم هلپ باز میشه با 🔙 آموزشات",
-          "<b>🏴 تیم</b>" in edittext and "جوین تیم" in edittext)
+          "<b>👥 تیم</b>" in edittext and "جوین تیم" in edittext)
     upd = _fake_update("help:menu", uid=8811)
     await start_h2.help_menu_cb(upd, None)
     backtext = next(c[1] for c in upd.callback_query.calls if c[0] == "edit")
@@ -2529,11 +2875,14 @@ async def main() -> None:
 
     # ── زمین: مکس لول ۶، آپگریدهای گرون‌تر با گیت لول ──
     check("مکس لول زمین ۶ه", config.PLOT_MAX_LEVEL == 6)
-    check("قیمت آپگرید زمین جدید و رنده",
-          config.PLOT_UPGRADE_PRICES == [5000, 10000, 30000, 100000, 200000]
-          and economy.upgrade_price(1) == 5000 and economy.upgrade_price(4) == 100000
-          and economy.upgrade_price(5) == 200000,
+    check("قیمت آپگرید زمین گرون‌تر و رنده",
+          config.PLOT_UPGRADE_PRICES == [8000, 15000, 45000, 150000, 300000]
+          and economy.upgrade_price(1) == 8000 and economy.upgrade_price(4) == 150000
+          and economy.upgrade_price(5) == 300000,
       str(config.PLOT_UPGRADE_PRICES))
+    check("آپگرید زمین چوب هم می‌خواد",
+          config.PLOT_UPGRADE_WOOD == [30, 60, 120, 250, 500]
+          and economy.upgrade_wood(1) == 30 and economy.upgrade_wood(5) == 500)
     check("گیت لول آپگرید زمین",
           config.PLOT_UPGRADE_LEVELS == [3, 5, 10, 15, 20]
           and economy.plot_upgrade_required_level(1) == 3
@@ -2575,46 +2924,28 @@ async def main() -> None:
     check("ارقام هلپ همه لاتینن",
           not any(_re.search(r"[۰-۹]", v) for v in start_h2.HELP_SECTIONS.values()))
     HS = start_h2.HELP_SECTIONS
-    check("هلپ کاشت و برداشت",
-          all(x in HS["farm"] for x in ["🌿 ماری‌جوانا", "🍄 قارچ", "🌵 پیوت", "🌱 تریاک", "⚪ کوکائین",
-                                        "تا لول 5", "🔥 بذر جهنم", "⭐ تا ⭐⭐⭐⭐⭐", "🏚 با ارتقای پناهگاه"]))
-    check("هلپ شاپ",
-          all(x in HS["shop"] for x in ["پنج بخش اصلی داره", "تایید ✅ یا لغو ❌",
-                                        "قوی‌ترینشون توی نبرد", "بعد از خرید مستقیم به سگت داده میشه",
-                                        "اول اسم سگ رو ازت می‌خواد", "فاکتور نهایی با نژاد، اسم و قیمت"]))
-    check("هلپ حمله (متن دقیق نبرد HP جدید)",
-          all(x in HS["attack"] for x in [
-              "روی پیام حریف ریپلای کن یا آیدی اون رو وارد کن و یکی از دستورهای حمله رو بفرست",
-              "قدرت سلاح زره سگ لول و تجهیزات روی نتیجه هر ضربه اثر دارن",
-              "هر حمله مقداری از HP حریف رو کم می‌کنه و همون لحظه تی‌پوینت و تجربه می‌گیری",
-              "بعد از هر حمله فقط چند لحظه باید صبر کنی تا دوباره حمله کنی",
-              "اگه HPت کم شد از بخش «تریاکی درمان» استفاده کن",
-              "اگه HP حریف به صفر برسه دوئل تموم میشه و تا چند دقیقه از نبرد خارج میشه",
-              "اگه حریف زره خیلی قوی داشته باشه ممکنه هیچ آسیبی بهش وارد نکنی",
-          ]))
-    check("هلپ سگ‌ها",
-          all(x in HS["dogs"] for x in ["🐕 پیتبول", "👑 گرگ سیاه شخصیت نداره", "12 به وقت ایران"]))
-    check("هلپ تیم (بدون پیشوند + تیم ست بیو)",
-          all(x in HS["team"] for x in ["حداکثر 10 عضو", "تیم ست بیو [متن]", "3 تیم برتر",
-                                        "70% اعضا", "تیم واریز [مبلغ]", "بدون پیشوند",
-                                        "ساخت تیم", "جوین تیم [نام تیم]", "تیم من", "تیم پروفایل",
-                                        "تیم کوئست", "کنده‌کاری تیمی", "تیم ساختمان",
-                                        "فاکتورش میاد و با تایید ✅ تیم ساخته میشه"])
-          and "تریاکی ست بیو" not in HS["team"] and "تریاکی تیم واریز" not in HS["team"])
-    check("هلپ حمله بخش درمان رو معرفی می‌کنه",
-          "«تریاکی درمان»" in HS["attack"])
-    check("هلپ کنده‌کاری شکل پیشونددارش رو هم داره",
-          "«تریاکی کنده کاری» هم کار می‌کنه" in HS["mine"] and "«حمله»" in HS["mine"])
-    check("هلپ بانک",
-          all(x in HS["bank"] for x in ["25,000 سکه", "لول بازیکنت", "تریاکی واریز [مبلغ]", "تریاکی برداشت [مبلغ]"]))
-    check("هلپ کنده‌کاری",
-          all(x in HS["mine"] for x in ["30 ثانیه", "10 تا 150", "اعداد کمتر بیشتره"]))
-    check("هلپ جهان",
-          all(x in HS["world"] for x in ["قمارخانه از لول 7", "یورش پلیس", "کاروان", "بذر جهنم",
-                                         "وضعیت بازار هر 4 ساعت", "«تریاکی پناهگاه»"]))
-    check("هلپ لول و اقتصاد (کوئست‌های روزانه هم اومده)",
-          all(x in HS["eco"] for x in ["2%", "لیدربرد", "«تریاکی پروفایل»", "تجربه بیشتری نیاز داری",
-                                       "2 تا 3 کوئست روزانه", "📅 کوئست‌های روزانه", "ساعت 12 به وقت ایران ریست"]))
+    check("هلپ ۹ بخش داره و همه بخش‌های منو کلیدشون پوشش داده شده",
+          set(HS) == {"start", "battle", "farm", "dogs", "company", "shelter", "team", "resources", "shop"})
+    check("هلپ شروع بازی",
+          all(x in HS["start"] for x in ["«تریاکی پروفایل»", "کنده کاری", "«تریاکی شاپ»", "لول‌آپ"]))
+    check("هلپ نبرد",
+          all(x in HS["battle"] for x in ["ریپلای", "«حمله»", "«تریاکی درمان»", "لول 5", "سگ"]))
+    check("هلپ مزرعه",
+          all(x in HS["farm"] for x in ["«تریاکی کاشت [نام بذر]»", "«تریاکی برداشت»", "کیفیت",
+                                        "چوب", "بذرهای افسانه‌ای"]))
+    check("هلپ شرکت (بدون عدد دقیق ضریب)",
+          all(x in HS["company"] for x in ["🏭 شرکت", "🪵 چوب‌بری", "کارخانه آهن", "چوب هم می‌خواد"])
+          and "%" not in HS["company"])
+    check("هلپ مخفیگاه",
+          all(x in HS["shelter"] for x in ["ظرفیت بذر", "چوب", "آهن", "یورش"]))
+    check("هلپ تیم",
+          all(x in HS["team"] for x in ["ساخت تیم", "جوین تیم [نام تیم]", "تیم من",
+                                        "تیم درخواست @یوزر قبول", "تیم کیک @یوزر", "تیم ادمین @یوزر"]))
+    check("هلپ منابع (سه راه)",
+          all(x in HS["resources"] for x in ["چوب و آهن", "کنده‌کاری", "فروشگاه", "چوب‌بری", "تبر", "کلنگ"]))
+    check("هلپ فروشگاه",
+          all(x in HS["shop"] for x in ["🔫 سلاح", "🛡 زره", "⬆️ ارتقای سلاح و زره", "🧿 آرتیفکت",
+                                        "🎒 پک چوب و آهن", "🐕 سگ", "سبز", "قرمز", "«تریاکی خرید [نام آیتم]»"]))
 
     check("واحد پول لاتین", money(1000) == "1,000 تی‌پوینت" and money_tp(1000) == "1,000 TP")
     check("عدد لاتین", fa_num(12345) == "12,345" and fa_dur(169) == "2 دقیقه و 49 ثانیه")
@@ -2774,7 +3105,7 @@ async def main() -> None:
           str(seed_names[-3:]))
 
     # ── کوتیشن‌های هلپ: یا پیشوند تریاکی دارن یا دستور بدون‌پیشوند مجازن (تیمی/حمله/کنده کاری) ──
-    BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی")
+    BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی", "شلیک", "اسم سگ [اسم فعلی] [اسم جدید]")
     for key, body in start_h2.HELP_SECTIONS.items():
         for snip in re.findall("«(.+?)»", body):
             check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره یا بدون‌پیشوند مجازه",
@@ -3070,7 +3401,7 @@ async def main() -> None:
     # ── فلوی کامل نبرد HP گروهی (هندلر واقعی: ریپلای | کولدان | شکست | خودایجاد پروفایل) ──
     from handlers import battle as battle_h3
 
-    def _group_atk_update(txt, uid, uname, fname, reply_user=None):
+    def _tgroup(txt, uid, uname, fname, reply_user=None):
         """آپدیت فیک حمله گروهی با ریپلای اختیاری روی پیام طرف"""
         msg = _Msg(text=txt, calls=[], chat_id=-100555)
         msg.reply_to_message = SimpleNamespace(from_user=reply_user) if reply_user else None
@@ -3091,7 +3422,7 @@ async def main() -> None:
 
     # حریف هنوز اصلا اکانت نداره، با همین حمله پروفایلش خودکار ساخته میشه
     vic_tg = SimpleNamespace(id=8891, username="victim1", first_name="قربانی", is_bot=False)
-    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    upd = _tgroup("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
     await battle_h3.attack_cmd(upd, None)
     htxt = next((c[1] for c in upd.message.calls if "💥" in c[1]), "")
     check("حمله ریپلای گروهی متن قالب دقیق میاره",
@@ -3105,11 +3436,11 @@ async def main() -> None:
         g_atk = await users.get_by_tg(s, 8890)
         check("حریف بدون استارت خودکار پروفایل گرفت و HPش کم شد",
               vic is not None and vic.hp is not None and vic.hp < battle_svc.max_hp(1))
-        check("کولدان مهاجم ست شد", battle_svc.cooldown_left(g_atk) > 0)
+        check("کولدان مهاجم ست شد", (await battle_svc.cooldown_left(s, g_atk)) > 0)
         await s.commit()
 
     # کولدان: حمله دوباره فوری رد میشه
-    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    upd = _tgroup("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
     await battle_h3.attack_cmd(upd, None)
     check("حمله توی کولدان رد میشه",
           "⏳" in upd.message.calls[-1][1] and "دیگه می‌تونی حمله کنی" in upd.message.calls[-1][1])
@@ -3124,24 +3455,24 @@ async def main() -> None:
             vic.hp = battle_svc.max_hp(vic.level)
             vic.dead_until = None
             await s.commit()
-        upd = _group_atk_update(war, 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+        upd = _tgroup(war, 8890, "gangsta", "گانگستر", reply_user=vic_tg)
         await battle_h3.attack_cmd(upd, None)
         assert any("💥" in c[1] for c in upd.message.calls), f"{war}: {upd.message.calls[-1][1][:80]}"
     check("هر ۶ دستور جنگ با ریپلای کار می‌کنن", True)
 
     # بدون ریپلای و بدون آیدی، راهنمای دستورها میاد
-    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر")
+    upd = _tgroup("حمله", 8890, "gangsta", "گانگستر")
     await battle_h3.attack_cmd(upd, None)
     check("حمله بدون هدف راهنما میده",
           "حمله | شلیک | بنگ | پیو" in upd.message.calls[-1][1])
 
     # خودتو نزن + ربات رو نمیشه زد
     self_tg = SimpleNamespace(id=8890, username="gangsta", first_name="گانگستر", is_bot=False)
-    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=self_tg)
+    upd = _tgroup("حمله", 8890, "gangsta", "گانگستر", reply_user=self_tg)
     await battle_h3.attack_cmd(upd, None)
     check("حمله به خودی رد میشه", "خودتو نزن" in upd.message.calls[-1][1])
     bot_tg = SimpleNamespace(id=999999, username="somebot", first_name="ربات", is_bot=True)
-    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=bot_tg)
+    upd = _tgroup("حمله", 8890, "gangsta", "گانگستر", reply_user=bot_tg)
     await battle_h3.attack_cmd(upd, None)
     check("به ربات نمیشه حمله کرد", "ربات رو نمیشه زد" in upd.message.calls[-1][1])
 
@@ -3154,7 +3485,7 @@ async def main() -> None:
         vic.hp = 1
         vic.dead_until = None
         await s.commit()
-    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    upd = _tgroup("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
     await battle_h3.attack_cmd(upd, None)
     ktxt = next((c[1] for c in upd.message.calls if "☠️" in c[1]), "")
     check("ضربه آخر بلوک ☠️ و 🏆 رو میاره",
@@ -3168,7 +3499,7 @@ async def main() -> None:
         g_atk.last_attack_at = None
         g_atk.energy = config.MAX_ENERGY
         await s.commit()
-    upd = _group_atk_update("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
+    upd = _tgroup("حمله", 8890, "gangsta", "گانگستر", reply_user=vic_tg)
     await battle_h3.attack_cmd(upd, None)
     check("حمله به بیهوش پیام دقیق میده",
           "💀 حریف «قربانی» مرده و تا" in upd.message.calls[-1][1]
@@ -3177,7 +3508,7 @@ async def main() -> None:
 
     # مرده خودش هم نمی‌تونه بزنه
     atk_of_vic = SimpleNamespace(id=8890, username="gangsta", first_name="گانگستر", is_bot=False)
-    upd = _group_atk_update("حمله", 8891, "victim1", "قربانی", reply_user=atk_of_vic)
+    upd = _tgroup("حمله", 8891, "victim1", "قربانی", reply_user=atk_of_vic)
     await battle_h3.attack_cmd(upd, None)
     check("بیهوش پیام «حالت جا نیومده» می‌گیره",
           "💀 هنوز حالت جا نیومده" in upd.message.calls[-1][1]
@@ -3208,7 +3539,7 @@ async def main() -> None:
         g_atk.last_attack_at = None
         g_atk.energy = config.MAX_ENERGY
         await s.commit()
-    upd = _group_atk_update("حمله @stranger8", 8890, "gangsta", "گانگستر")
+    upd = _tgroup("حمله @stranger8", 8890, "gangsta", "گانگستر")
     await battle_h3.attack_cmd(upd, fake_ctx)
     atxt = next((c[1] for c in upd.message.calls if "💥" in c[1]), "")
     check("حمله با @یوزرنیم به غریبه کار می‌کنه",
@@ -3221,7 +3552,7 @@ async def main() -> None:
         await s.commit()
 
     # یوزرنیم ناشناس → پیدا نکردم
-    upd = _group_atk_update("حمله @nobody_here_x", 8890, "gangsta", "گانگستر")
+    upd = _tgroup("حمله @nobody_here_x", 8890, "gangsta", "گانگستر")
     await battle_h3.attack_cmd(upd, fake_ctx)
     check("یوزرنیم ناشناس «پیدا نکردم» میده", "پیدا نکردم" in upd.message.calls[-1][1])
 
@@ -3234,7 +3565,7 @@ async def main() -> None:
     async with session_scope() as s:
         await seen_svc.remember(s, SimpleNamespace(id=8893, username="gone_user", first_name="رفته"))
         await s.commit()
-    upd = _group_atk_update("حمله @gone_user", 8890, "gangsta", "گانگستر")
+    upd = _tgroup("حمله @gone_user", 8890, "gangsta", "گانگستر")
     await battle_h3.attack_cmd(upd, SimpleNamespace(bot=_NoMemBot()))
     check("کسی که تو گروه نیس رد میشه", "تو این گروه نیس" in upd.message.calls[-1][1])
 
@@ -3247,7 +3578,7 @@ async def main() -> None:
         vic.hp = battle_svc.max_hp(vic.level)
         vic.dead_until = None
         await s.commit()
-    upd = _group_atk_update("پیو 8891", 8890, "gangsta", "گانگستر")
+    upd = _tgroup("پیو 8891", 8890, "gangsta", "گانگستر")
     await battle_h3.attack_cmd(upd, fake_ctx)
     check("حمله با آیدی عددی هم کار می‌کنه",
           any("<b>💥 به حریف «قربانی» حمله کردی</b>" in c[1] for c in upd.message.calls))
@@ -3719,11 +4050,15 @@ async def main() -> None:
     async with session_scope() as s:
         fu = await users.get_by_tg(s, 9410)  # لول ۲۰، همه آپگریدها براش بازه
         fu.cash = 500000
+        fu.wood = 0
         p1 = (await farming.get_user_plots(s, fu.id))[0]
         p1.level = 1
         ok, msg = await farming.upgrade_plot(s, fu, p1)
-        check("آپگرید زمین لول ۱ به ۲ با قیمت ۵۰۰۰",
-              ok and p1.level == 2 and fu.cash == 500000 - 5000, msg)
+        check("آپگرید زمین بدون چوب رد میشه", not ok and "چوب" in msg, msg)
+        fu.wood = 500
+        ok, msg = await farming.upgrade_plot(s, fu, p1)
+        check("آپگرید زمین لول ۱ به ۲ با تی‌پوینت و چوب",
+              ok and p1.level == 2 and fu.cash == 500000 - 8000 and fu.wood == 500 - 30, msg)
 
         fu2, _ = await users.get_or_create(s, tg(9415, "lowlvl", "کم‌لول"))
         fu2.level = 1
@@ -3883,6 +4218,336 @@ async def main() -> None:
         check("بعد مکس دیگه لول‌آپ نیس و فقط تجربه جمع میشه",
               mx.level == config.MAX_LEVEL and mx.xp == xp_b + 100 and notes2 == [])
         await s.commit()
+
+    # ═════════ بازطراحی شاپ و سیستم پیشرفت ═════════
+    from services import resources as res_svc
+    from services import company as comp_svc
+    from services import combat as combat_svc
+    from handlers import mine as mine_h2
+    from handlers import company as comp_h
+    from handlers import shop as shop_h2
+    from keyboards import keyboards as kb3
+
+    # ── منابع: ظرفیت و واریز با سقف ──
+    async with session_scope() as s:
+        ru, _ = await users.get_or_create(s, tg(9601, "resu", "منبعی"))
+        ru.shelter_level = 0
+        check("ظرفیت چوب و آهن پایه",
+              res_svc.wood_cap(ru) == config.RES_WOOD_CAP_BASE and res_svc.iron_cap(ru) == config.RES_IRON_CAP_BASE)
+        check("ظرفیت با لول مخفیگاه بیشتر میشه",
+              res_svc.wood_cap(SimpleNamespace(shelter_level=2)) == config.RES_WOOD_CAP_BASE + 2 * config.RES_WOOD_CAP_PER_LEVEL)
+        ru.wood = config.RES_WOOD_CAP_BASE - 5
+        got = res_svc.add_res(ru, "wood", 100)
+        check("واریز منبع سقف انبار رو رد نمی‌کنه", got == 5 and ru.wood == config.RES_WOOD_CAP_BASE, str(got))
+        check("برداشت منبع بدون موجودی کافی نمیشه", not res_svc.take_res(ru, "iron", 1))
+        await s.commit()
+
+    # ── دراپ کنده‌کاری: تی‌پوینت + تجربه + شانسی چوب/آهن ──
+    async with session_scope() as s:
+        mu, _ = await users.get_or_create(s, tg(9602, "miner2", "ماینر۲"))
+        mu.axe_level = 5
+        mu.pick_level = 5
+        raws = [res_svc.mine_loot(mu) for _ in range(400)]
+        check("تی‌پوینت کنده‌کاری همیشه میده", all(config.MINE_MIN <= r["cash"] for r in raws))
+        check("تجربه کنده‌کاری ۱ تا ۵", all(1 <= r["xp"] <= 5 for r in raws))
+        check("با ابزار مکس هم چوب هم آهن میفتاد",
+              sum(1 for r in raws if r["wood"]) > 100 and sum(1 for r in raws if r["iron"]) > 50)
+        check("شکار کمیاب گاهی اتفاق میفته و ضربدر مولتیپلایره",
+              any(r["rare"] and (r["wood"] >= config.MINE_RARE_MULT or r["iron"] >= config.MINE_RARE_MULT) for r in raws))
+        check("تی‌پوینت با ابزار ضرب میشه", res_svc.mine_cash_mult(mu) == 1 + config.TOOL_CASH_PER_LEVEL * 8)
+        check("هزینه ارتقای ابزار از جدوله",
+              res_svc.tool_upgrade_cost("axe", 1) == config.TOOLS["axe"]["upgrades"][0]
+              and res_svc.tool_upgrade_cost("axe", config.TOOL_MAX_LEVEL) is None)
+        await s.commit()
+
+    # ── هندلر کنده‌کاری: رول با منابع + صفحه بخش ──
+    upd_m = _text_update("کنده کاری", uid=9602, uname="miner2", fname="ماینر۲")
+    await mine_h2.mine_cmd(upd_m, None)
+    mt = upd_m.message.calls[-1][1]
+    check("متن کنده‌کاری با قالب جدید و منابعه",
+          all(x in mt for x in ["⛏ کنده‌کاری", "تی‌پوینت به دست آوردی", "تجربه گرفتی", "🪙 موجودی:"])
+          and len(upd_m.message.calls[-1][2].get("reply_markup").inline_keyboard) >= 3, mt.replace("\n", "|")[:100])
+    upd_m2 = _fake_update("menu:mine", uid=9602)
+    await mine_h2.mine_home_cb(upd_m2, None)
+    mt2 = next((c[1] for c in upd_m2.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه مستقل کنده کاری لول ابزار و موجودی رو نشون میده",
+          all(x in mt2 for x in ["⛏ کنده کاری", "🪓 تبر لول 5", "کلنگ لول 5", "🪵 چوب", "⛏️ آهن"]), mt2[:80])
+
+    # ── ارتقای تبر (تاییدیه + کسر آهن و تی‌پوینت) ──
+    async with session_scope() as s:
+        mu2 = await users.get_by_tg(s, 9602)
+        mu2.axe_level = 1
+        mu2.cash = 50000
+        mu2.iron = 20
+        await s.commit()
+    upd_m3 = _fake_update("mine:upg:axe", uid=9602)
+    await mine_h2.mine_upg_confirm(upd_m3, None)
+    check("تاییدیه ارتقای تبر میاد",
+          any("ارتقای 🪓 تبر" in c[1] for c in upd_m3.callback_query.calls if c[0] == "edit"))
+    upd_m4 = _fake_update("cf:mine:upg:axe", uid=9602)
+    await mine_h2.mine_upg_execute(upd_m4, None)
+    async with session_scope() as s:
+        mu3 = await users.get_by_tg(s, 9602)
+        check("تبر لول ۲ شد و هزینه‌اش کم شد",
+              mu3.axe_level == 2 and mu3.cash == 50000 - config.TOOLS["axe"]["upgrades"][0][0]
+              and mu3.iron == 20 - config.TOOLS["axe"]["upgrades"][0][1], f"{mu3.axe_level}")
+
+    # ── شرکت: ساخت، تولید lazy، ارتقا ──
+    async with session_scope() as s:
+        cu, _ = await users.get_or_create(s, tg(9603, "compo", "کارخونه‌دار"))
+        cu.cash = 100000
+        cu.wood = 500
+        ok, msg = await comp_svc.build(s, cu, "lumber")
+        check("چوب‌بری ساخته شد با تی‌پوینت",
+              ok and cu.lumber_level == 1 and cu.cash == 100000 - config.FACTORIES["lumber"]["build"][0], msg)
+        ok, msg = await comp_svc.build(s, cu, "ironmill")
+        w_left = 500 - config.FACTORIES["ironmill"]["build"][1]
+        check("کارخانه آهن چوب هم می‌خواست و کمش کرد",
+              ok and cu.ironmill_level == 1 and cu.wood == w_left, f"{cu.wood}")
+        cu.company_at = now_utc() - timedelta(seconds=config.FACTORY_TICK_SECONDS * 3)
+        cu.wood = 0
+        cu.iron = 0
+        got = await comp_svc.settle(s, cu)
+        check("تسویه lazy سه تیک تولید داد",
+              got["ticks"] == 3 and got["wood"] == 3 * config.FACTORIES["lumber"]["per_tick"]
+              and got["iron"] == 3 * config.FACTORIES["ironmill"]["per_tick"], str(got))
+        cu.cash = 500000
+        cu.wood = 500
+        ok, msg = await comp_svc.upgrade(s, cu, "lumber")
+        tp2, w2 = comp_svc.upgrade_cost("lumber", 2)
+        check("ارتقای چوب‌بری تی‌پوینت و چوب خورد",
+              ok and cu.lumber_level == 2 and cu.wood == 500 - w2, msg)
+        check("تولید با لول بیشتر میشه",
+              comp_svc.factory_production("lumber", 2) == 2 * config.FACTORIES["lumber"]["per_tick"])
+        await s.commit()
+
+    # صفحه شرکت
+    upd_c = _fake_update("menu:company", uid=9603)
+    await comp_h.company_cb(upd_c, None)
+    ctxt = next((c[1] for c in upd_c.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه شرکت ساختمان‌ها و موجودی منابع رو نشون میده",
+          all(x in ctxt for x in ["🏭 شرکت", "🪵 چوب‌بری", "کارخانه آهن", "🪵 چوب", "⛏️ آهن"]), ctxt[:90])
+
+    # ── آرتیفکت: گیت لول ۱۰، یکبار خرید، اثر روی استت ──
+    check("آرتیفکت از لول ۱۰ بازه", config.ARTIFACT_MIN_LEVEL == 10)
+    async with session_scope() as s:
+        au, _ = await users.get_or_create(s, tg(9604, "arti", "آرتیفکتی"))
+        au.cash = 5000000
+        au.level = 9
+        ok, msg = await shop_svc.purchase(s, au, "arti", "dragon")
+        check("آرتیفکت زیر لول ۱۰ رد میشه", not ok and "لول" in msg)
+        au.level = 12
+        ok, msg = await shop_svc.purchase(s, au, "arti", "dragon")
+        check("آرتیفکت خریده شد و کلید arti_ خورد",
+              ok and "arti_dragon" in await users.get_item_keys(s, au.id), msg)
+        ok, _ = await shop_svc.purchase(s, au, "arti", "dragon")
+        check("آرتیفکت دوباره خریده نمیشه", not ok)
+        keys = await users.get_item_keys(s, au.id)
+        atk0, _ = combat_svc.combat_stats(au, [], [])
+        atk1, dfn1 = combat_svc.combat_stats(au, keys, [])
+        check("قلب اژدها قدرت حمله رو درصدی بیشتر می‌کنه",
+              atk1 == int(atk0 * (1 + config.ARTIFACTS["dragon"]["atk_mult"])), f"{atk0}→{atk1}")
+        check("تاج تاریکی غارت رو بیشتر می‌کنه",
+              users.artifact_steal_bonus({"crown"}) == config.ARTIFACTS["crown"]["steal_bonus"])
+        check("هسته رعد تجربه رو بیشتر می‌کنه",
+              users.artifact_xp_mult({"thunder"}) == 1 + config.ARTIFACTS["thunder"]["xp_mult"])
+        await s.commit()
+
+    # صفحه آرتیفکت شاپ
+    upd_a = _fake_update("shop:sec:arti", uid=9604)
+    await shop_h2.render_section(upd_a, "arti")
+    atxt = next((c[1] for c in upd_a.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه آرتیفکت باکس‌ها و قیمت‌ها رو داره",
+          all(x in atxt for x in ["🧿 آرتیفکت", "🔥 قلب اژدها", "🛡 سنگ نگهبان", "⚡ هسته رعد",
+                                  "🍀 شبدر افسانه‌ای", "👑 تاج تاریکی", "افزایش غارت"]), atxt[:90])
+
+    # ── ارتقای سلاح و زره: استت بیشتر + کسر تی‌پوینت و آهن + گیت لول ──
+    async with session_scope() as s:
+        gu, _ = await users.get_or_create(s, tg(9605, "upgr", "آپگریدی"))
+        gu.cash = 1000000
+        gu.iron = 500
+        gu.level = 20
+        s.add(InventoryItem(user_id=gu.id, item_key="colt"))
+        await s.flush()
+        s0 = economy.gear_stat("weap", "colt", 1)
+        s2 = economy.gear_stat("weap", "colt", 2)
+        s5 = economy.gear_stat("weap", "colt", 5)
+        row = (await s.execute(
+            __import__("sqlalchemy").select(InventoryItem).where(
+                InventoryItem.user_id == gu.id, InventoryItem.item_key == "colt"))).scalar_one()
+        tp1 = economy.gear_upg_tp("weap", "colt", 1)
+        ir1 = economy.gear_upg_iron("weap", "colt", 1)
+        c_b, i_b = gu.cash, gu.iron
+        row.level += 1
+        gu.cash -= tp1
+        gu.iron -= ir1
+        await s.commit()
+        check("استت سلاح با لول بیشتر میشه", s2 > s0 and s5 > s2, f"{s0}→{s2}→{s5}")
+        check("گیت لول ارتقای گیر از جدوله",
+              config.GEAR_UPG_LEVELS == [2, 5, 9, 13] and economy.gear_upg_min_level(1) == 2)
+
+    # هندلر ارتقا با تاییدیه
+    async with session_scope() as s:
+        gu2 = await users.get_by_tg(s, 9605)
+        gu2.iron = 500
+        gu2.cash = 1000000
+        await s.commit()
+    upd_g = _fake_update("gup:weap:colt", uid=9605)
+    await shop_h2.gear_up_confirm(upd_g, None)
+    check("تاییدیه ارتقای سلاح استت فعلی و بعدی رو نشون میده",
+          any("⬆️ ارتقای کلت کمری" in c[1] and "دمیج" in c[1] for c in upd_g.callback_query.calls if c[0] == "edit"))
+    cash_before = 0
+    async with session_scope() as s:
+        gu3 = await users.get_by_tg(s, 9605)
+        cash_before, iron_before = gu3.cash, gu3.iron
+        lvl_before = (await users.get_item_levels(s, gu3.id))["colt"]
+        await s.commit()
+    upd_g2 = _fake_update("cf:gup:weap:colt", uid=9605)
+    await shop_h2.gear_up_execute(upd_g2, None)
+    async with session_scope() as s:
+        gu4 = await users.get_by_tg(s, 9605)
+        lvl_after = (await users.get_item_levels(s, gu4.id))["colt"]
+        check("ارتقا اعمال شد و تی‌پوینت و آهن کم شد",
+              lvl_after == lvl_before + 1
+              and gu4.cash == cash_before - economy.gear_upg_tp("weap", "colt", lvl_before)
+              and gu4.iron == iron_before - economy.gear_upg_iron("weap", "colt", lvl_before),
+              f"{lvl_before}→{lvl_after}")
+
+    # ── قالب جدید بخش سلاح شاپ (باکس + سبز/قرمز) ──
+    async with session_scope() as s:
+        su, _ = await users.get_or_create(s, tg(9606, "shoper", "خریدار"))
+        su.level = 6
+        await s.commit()
+    upd_s = _fake_update("shop:sec:weap", uid=9606)
+    await shop_h2.render_section(upd_s, "weap")
+    stxt = next((c[1] for c in upd_s.callback_query.calls if c[0] == "edit"), "")
+    skb = next((c[2].get("reply_markup") for c in upd_s.callback_query.calls if c[0] == "edit"), None)
+    check("متن بخش سلاح باکسی و فقط اطلاعات اصلیه",
+          all(x in stxt for x in ["🛒 فروشگاه", "🔫 سلاح‌ها", "برای خرید روی آیتم موردنظر بزن",
+                                  "💥 دمیج", "⛏️", "تی‌پوینت", "⭕️ بازگشایی در سطح"])
+          and "🔒" in stxt, stxt[:120])
+    styles = {}
+    for row in skb.inline_keyboard:
+        for b in row:
+            if b.callback_data.startswith("shop:buy:weap:"):
+                styles.setdefault("buy", b.style)
+            if b.callback_data.startswith("noop:lock"):
+                styles.setdefault("lock", b.style)
+    check("دکمه قابل خرید سبز و دکمه قفل قرمزه",
+          styles.get("buy") == "success" and styles.get("lock") == "danger", str(styles))
+
+    # ── بخش سگ شاپ: فقط ویژگی اصلی ──
+    upd_d = _fake_update("shop:sec:dog", uid=9606)
+    await shop_h2.render_section(upd_d, "dog")
+    dtxt = next((c[1] for c in upd_d.callback_query.calls if c[0] == "edit"), "")
+    check("بخش سگ شاپ فقط ویژگی اصلی هر نژاد رو نشون میده",
+          all(x in dtxt for x in ["🐕 پیتبول", "💥 قدرت حمله بیشتر", "دوبرمن", "⚡ کاهش کولدون حمله",
+                                  "ژرمن شپرد", "🎁 تجربه بیشتر از نبرد", "کانگال", "🛡 دفاع بیشتر",
+                                  "گرگ سیاه", "☠ غارت بیشتر"])
+          and "توصیف" not in dtxt, dtxt[:120])
+
+    # ── افکت نژادها + تجربه سگ از نبرد + تغییر اسم ──
+    async with session_scope() as s:
+        du, _ = await users.get_or_create(s, tg(9607, "dogow", "سگدار"))
+        du.level = 20
+        du.cash = 999000
+        ok, _ = await dog_svc.buy_dog(s, du, "doberman", custom_name="تندرو")
+        ok, _ = await dog_svc.buy_dog(s, du, "kangal", custom_name="غول")
+        dd = await dog_svc.get_user_dogs(s, du.id)
+        check("دوبرمن کولدون حمله رو کم می‌کنه",
+              dog_svc.breed_cooldown_mult([d for d in dd if d.dog_key == "doberman"]) ==
+              config.DOGS["doberman"]["cooldown_mult"])
+        check("ژرمن شپرد تجربه نبرد بیشتر میده",
+              dog_svc.battle_xp_mult([SimpleNamespace(dog_key="shepherd", personality=None)]) ==
+              config.DOGS["shepherd"]["xp_mult"])
+        kang = [d for d in dd if d.dog_key == "kangal"][0]
+        kang.personality = None
+        check("کانگال دفاع هم میده",
+              dog_svc.dog_defense(kang) == config.DOGS["kangal"]["defense"])
+        kang.personality = "tough"
+        check("شخصیت سرسخت دفاع بیشتری میده",
+              dog_svc.dog_defense(kang) == config.DOGS["kangal"]["defense"] + config.DOG_PERSONALITIES["tough"]["def_flat"])
+        pit = SimpleNamespace(dog_key="pitbull", level=1, xp=0, personality=None, name="x")
+        notes_d = await dog_svc.add_battle_xp([d for d in dd], config.DOG_BATTLE_XP_HIT)
+        check("سگ‌ها از نبرد تجربه می‌گیرن", all(d.xp >= config.DOG_BATTLE_XP_HIT for d in dd))
+        pit.xp = 0
+        d10 = SimpleNamespace(dog_key="doberman", level=1, xp=dog_svc.dog_xp_need(1) - 1, personality=None, name="ی")
+        notes_lv = await dog_svc.add_battle_xp([d10], config.DOG_BATTLE_XP_HIT * 5)
+        check("سگ با تجربه نبرد لول‌آپ می‌کنه", d10.level == 2 and any("لول" in n for n in notes_lv), str(notes_lv))
+        ok, msg = dog_svc.rename_dog(dd, "تندرو", "رعد")
+        check("«اسم سگ» تغییر نام کار می‌کنه",
+              ok and [d for d in dd if d.dog_key == "doberman"][0].name == "رعد", msg)
+        ok, msg = dog_svc.rename_dog(dd, "رعد", "غول")
+        check("اسم تکراری دو سگ رد میشه", not ok)
+        await s.commit()
+
+    # هندلر متنی «اسم سگ»
+    upd_r = _text_update("اسم سگ غول کوه", uid=9607, uname="dogow", fname="سگدار")
+    await dogs_h.dog_rename_text(upd_r, None)
+    async with session_scope() as s:
+        du2 = await users.get_by_tg(s, 9607)
+        dd2 = await dog_svc.get_user_dogs(s, du2.id)
+        check("دستور «اسم سگ» اسم رو عوض کرد",
+              any(d.name == "کوه" for d in dd2), str([d.name for d in dd2]))
+
+    # ── منابع تو شاپ: خرید پک چوب و آهن ──
+    async with session_scope() as s:
+        bu, _ = await users.get_or_create(s, tg(9608, "buyer", "پک‌خر"))
+        bu.cash = 10000
+        ok, msg = await shop_svc.purchase_resource(s, bu, "wood")
+        check("خرید پک چوب از شاپ",
+              ok and bu.wood == config.RES_SHOP["wood"]["pack"]
+              and bu.cash == 10000 - config.RES_SHOP["wood"]["price"], msg)
+        ok, msg = await shop_svc.purchase_resource(s, bu, "iron")
+        check("خرید پک آهن تی‌پوینت کم و آهن زیاد می‌کنه",
+              ok and bu.iron == config.RES_SHOP["iron"]["pack"])
+        await s.commit()
+
+    # ── منوی اصلی: کنده کاری | شرکت | مخفیگاه ──
+    mm = kb3.main_menu_kb()
+    mm_datas = [b.callback_data for row in mm.inline_keyboard for b in row]
+    check("منوی اصلی کنده کاری و شرکت و مخفیگاه داره",
+          all(d in mm_datas for d in ("menu:mine", "menu:company", "menu:shelter")), str(mm_datas))
+    sm_kb = kb3.shop_sections_kb()
+    sm_datas = [b.callback_data for row in sm_kb.inline_keyboard for b in row]
+    check("منوی شاپ ارتقاها و آرتیفکت و منابع رو داره",
+          all(d in sm_datas for d in ("shop:sec:wup", "shop:sec:aup", "shop:sec:arti", "shop:sec:res")),
+          str(sm_datas))
+
+    # ── مخفیگاه: متن با ظرفیت چوب و آهن ──
+    async with session_scope() as s:
+        hu, _ = await users.get_or_create(s, tg(9609, "hide", "مخفی"))
+        hu.shelter_level = 2
+        await s.commit()
+    from handlers import world as world_h2
+    upd_h = _text_update("تریاکی مخفیگاه", uid=9609, uname="hide", fname="مخفی")
+    await world_h2.shelter_cmd(upd_h, None)
+    htxt = upd_h.message.calls[-1][1]
+    check("مخفیگاه ظرفیت بذر و چوب و آهن رو نشون میده",
+          all(x in htxt for x in ["ظرفیت انبار هر بذر", "🪵 ظرفیت چوب", "آهن"]), htxt[:120])
+
+    # ── متن جدید نتیجه قمار (برد/باخت) ──
+    async with session_scope() as s:
+        cz, _ = await users.get_or_create(s, tg(9610, "czno", "قمارباز۲"))
+        cz.level = 10
+        cz.cash = 500000
+        cz.last_casino_at = None
+        await s.commit()
+    upd_z = _fake_update("cascf:25000", uid=9610)
+    await world_h2.casino_execute(upd_z, None)
+    ztxt = next((c[1] for c in upd_z.callback_query.calls if c[0] == "edit"
+                 or (c[0] == "reply" and True)), "")
+    ztxt = upd_z.callback_query.calls[-1][1]
+    won_z = "زدی تو خال" in ztxt
+    check("متن قمار قالب جدید رو داره (برد یا باخت)",
+          (won_z and all(x in ztxt for x in ["🎰 زدی تو خال", "تی‌پوینت برنده شدی", "💵 موجودی فعلی",
+                                             "⏳ دست بعدی", "ساعت دیگه"]))
+          or (not won_z and all(x in ztxt for x in ["🎰 این دست شانس باهات یار نبود", "تی‌پوینت رو باختی",
+                                                    "💰 موجودی فعلی", "⏳ دست بعدی", "ساعت دیگه"])),
+          ztxt.replace("\n", " | ")[:120])
+    check("مبلغ قمار با تی‌پوینت کامله", "تی‌پوینت برنده شدی" in ztxt or "تی‌پوینت رو باختی" in ztxt)
+    check("زمان دست بعدی خط خودشه",
+          ztxt.rstrip().endswith("⏳ دست بعدی\n12 ساعت دیگه"), ztxt.split("\n")[-2:])
 
     print(f"\n🎉 همه تست‌ها سبز شدن، {PASS} مورد")
 

@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import parts, respond
+from handlers.common import parts, respond, strip_bot_cmd
 from keyboards import keyboards as kb
 from models import Dog
 from services import dogs as dog_svc
@@ -24,7 +24,7 @@ def dog_name_question_text(item: dict) -> str:
         f"<b>🐕 خرید {esc(item['breed'])}</b>\n\n"
         f"🐾 نژاد {esc(item['breed'])}\n"
         f"💪 قدرت حمله {fa_num(item['attack'])}\n"
-        f"🎖 {esc(item['ability'])}\n"
+        f"🎖 {esc(item.get('trait_line', ''))}\n"
         f"💸 قیمت {money(item['price'])}\n\n"
         "📛 اول بگو اسمش چی باشه، اسمشو همینجا بنویس و بفرست، مثلا «اصغر»\n\n"
         "❌ پشیمون شدی بنویس «لغو»"
@@ -53,7 +53,7 @@ async def _dogs_text(session, user, dogs: list[Dog]) -> str:
             if rare_lines:
                 entry += "\n" + "\n".join(rare_lines)
             else:
-                entry += f"\n🎖 {esc(d.cfg.get('ability', '—'))}"
+                entry += f"\n🎖 {esc(d.cfg.get('trait_line', '—'))}"
             per = dog_svc.personality_of(d)
             if per:
                 entry += f"\n💫 شخصیت {per['emoji']} {esc(per['name'])}، {esc(per['desc'])}"
@@ -94,7 +94,7 @@ def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
 
     # قابلیت: گرگ سیاه با اعداد مقیاس لول | بقیه متن ثابت نژاد
     rare_lines = dog_svc.rare_ability_lines(dog)
-    ability_block = "\n".join(rare_lines) if rare_lines else f"🎖 {esc(dog.cfg.get('ability', '—'))}"
+    ability_block = "\n".join(rare_lines) if rare_lines else f"🎖 {esc(dog.cfg.get('trait_line', '—'))}"
 
     per = dog_svc.personality_of(dog)
     per_line = ""
@@ -160,6 +160,24 @@ async def dog_stats_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         names = " | ".join(d.name for d in dogs)
         return await respond(update, f"🤷 سگی با این اسم پیدا نشد\n\nسگ‌هات: {esc(names)}")
     await render_dog_card(update, dog)
+
+
+async def dog_rename_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«اسم سگ [اسم فعلی] [اسم جدید]»، تغییر نام سگ"""
+    m = re.match(r"^اسم[\s‌]+سگ[\s‌]+(\S+)[\s‌]+(\S+)$", strip_bot_cmd(update.message.text or ""))
+    if not m:
+        return await respond(
+            update,
+            "🐕 این‌جوری بنویس:\n«اسم سگ [اسم فعلی] [اسم جدید]»\n\nمثلا «اسم سگ اصغر ژانگو»",
+        )
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        dogs = await dog_svc.get_user_dogs(s, user.id)
+        ok, msg = dog_svc.rename_dog(dogs, m.group(1), m.group(2))
+        await s.commit()
+    if not ok:
+        return await respond(update, msg)
+    await respond(update, f"<b>{esc(msg)}</b>")
 
 
 async def feed_picker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

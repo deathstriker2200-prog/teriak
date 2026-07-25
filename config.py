@@ -89,10 +89,12 @@ PLOT_CATALOG = {
 # ───────── لول‌آپ زمین ─────────
 # هر لول آپ: ۲۵% درآمد بیشتر + ۴۰% سرعت رشد بیشتر، تا لول ۶ قابل آپگریده
 PLOT_MAX_LEVEL = 6
-PLOT_YIELD_PER_LEVEL = 1.25     # ×۱٫۲۵ درآمد به ازای هر لول
 PLOT_SPEED_PER_LEVEL = 1.40     # زمان رشد ÷۱٫۴۰ به ازای هر لول
+# لول زمین روی قیمت محصول اثر مستقیم نداره، فقط شانس محصول افسانه‌ای رو بیشتر می‌کنه
+PLOT_Q5_PER_LEVEL = 0.03        # به ازای هر لول بعد از یک، +۳ درصد شانس محصول ۵ ستاره
 # هزینه لول‌آپ زمین از لول n به n+1 (اندیس 0 = از لول ۱ به ۲)، آخری آپگرید به لول مکس
-PLOT_UPGRADE_PRICES = [5000, 10000, 30000, 100000, 200000]
+PLOT_UPGRADE_PRICES = [8000, 15000, 45000, 150000, 300000]  # گرون‌تر + چوب هم می‌خواد
+PLOT_UPGRADE_WOOD = [30, 60, 120, 250, 500]                 # چوب لازم برای هر مرحله آپگرید زمین
 # لول کاربر که هر آپگرید رو باز می‌کنه (اندیس 0 = آپگرید ۱ به ۲ تو لول ۳ باز میشه)
 PLOT_UPGRADE_LEVELS = [3, 5, 10, 15, 20]
 
@@ -100,30 +102,92 @@ PLOT_UPGRADE_LEVELS = [3, 5, 10, 15, 20]
 # ترتیب پیشرفت: ماری‌جوانا → قارچ → پیوت → تریاک → کوکائین
 # price = قیمت بذر | grow_min = دقیقه رشد | sell = فروش | xp = تجربه برداشت | min_level = لول لازم
 SEEDS = {
-    "marijuana": {"name": "ماری‌جوانا",  "emoji": "🌿", "price": 120,  "grow_min": 5,  "sell": 420,   "xp": 10, "min_level": 1,  "desc": "محصول شروع هر دلال"},
-    "gharch":    {"name": "قارچ",         "emoji": "🍄", "price": 320,  "grow_min": 8,  "sell": 1150,  "xp": 18, "min_level": 3,  "desc": "کپک سحرآمیز و پرطرفدار"},
-    "peyote":    {"name": "پیوت",         "emoji": "🌵", "price": 850,  "grow_min": 12, "sell": 3000,  "xp": 30, "min_level": 5,  "desc": "کاکتوس جادویی صحرا"},
-    "teriak":    {"name": "تریاک",        "emoji": "🌱", "price": 2000, "grow_min": 18, "sell": 7500,  "xp": 45, "min_level": 7,  "desc": "طلای سیاه محله"},
-    "cocaine":   {"name": "کوکائین",      "emoji": "⚪", "price": 5200, "grow_min": 25, "sell": 20000, "xp": 70, "min_level": 10, "desc": "پودر سفید قیمتی"},
+    "marijuana": {"name": "ماری‌جوانا",  "emoji": "🌿", "price": 120,  "grow_min": 5,  "sell": 300,   "xp": 10, "min_level": 1,  "desc": "محصول شروع هر دلال"},
+    "gharch":    {"name": "قارچ",         "emoji": "🍄", "price": 320,  "grow_min": 8,  "sell": 800,   "xp": 18, "min_level": 3,  "desc": "کپک سحرآمیز و پرطرفدار"},
+    "peyote":    {"name": "پیوت",         "emoji": "🌵", "price": 850,  "grow_min": 12, "sell": 2100,  "xp": 30, "min_level": 5,  "desc": "کاکتوس جادویی صحرا"},
+    "teriak":    {"name": "تریاک",        "emoji": "🌱", "price": 2000, "grow_min": 18, "sell": 5200,  "xp": 45, "min_level": 7,  "desc": "طلای سیاه محله"},
+    "cocaine":   {"name": "کوکائین",      "emoji": "⚪", "price": 5200, "grow_min": 25, "sell": 14000, "xp": 70, "min_level": 10, "desc": "پودر سفید قیمتی"},
     # ── بذرهای افسانه‌ای، قابل خرید نیستن (فقط جستجو/کاروان/ایونت) و تو بازار سیاه دیده نمیشن ──
     "jahannam": {
-        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 60, "sell": 120000, "xp": 150,
+        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 60, "sell": 84000, "xp": 150,
         "min_level": 12, "legendary": True, "desc": "از عمق جهنم رسیده",
     },
     "eblis": {
-        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 120, "sell": 400000, "xp": 300,
+        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 120, "sell": 280000, "xp": 300,
         "min_level": 18, "legendary": True, "desc": "نایاب‌ترین بذر محله",
     },
 }
 
+# 🪵⛏ منابع: چوب و آهن، از سه راه به دست میان: کنده کاری | شاپ | کارخانه
+RES_WOOD_CAP_BASE = 200        # ظرفیت چوب بدون مخفیگاه
+RES_WOOD_CAP_PER_LEVEL = 150   # هر لول مخفیگاه +اینقدر ظرفیت چوب
+RES_IRON_CAP_BASE = 100        # ظرفیت آهن بدون مخفیگاه
+RES_IRON_CAP_PER_LEVEL = 80    # هر لول مخفیگاه +اینقدر ظرفیت آهن
+# پک‌های فروش منابع تو شاپ (بخش 🎒 منابع)
+RES_SHOP = {
+    "wood": {"name": "چوب", "emoji": "🪵", "pack": 25, "price": 1500},
+    "iron": {"name": "آهن", "emoji": "⛏️", "pack": 10, "price": 1500},
+}
+
 # ───────── کنده‌کاری ─────────
 MINE_COOLDOWN_SECONDS = 30      # هر ۳۰ ثانیه یه بار
-MINE_MIN = 10
-MINE_MAX = 150
+MINE_MIN = 10                   # کف تی‌پوینت هر بار
+MINE_MAX = 150                  # سقف تی‌پوینت هر بار
 MINE_COMMON_MAX = 100
 MINE_COMMON_WEIGHT = 0.75       # ۷۵% مواقع بین ۱۰ تا ۱۰۰ میاد
 MINE_XP_MIN = 1                 # تجربه هر کنده‌کاری رندوم بین ۱ تا ۵
 MINE_XP_MAX = 5
+MINE_WOOD_CHANCE = 0.45         # شانس افتادن چوب توی هر بار
+MINE_WOOD_MIN = 1
+MINE_WOOD_MAX = 3
+MINE_IRON_CHANCE = 0.30         # شانس افتادن آهن توی هر بار
+MINE_IRON_MIN = 1
+MINE_IRON_MAX = 2
+MINE_RARE_CHANCE = 0.08         # شانس «شکار کمیاب» (چوب و آهن ×مقدار کمیاب)
+MINE_RARE_MULT = 3              # ضریب کمیاب
+
+# ابزارهای کنده‌کاری: تبر 🪓 (چوب) و کلنگ ⛏️ (آهن)
+# هر لول علاوه بر منابع خودش، درآمد تی‌پوینت و شانس کمیاب رو هم بالا می‌بره
+TOOL_MAX_LEVEL = 5
+TOOL_CASH_PER_LEVEL = 0.05     # هر لول هر ابزار +۵% تی‌پوینت کنده‌کاری
+TOOL_RARE_PER_LEVEL = 0.02     # هر لول هر ابزار +۲% شانس کمیاب
+TOOLS = {
+    "axe": {
+        "name": "تبر", "emoji": "🪓", "res": "wood",
+        "amount_per_level": 0.50,   # هر لول مقدار چوب ×(۱ + ۰٫۵×(لول-۱))
+        "chance_per_level": 0.05,   # هر لول +۵% شانس چوب
+        # هزینه رفتن به لول ۲..۵: (تی‌پوینت, آهن)
+        "upgrades": [(2500, 0), (6000, 8), (15000, 20), (35000, 45)],
+    },
+    "pick": {
+        "name": "کلنگ", "emoji": "⛏️", "res": "iron",
+        "amount_per_level": 0.50,
+        "chance_per_level": 0.05,
+        "upgrades": [(3000, 0), (8000, 12), (20000, 30), (45000, 60)],
+    },
+}
+
+# ───────── 🏭 شرکت: تولید خودکار چوب و آهن ─────────
+# لول ۰ یعنی ساخته نشده | تولید با فرمول lazy موقع باز شدن صفحه واریز میشه
+FACTORY_TICK_SECONDS = 600      # هر ۱۰ دقیقه یه تیک تولید
+FACTORY_MAX_LEVEL = 10
+FACTORY_OFFLINE_TICKS = 96      # سقف انباشت آفلاین (۱۶ ساعت)
+FACTORIES = {
+    "lumber": {
+        "name": "چوب‌بری", "emoji": "🪵", "res": "wood",
+        "per_tick": 2,              # هر لول هر تیک ۲ چوب
+        "build": (5000, 0),         # ساخت: (تی‌پوینت, چوب)
+        "up_tp": 3000,              # هزینه ارتقا به لول N = up_tp × N
+        "up_wood": 40,              # چوب ارتقا به لول N = up_wood × N
+    },
+    "ironmill": {
+        "name": "کارخانه آهن", "emoji": "🏭", "res": "iron",
+        "per_tick": 1,              # هر لول هر تیک ۱ آهن
+        "build": (8000, 50),        # ساخت: (تی‌پوینت, چوب)
+        "up_tp": 4500,
+        "up_wood": 60,
+    },
+}
 
 # ───────── برداشت ─────────
 HARVEST_COOLDOWN_SECONDS = 120  # هر ۲ دقیقه فقط یه بار برداشت، زمان‌بندی برای هر کاربر جداست
@@ -192,20 +256,42 @@ HEAL_ITEMS = {
 
 # ───────── سلاح‌ها (فروشگاه 🔪) ─────────
 # چاقو و قمه و میله سردن، بقیه اسلحه‌ن (🔫)
+# بالانس: پلیر برای سلاح باید زحمت بکشه، قیمت‌ها داغون‌تر از قبل
+# iron = آهنی که موقع خرید علاوه بر تی‌پوینت کم میشه
 WEAPONS = {
-    "knife":   {"name": "چاقو",              "price": 400,   "attack": 6,   "min_level": 1,  "desc": "سلاح کلاسیک محله", "gun": False},
-    "shank":   {"name": "قمه",               "price": 850,   "attack": 11,  "min_level": 2,  "desc": "بلند و ترسناک", "gun": False},
-    "pipe":    {"name": "میله آهنی",          "price": 1200,  "attack": 14,  "min_level": 3,  "desc": "سنگین و زخمی", "gun": False},
-    "shocker": {"name": "شوکر دست‌ساز",        "price": 1800,  "attack": 18,  "min_level": 4,  "desc": "برق می‌گیرهت ولی اسلحه نیس", "gun": False},
-    "colt":    {"name": "کلت کمری 🔫",        "price": 2600,  "attack": 24,  "min_level": 5,  "desc": "اولین اسلحه هر تازه‌کار", "gun": True},
-    "uzi":     {"name": "اوزی 🔫",            "price": 5500,  "attack": 42,  "min_level": 6,  "desc": "رگباری و پرسرعت", "gun": True},
-    "shotgun": {"name": "شات‌گان 🔫",         "price": 7500,  "attack": 52,  "min_level": 7,  "desc": "از نزدیک ویرانه", "gun": True},
-    "deagle":  {"name": "کلت نقره‌ای 🔫",      "price": 10000, "attack": 60,  "min_level": 8,  "desc": "خشن و پرسرعت", "gun": True},
-    "ak47":    {"name": "کلاشنیکف 🔫",           "price": 16000, "attack": 85,  "min_level": 10, "desc": "کلاش افسانه‌ای محله", "gun": True},
-    "svd":     {"name": "دراگونوف 🔫",        "price": 22000, "attack": 105, "min_level": 11, "desc": "تک‌تیرانداز از پشت بوم", "gun": True},
-    "plasma":  {"name": "شلیک‌کن پلاسما",     "price": 30000, "attack": 130, "min_level": 12, "desc": "آینده‌گرایانه و کشنده", "gun": True},
-    "minigun": {"name": "گاتلینگ 🔫",         "price": 45000, "attack": 175, "min_level": 14, "desc": "رگبار تموم‌نشدنی", "gun": True},
-    "rpg":     {"name": "آرپی‌جی 🔫",          "price": 60000, "attack": 230, "min_level": 16, "desc": "باهاش نصف محله دود میشه", "gun": True},
+    "knife":   {"name": "چاقو",              "price": 600,   "iron": 2,  "attack": 6,   "min_level": 1,  "desc": "سلاح کلاسیک محله", "gun": False},
+    "shank":   {"name": "قمه",               "price": 1300,  "iron": 3,  "attack": 11,  "min_level": 2,  "desc": "بلند و ترسناک", "gun": False},
+    "pipe":    {"name": "میله آهنی",          "price": 1800,  "iron": 5,  "attack": 14,  "min_level": 3,  "desc": "سنگین و زخمی", "gun": False},
+    "shocker": {"name": "شوکر دست‌ساز",        "price": 2700,  "iron": 6,  "attack": 18,  "min_level": 4,  "desc": "برق می‌گیرهت ولی اسلحه نیس", "gun": False},
+    "colt":    {"name": "کلت کمری 🔫",        "price": 3900,  "iron": 8,  "attack": 24,  "min_level": 5,  "desc": "اولین اسلحه هر تازه‌کار", "gun": True},
+    "uzi":     {"name": "اوزی 🔫",            "price": 8200,  "iron": 12, "attack": 42,  "min_level": 6,  "desc": "رگباری و پرسرعت", "gun": True},
+    "shotgun": {"name": "شات‌گان 🔫",         "price": 11200, "iron": 16, "attack": 52,  "min_level": 7,  "desc": "از نزدیک ویرانه", "gun": True},
+    "deagle":  {"name": "کلت نقره‌ای 🔫",      "price": 15000, "iron": 20, "attack": 60,  "min_level": 8,  "desc": "خشن و پرسرعت", "gun": True},
+    "ak47":    {"name": "کلاشنیکف 🔫",           "price": 24000, "iron": 28, "attack": 85,  "min_level": 10, "desc": "کلاش افسانه‌ای محله", "gun": True},
+    "svd":     {"name": "دراگونوف 🔫",        "price": 33000, "iron": 34, "attack": 105, "min_level": 11, "desc": "تک‌تیرانداز از پشت بوم", "gun": True},
+    "plasma":  {"name": "شلیک‌کن پلاسما",     "price": 45000, "iron": 42, "attack": 130, "min_level": 12, "desc": "آینده‌گرایانه و کشنده", "gun": True},
+    "minigun": {"name": "گاتلینگ 🔫",         "price": 67000, "iron": 55, "attack": 175, "min_level": 14, "desc": "رگبار تموم‌نشدنی", "gun": True},
+    "rpg":     {"name": "آرپی‌جی 🔫",          "price": 90000, "iron": 70, "attack": 230, "min_level": 16, "desc": "باهاش نصف محله دود میشه", "gun": True},
+}
+
+# ───────── ارتقای سلاح و زره ⬆️ ─────────
+# هر آیتم تا لول ۵ ارتقا داره | استت ×(۱ + ضریب×(لول-۱)) | هزینه = تی‌پوینت + آهن
+GEAR_UPG_MAX = 5
+GEAR_UPG_STAT_PER_LEVEL = 0.20    # هر لول ۲۰% استت پایه بیشتر
+GEAR_UPG_TP_PER_LEVEL = 0.50      # تی‌پوینت ارتقا به لول N = قیمت پایه × این × (N-1)
+GEAR_UPG_IRON_STEP = 4            # آهن ارتقا به لول N = آهن پایه آیتم + این × (N-2)
+GEAR_UPG_IRON_ARMOR_BASE = 2      # آهن پایه زره = این + رتبه زره (ارزان به گرون)
+GEAR_UPG_LEVELS = [2, 5, 9, 13]   # لول بازیکن لازم برای رفتن به لول ۲|۳|۴|۵
+
+# ───────── آرتیفکت‌ها 🧿 (آیتم‌های آخر بازی) ─────────
+# یک‌بارمصرف نیستن، یه بار می‌خری و همیشه روتی | تو دیتابیس به صورت arti_<key> ذخیره میشن
+ARTIFACT_MIN_LEVEL = 10
+ARTIFACTS = {
+    "dragon":   {"name": "قلب اژدها",      "emoji": "🔥", "price": 250000, "atk_mult": 0.10,   "line": "💥 افزایش قدرت حمله"},
+    "guardian": {"name": "سنگ نگهبان",     "emoji": "🛡", "price": 220000, "def_mult": 0.10,   "line": "🛡 افزایش دفاع"},
+    "thunder":  {"name": "هسته رعد",       "emoji": "⚡", "price": 300000, "xp_mult": 0.15,    "line": "⚡ افزایش تجربه"},
+    "clover":   {"name": "شبدر افسانه‌ای", "emoji": "🍀", "price": 180000, "luck": 1.5,        "line": "🍀 افزایش شانس"},
+    "crown":    {"name": "تاج تاریکی",     "emoji": "👑", "price": 350000, "steal_bonus": 0.15, "line": "💰 افزایش غارت"},
 }
 
 # ───────── زره‌ها (فروشگاه 🛡) ─────────
@@ -234,32 +320,31 @@ DOG_XP_EXP = 1.35
 RARE_DOG_STEAL_MAX = 0.10       # حداکثر غرامت بیشتر گرگ سیاه (۱۰% با لول مکس)
 RARE_DOG_DEF_CUT_MAX = 0.30     # حداکثر کاهش دفاع حریف توسط گرگ سیاه (۳۰% با لول مکس)
 # قدرت سگ = attack + atk_per_level × (لول-۱) | اسم آیتم فقط نژاده، اسمشو خودت بعد خرید می‌ذاری
+# trait_line = ویژگی اصلی نژاد که تو شاپ نمایش داده میشه
+# افکت نژاد: cooldown_mult (کولدون حمله) | xp_mult (تجربه نبرد) | defense+def_per_level (دفاع کانگال)
 DOGS = {
     "pitbull": {
         "name": "پیتبول", "breed": "پیتبول", "price": 2000, "attack": 8, "atk_per_level": 2,
-        "min_level": 1, "rare": False, "ability": "وفادار و همیشه آماده‌ی دعوا",
-        "desc": "سگ اول هر گانگستر",
+        "min_level": 1, "rare": False, "trait_line": "💥 قدرت حمله بیشتر",
     },
     "doberman": {
         "name": "دوبرمن", "breed": "دوبرمن", "price": 6000, "attack": 15, "atk_per_level": 3,
-        "min_level": 3, "rare": False, "ability": "تند و تیز، سرعت حمله بالا",
-        "desc": "بادیگارد قدیمی محله",
+        "min_level": 3, "rare": False, "trait_line": "⚡ کاهش کولدون حمله",
+        "cooldown_mult": 0.85,
     },
     "shepherd": {
         "name": "ژرمن شپرد", "breed": "ژرمن شپرد", "price": 15000, "attack": 26, "atk_per_level": 4,
-        "min_level": 6, "rare": False, "ability": "بویایی قوی، قربانی رو بو می‌کشه",
-        "desc": "چیزی ازش پنهون نمیمونه",
+        "min_level": 6, "rare": False, "trait_line": "🎁 تجربه بیشتر از نبرد",
+        "xp_mult": 1.15,
     },
     "kangal": {
         "name": "کانگال", "breed": "کانگال", "price": 40000, "attack": 45, "atk_per_level": 6,
-        "min_level": 10, "rare": False, "ability": "فک افسانه‌ای که ول نمی‌کنه",
-        "desc": "هیولاي آسیايی",
+        "min_level": 10, "rare": False, "trait_line": "🛡 دفاع بیشتر",
+        "defense": 10, "def_per_level": 2,
     },
     "blackwolf": {
         "name": "گرگ سیاه", "breed": "گرگ سیاه", "price": 150000, "attack": 70, "atk_per_level": 9,
-        "min_level": 15, "rare": True,
-        "ability": "با لول‌آپ تا 30% دفاع حریف رو خرد می‌کنه و تا 10% غرامت بیشتری از حریف می‌گیره 👑",
-        "desc": "کمیاب‌ترین و بهترین سگ بازی",
+        "min_level": 15, "rare": True, "trait_line": "☠ غارت بیشتر",
     },
 }
 
@@ -272,7 +357,7 @@ DOG_FOODS = {
 
 # ───────── تیم 🏴 ─────────
 TEAM_CREATE_MIN_LEVEL = 10      # ساخت تیم از لول ۱۰
-TEAM_JOIN_MIN_LEVEL = 5         # عضو شدن تو تیم از لول ۵
+TEAM_JOIN_MIN_LEVEL = 3         # درخواست عضویت تو تیم از لول ۳
 TEAM_CREATE_COST = 5000         # هزینه ساخت تیم
 TEAM_MAX_MEMBERS = 10
 TEAM_NAME_MAX = 24
@@ -315,14 +400,29 @@ TEAM_ATK_BONUS_PER_LEVEL = 0.03   # هر لول ساختمان حمله: +۳% ق
 TEAM_DEF_BONUS_PER_LEVEL = 0.03   # هر لول ساختمان دفاع: +۳% دفاع همه اعضا
 
 # ───────── شخصیت سگ‌ها 🧬 ─────────
-# گرگ سیاه 👑 شخصیت نمی‌گیره، قابلیت‌های خودشو داره و ثابت می‌مونه
+# هر نژاد فقط از استخر شخصیت خودش می‌گیره | گرگ سیاه 👑 شخصیت نمی‌گیره
 DOG_PERSONALITIES = {
-    "loyal":   {"emoji": "🦴", "name": "وفادار",   "desc": "+5% قدرت سگ",           "atk_mult": 0.05},
-    "warrior": {"emoji": "⚔", "name": "جنگجو",   "desc": "+10% قدرت سگ",          "atk_mult": 0.10},
-    "guard":   {"emoji": "🛡", "name": "نگهبان",  "desc": "دزدی از جیبت 10% کمتر",     "def_steal_cut": 0.10},
-    "hunter":  {"emoji": "💰", "name": "شکارچی",  "desc": "+8% غرامت جنگی",        "steal_bonus": 0.08},
-    "lucky":   {"emoji": "🍀", "name": "خوش‌شانس", "desc": "شانس جایزه‌های جستجو بیشتر", "luck": 1.5},
+    "warrior":  {"emoji": "⚔",  "name": "جنگجو",      "desc": "قدرت سگ بیشتر",          "atk_mult": 0.10},
+    "furious":  {"emoji": "😡", "name": "خشمگین",     "desc": "قدرت سگ خیلی بیشتر",      "atk_mult": 0.15},
+    "swift":    {"emoji": "🌀", "name": "چابک",       "desc": "کولدون حمله کمتر",        "cooldown_mult": 0.90},
+    "hunter":   {"emoji": "💰", "name": "شکارچی",     "desc": "غرامت جنگی بیشتر",        "steal_bonus": 0.08},
+    "wise":     {"emoji": "🧠", "name": "باهوش",      "desc": "تجربه نبرد بیشتر",        "xp_mult": 0.10},
+    "obedient": {"emoji": "🤝", "name": "فرمان‌بردار", "desc": "قدرت و تجربه کمی بیشتر", "atk_mult": 0.05, "xp_mult": 0.05},
+    "guard":    {"emoji": "🛡", "name": "نگهبان",     "desc": "دزدی از جیبت کمتر",       "def_steal_cut": 0.10},
+    "tough":    {"emoji": "🪨", "name": "سرسخت",      "desc": "دفاع بیشتر",              "def_flat": 8},
+    "loyal":    {"emoji": "🦴", "name": "وفادار",     "desc": "قدرت سگ کمی بیشتر",       "atk_mult": 0.05},
+    "lucky":    {"emoji": "🍀", "name": "خوش‌شانس",   "desc": "شانس جایزه‌های جستجو بیشتر", "luck": 1.5},
 }
+# استخر شخصیت هر نژاد (ماژولار: نژاد جدید = یه خط اینجا + یه بلوک تو DOGS)
+DOG_PERSONALITY_POOLS = {
+    "pitbull":  ["warrior", "furious"],
+    "doberman": ["swift", "hunter"],
+    "shepherd": ["wise", "obedient"],
+    "kangal":   ["guard", "tough"],
+    "blackwolf": [],
+}
+# سگ‌ها از نبرد هم تجربه می‌گیرن
+DOG_BATTLE_XP_HIT = 6            # هر ضربه موفق نبرد گروهی به هر سگ
 
 # ───────── کیفیت محصول ⭐ ─────────
 # هر برداشت یه کیفیت داره و کیفیت بالاتر قیمت فروش رو می‌بره بالا

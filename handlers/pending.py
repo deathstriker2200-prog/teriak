@@ -25,10 +25,10 @@ _KNOWN_TEXTS = {
     "تیم ساختمان", "تیم ساختمان ها", "تیم ساخت", "تیم پروفایل", "تیم عضویت",
     "تیم لیدربرد", "تیم چالش", "تیم کوئست", "تیم بانک", "تیم واریز",
     "جستجو", "جست و جو", "آب و هوا", "وضعیت آب و هوا", "وضعیت هوا", "وضعیت هواشناسی", "وضعیت بازار",
-    "بازار سیاه", "بازار", "هواشناسی", "پناهگاه", "قمار", "قمارخانه", "زمین", "لیدربرد", "رتبه بندی",
+    "بازار سیاه", "بازار", "هواشناسی", "پناهگاه", "مخفیگاه", "شرکت", "کارخانه", "قمار", "قمارخانه", "زمین", "لیدربرد", "رتبه بندی",
 }
 
-_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ")
+_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ", "اسم سگ", "شرکت", "مخفیگاه")
 
 
 async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -94,6 +94,15 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "معامله‌ست؟",
                 reply_markup=kb.tx_confirm_kb("dog", dog_key, update.effective_user.id, display),
             )
+            raise ApplicationHandlerStop()
+
+        # ── سرچ عضو برای اخراج (بعد از دکمه 👢 اخراج عضو تو مدیریت تیم) ──
+        if action == "teamkick":
+            user.pending_action = None
+            user.pending_value = None
+            await s.commit()
+            from handlers import team as team_h
+            await team_h.kick_search_respond(update, context, text)
             raise ApplicationHandlerStop()
 
         # ── مبلغ واریز/برداشت بانک (بعد از دکمه‌های «بانک») ──

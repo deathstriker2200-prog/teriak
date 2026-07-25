@@ -8,6 +8,7 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 import config
+from services import resources as res_svc
 from database import session_scope
 from handlers.common import parts, respond
 from keyboards import keyboards as kb
@@ -26,6 +27,8 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         users.apply_energy_regen(user)
         dogs = await dog_svc.get_user_dogs(s, user.id)
         luck = dog_svc.search_luck(dogs)
+        artis = users.artifact_keys(await users.get_item_keys(s, user.id))
+        luck = max(luck, users.artifact_luck(artis))
         res = await world_svc.do_search(s, user, luck=luck)
         if res["status"] != "cooldown":
             from services import quests as dq_svc
@@ -120,7 +123,10 @@ async def _shelter_text(user) -> str:
         f"🎲 شانس فرار کامل از یورش {fa_num(int(dodge * 100))}%",
         f"📦 ظرفیت انبار هر بذر {fa_num(cap)} تا",
         "",
+        f"🪵 ظرفیت چوب {fa_num(res_svc.wood_cap(user))} | ⛏️ آهن {fa_num(res_svc.iron_cap(user))}",
+        "",
         "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30% محصولات انبار رو نابود می‌کنه، پناهگاه جلوته",
+        "با ارتقا، ظرفیت بذر و چوب و آهن هم بیشتر میشه",
     ]
     if user.shelter_level < config.SHELTER_MAX_LEVEL:
         price = world_svc.shelter_price(user.shelter_level + 1)
@@ -239,16 +245,17 @@ async def casino_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if st == "win":
         text = (
-            "<b>🎰 وین!</b>\n\n"
-            f"دیلر پاشید، {money(res['prize'])} جیبت شد 😈\n\n"
-            f"💵 نقدینگی {fa_num(res['cash'])}TP"
+            "<b>🎰 زدی تو خال</b>\n\n"
+            f"💰 {money(res['prize'])} برنده شدی\n\n"
+            f"💵 موجودی فعلی\n{money(res['cash'])}\n\n"
+            f"⏳ دست بعدی\n{fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت دیگه"
         )
     else:
         text = (
-            "<b>🎰 آمپر نشد</b>\n\n"
-            f"{money(res['bet'])} رفت رو دیلر 💸\n"
-            f"💵 نقدینگی {fa_num(res['cash'])}TP\n\n"
-            f"دست بعدی {fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت دیگه"
+            "<b>🎰 این دست شانس باهات یار نبود</b>\n\n"
+            f"💸 {money(res['bet'])} رو باختی\n\n"
+            f"💰 موجودی فعلی\n{money(res['cash'])}\n\n"
+            f"⏳ دست بعدی\n{fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت دیگه"
         )
     await respond(update, text, kb.home_kb())
 

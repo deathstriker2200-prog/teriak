@@ -14,14 +14,31 @@ CATALOGS = {
     "weap": config.WEAPONS,
     "arm": config.ARMORS,
     "seed": config.SEEDS,
+    "arti": config.ARTIFACTS,
 }
 
-KIND_EMOJI = {"weap": "🗡", "arm": "🛡", "seed": "🌱", "dog": "🐕"}
+KIND_EMOJI = {"weap": "🗡", "arm": "🛡", "seed": "🌱", "dog": "🐕", "arti": "🧿"}
 
 
 def shop_seeds() -> dict:
     """بذرهای قابل خرید تو شاپ، افسانه‌ای‌ها 🔥😈 تو بازار سیاه/شاپ نمیان"""
     return {k: v for k, v in CATALOGS["seed"].items() if not v.get("legendary")}
+
+
+async def purchase_resource(
+    session: AsyncSession, user: User, res: str
+) -> tuple[bool, str]:
+    """خرید پک چوب/آهن از بخش منابع شاپ"""
+    from services.resources import add_res
+
+    pack = config.RES_SHOP.get(res)
+    if not pack:
+        return False, "❌ همچین جنسی نیس"
+    if user.cash < pack["price"]:
+        return False, "❌ تی‌پوینتت کافی نیس"
+    user.cash -= pack["price"]
+    got = add_res(user, res, pack["pack"])
+    return True, f"{pack['emoji']} {fa_num(got)} {pack['name']} اضافه شد"
 
 
 async def purchase(
@@ -48,17 +65,25 @@ async def purchase(
 
     # گیت لول
     min_level = item.get("min_level", 1)
+    if kind == "arti":
+        min_level = max(min_level, config.ARTIFACT_MIN_LEVEL)
     if user.level < min_level:
         return False, f"🔒 لول {fa_num(min_level)} می‌خواد"
 
-    # سلاح و زره یه بار خرید میشن
-    if kind in ("weap", "arm"):
+    # سلاح و زره و آرتیفکت یه بار خرید میشن
+    if kind in ("weap", "arm", "arti"):
         owned = await users.get_item_keys(session, user.id)
-        if key in owned:
+        store_key = f"arti_{key}" if kind == "arti" else key
+        if store_key in owned:
             return False, "اینو داری که"
 
     if user.cash < item["price"]:
         return False, "❌ تی‌پوینتت کافی نیس"
+
+    # سلاح علاوه بر پول آهن هم می‌خواد
+    need_iron = item.get("iron", 0) if kind == "weap" else 0
+    if need_iron and user.iron < need_iron:
+        return False, f"⛏️ {fa_num(need_iron)} آهن می‌خواد و {fa_num(user.iron)} تا داری"
 
     # بذر افسانه‌ای قابل خرید نیس، فقط از جستجو/کاروان/ایونت
     if kind == "seed" and item.get("legendary"):
@@ -73,9 +98,13 @@ async def purchase(
             return False, f"🌾 انبارت پره، ظرفیت هر بذر {fa_num(cap)} تاست؛ با «پناهگاه» بیشترش کن"
 
     user.cash -= item["price"]
+    if need_iron:
+        user.iron -= need_iron
 
     if kind in ("weap", "arm"):
         session.add(InventoryItem(user_id=user.id, item_key=key))
+    elif kind == "arti":
+        session.add(InventoryItem(user_id=user.id, item_key=f"arti_{key}"))
     elif kind == "seed":
         await add_seed_stock(session, user.id, key, 1)
 

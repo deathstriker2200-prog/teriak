@@ -42,6 +42,19 @@ class User(Base):
     # پناهگاه — لول ۰ یعنی نداره | خسارت یورش پلیس رو کم می‌کنه
     shelter_level: Mapped[int] = mapped_column(Integer, default=0)
 
+    # منابع: چوب و آهن — از کنده‌کاری، شاپ و کارخانه میان
+    wood: Mapped[int] = mapped_column(Integer, default=0)
+    iron: Mapped[int] = mapped_column(Integer, default=0)
+
+    # ابزارهای کنده‌کاری: تبر (چوب) و کلنگ (آهن)
+    axe_level: Mapped[int] = mapped_column(Integer, default=1)
+    pick_level: Mapped[int] = mapped_column(Integer, default=1)
+
+    # 🏭 شرکت — لول ۰ یعنی ساخته نشده | company_at آخرین لحظه تسویه تولید
+    lumber_level: Mapped[int] = mapped_column(Integer, default=0)
+    ironmill_level: Mapped[int] = mapped_column(Integer, default=0)
+    company_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     # کولدونهای سیستم‌های جهان
     last_search_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_casino_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -114,13 +127,15 @@ class Plot(Base):
 
 
 class InventoryItem(Base):
-    """سلاح‌ها و زره‌های خریداری‌شده"""
+    """سلاح‌ها و زره‌ها و آرتیفکت‌های خریداری‌شده — سلاح/زره تا لول ۵ ارتقا دارن"""
     __tablename__ = "inventory"
     __table_args__ = (UniqueConstraint("user_id", "item_key", name="uq_user_item"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     item_key: Mapped[str] = mapped_column(String(32))
+    # لول ارتقای سلاح/زره (۱ تا GEAR_UPG_MAX) — آرتیفکت‌ها همیشه ۱
+    level: Mapped[int] = mapped_column(Integer, default=1)
     bought_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     user: Mapped[User] = relationship(back_populates="items")
@@ -202,17 +217,31 @@ class Team(Base):
 
 
 class TeamMember(Base):
-    """عضویت — هر کاربر فقط تو یه تیم می‌تونه باشه"""
+    """عضویت — هر کاربر فقط تو یه تیم می‌تونه باشه | نقش: owner / admin / member"""
     __tablename__ = "team_members"
     __table_args__ = (UniqueConstraint("user_id", name="uq_team_user"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    role: Mapped[str] = mapped_column(String(8), default="member")  # owner / member
+    role: Mapped[str] = mapped_column(String(8), default="member")  # owner / admin / member
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     team: Mapped[Team] = relationship(back_populates="members")
+    user: Mapped[User] = relationship()
+
+
+class TeamRequest(Base):
+    """درخواست عضویت معلق — رهبر و مدیرا قبول یا ردش می‌کنن"""
+    __tablename__ = "team_requests"
+    __table_args__ = (UniqueConstraint("team_id", "user_id", name="uq_team_request"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    team: Mapped[Team] = relationship()
     user: Mapped[User] = relationship()
 
 

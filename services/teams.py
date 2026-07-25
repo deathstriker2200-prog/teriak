@@ -9,11 +9,11 @@ import math
 import random
 from datetime import timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import GameMeta, Team, TeamDaily, TeamMember, User
+from models import GameMeta, Team, TeamDaily, TeamMember, TeamRequest, User
 from utils import fa_num, money, normalize_fa, now_utc
 
 # ───────── سشن‌های کنده‌کاری تیمی (درون حافظه، با ری‌استارت پاک میشن) ─────────
@@ -107,7 +107,26 @@ async def create_team(session: AsyncSession, user: User, name: str) -> tuple[boo
     return True, display
 
 
-async def join_team(session: AsyncSession, user: User, name: str) -> tuple[bool, str]:
+# ───────── نقش‌ها 👑 ─────────
+
+def is_manager(m: TeamMember | None) -> bool:
+    """رهبر یا مدیر تیم؟ (ممیزی بخش 👑 مدیریت تیم)"""
+    return bool(m and m.role in ("owner", "admin"))
+
+
+def can_kick(me: TeamMember, target: TeamMember) -> tuple[bool, str]:
+    """قانون اخراج: رهبر هرکسی رو جز خودش، مدیر فقط عضو عادی رو"""
+    if target.role == "owner":
+        return False, "👑 رهبر که اخراج نمیشه 😅"
+    if me.role != "owner" and target.role != "member":
+        return False, "👑 اخراج مدیر فقط با رهبره"
+    return True, ""
+
+
+# ───────── درخواست عضویت 📨 ─────────
+
+async def request_join(session: AsyncSession, user: User, name: str) -> tuple[bool, str]:
+    """«جوین تیم X» عضویت مستقیم نیس، فقط درخواست ثبت میشه تا مدیران تصمیم بگیرن"""
     if user.level < config.TEAM_JOIN_MIN_LEVEL:
         return False, f"🔒 عضویت تو تیم لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
@@ -121,8 +140,130 @@ async def join_team(session: AsyncSession, user: User, name: str) -> tuple[bool,
     if count >= config.TEAM_MAX_MEMBERS:
         return False, f"🏴 تیم «{team.name}» پره"
 
-    session.add(TeamMember(team_id=team.id, user_id=user.id, role="member"))
+    dup = await session.execute(
+        select(TeamRequest).where(TeamRequest.team_id == team.id, TeamRequest.user_id == user.id)
+    )
+    if dup.scalar_one_or_none():
+        return False, f"📨 درخواستت برای تیم «{team.name}» از قبل تو صفه"
+
+    session.add(TeamRequest(team_id=team.id, user_id=user.id))
     return True, team.name
+
+
+async def get_requests(session: AsyncSession, team_id: int) -> list[tuple[TeamRequest, User]]:
+    """درخواست‌های در انتظار تیم به ترتیب ثبت، همراه خود کاربر"""
+    q = (
+        select(TeamRequest, User)
+        .join(User, User.id == TeamRequest.user_id)
+        .where(TeamRequest.team_id == team_id)
+        .order_by(TeamRequest.id)
+    )
+    return [(r, u) for r, u in (await session.execute(q)).all()]
+
+
+async def get_request(session: AsyncSession, req_id: int) -> tuple[TeamRequest, User] | None:
+    q = (
+        select(TeamRequest, User)
+        .join(User, User.id == TeamRequest.user_id)
+        .where(TeamRequest.id == req_id)
+    )
+    row = (await session.execute(q)).first()
+    return (row[0], row[1]) if row else None
+
+
+async def find_request_by_query(session: AsyncSession, team_id: int, query: str) -> tuple[TeamRequest, User] | None:
+    """درخواست معلق رو با آیدی عددی یا @یوزرنیم پیدا کن (مچ جزئی یوزرنیم هم اوکیه)"""
+    reqs = await get_requests(session, team_id)
+    q = (query or "").strip()
+    if q.lstrip("-").isdigit():
+        tg = int(q)
+        hits = [x for x in reqs if x[1].telegram_id == tg]
+        return hits[0] if hits else None
+    norm = q.lstrip("@").lower()
+    if not norm:
+        return None
+    for r, u in reqs:
+        if (u.username or "").lower() == norm:
+            return (r, u)
+    for r, u in reqs:
+        if norm and norm in (u.username or "").lower():
+            return (r, u)
+    return None
+
+
+async def accept_request(session: AsyncSession, req: TeamRequest, target: User) -> tuple[bool, str]:
+    """قبول درخواست: ظرفیت و تک‌تیمی بودن دوباره چک میشه و عضو عادی میشه"""
+    if await get_membership(session, target.id):
+        await session.delete(req)
+        return False, "👤 طرف الان تو تیم دیگه‌ای عضو شد، درخواستش پاک شد"
+    count = await member_count(session, req.team_id)
+    if count >= config.TEAM_MAX_MEMBERS:
+        await session.delete(req)
+        return False, "🏴 تیم پر شده بود، درخواست پاک شد"
+    session.add(TeamMember(team_id=req.team_id, user_id=target.id, role="member"))
+    await session.delete(req)
+    return True, ""
+
+
+async def reject_request(session: AsyncSession, req: TeamRequest) -> None:
+    await session.delete(req)
+
+
+# ───────── عضوهای تیم: سرچ فازی + ادمین ─────────
+
+async def find_team_member(session: AsyncSession, team_id: int, query: str) -> tuple[TeamMember, User] | None:
+    """
+    نزدیک‌ترین عضو تیم به کوئری
+    آیدی عددی دقیق | @یوزرنیم دقیق بعد مچ جزئی | اسم دقیق بعد شروع‌شونده بعد بخشی از اسم
+    """
+    members = await get_members(session, team_id)
+    uids = [m.user_id for m in members]
+    if not uids:
+        return None
+    q_users = await session.execute(select(User).where(User.id.in_(uids)))
+    by_id = {u.id: u for u in q_users.scalars()}
+    pairs = [(m, by_id[m.user_id]) for m in members if m.user_id in by_id]
+
+    q = (query or "").strip()
+    if q.lstrip("-").isdigit():
+        tg = int(q)
+        hits = [p for p in pairs if p[1].telegram_id == tg]
+        return hits[0] if hits else None
+
+    norm = normalize_fa(q.lstrip("@")).lower()
+    if not norm:
+        return None
+    exact = [p for p in pairs if (p[1].username or "").lower() == norm]
+    if exact:
+        return exact[0]
+    exact_name = [p for p in pairs if normalize_fa(p[1].first_name or "").lower() == norm]
+    if exact_name:
+        return exact_name[0]
+    pref = [p for p in pairs if (p[1].username or "").lower().startswith(norm)
+            or normalize_fa(p[1].first_name or "").lower().startswith(norm)]
+    if pref:
+        return pref[0]
+    part = [p for p in pairs if norm in (p[1].username or "").lower()
+            or norm in normalize_fa(p[1].first_name or "").lower()]
+    return part[0] if part else None
+
+
+async def toggle_admin(session: AsyncSession, owner_user: User, query: str) -> tuple[bool, str, User | None, bool]:
+    """مدیر کردن یا برداشتن مدیریت، فقط رهبر، (اوکی، دلیل، هدف، مدیر شد?)"""
+    me = await get_membership(session, owner_user.id)
+    if not me or me.role != "owner":
+        return False, "👑 فقط رهبر می‌تونه مدیر بذاره", None, False
+    hit = await find_team_member(session, me.team_id, query)
+    if not hit:
+        return False, "🤷 عضوی با این مشخصات تو تیم پیدا نشد", None, False
+    mrow, target = hit
+    if mrow.role == "owner":
+        return False, "👑 خودت رهبری دیگه 😅", None, False
+    if mrow.role == "admin":
+        mrow.role = "member"
+        return True, "", target, False
+    mrow.role = "admin"
+    return True, "", target, True
 
 
 async def leave_team(session: AsyncSession, user: User) -> tuple[bool, str]:
@@ -148,6 +289,7 @@ async def disband_team(session: AsyncSession, user: User) -> tuple[bool, str]:
         return False, "🤷 تیمی نیس که"
     name = team.name
     TEAM_MINE_SESSIONS.pop(team.id, None)
+    await session.execute(delete(TeamRequest).where(TeamRequest.team_id == team.id))  # درخواست‌های معلق هم پاک میشن
     await session.delete(team)  # memberها با cascade پاک میشن
     return True, name
 

@@ -46,8 +46,18 @@ _NEW_COLUMNS = {
         ("dq_data", "VARCHAR(1024)"),
         ("hp", "INTEGER"),
         ("dead_until", "DATETIME"),
+        ("wood", "INTEGER NOT NULL DEFAULT 0"),
+        ("iron", "INTEGER NOT NULL DEFAULT 0"),
+        ("axe_level", "INTEGER NOT NULL DEFAULT 1"),
+        ("pick_level", "INTEGER NOT NULL DEFAULT 1"),
+        ("lumber_level", "INTEGER NOT NULL DEFAULT 0"),
+        ("ironmill_level", "INTEGER NOT NULL DEFAULT 0"),
+        ("company_at", "DATETIME"),
     ],
-    "plots": [
+        "inventory": [
+        ("level", "INTEGER NOT NULL DEFAULT 1"),
+    ],
+"plots": [
         ("built_at", "DATETIME"),
     ],
     "dogs": [

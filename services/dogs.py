@@ -22,18 +22,28 @@ def personality_of(dog: Dog) -> dict | None:
     return config.DOG_PERSONALITIES.get(dog.personality)
 
 
+def personality_pool(dog_key: str) -> list[str]:
+    """استخر شخصیت‌های مخصوص اون نژاد، گرگ سیاه هیچ شخصیتی نمی‌گیره"""
+    return list(config.DOG_PERSONALITY_POOLS.get(dog_key, []))
+
+
 def ensure_personality(dog: Dog) -> None:
-    """به سگ‌های قدیمی که شخصیت ندارن یه شخصیت رندوم بده (گرگ سیاه مستثنی)"""
-    if dog.personality or config.DOGS.get(dog.dog_key, {}).get("rare"):
+    """به سگ‌های قدیمی که شخصیت ندارن یا شخصیتشون تو استخر نژادشون نیس یه شخصیت از استخر خودشون بده"""
+    pool = personality_pool(dog.dog_key)
+    if not pool:
+        dog.personality = None
         return
-    dog.personality = random.choice(list(config.DOG_PERSONALITIES.keys()))
+    if dog.personality in pool:
+        return
+    dog.personality = random.choice(pool)
 
 
 def roll_personality(dog_key: str) -> str | None:
-    """شخصیت رندوم موقع خرید، گرگ سیاه با قابلیت‌های خودش می‌مونه"""
-    if config.DOGS.get(dog_key, {}).get("rare"):
+    """شخصیت رندوم موقع خرید از استخر خود نژاد، گرگ سیاه با قابلیت‌های خودش می‌مونه"""
+    pool = personality_pool(dog_key)
+    if not pool:
         return None
-    return random.choice(list(config.DOG_PERSONALITIES.keys()))
+    return random.choice(pool)
 
 
 def dog_attack(dog: Dog) -> int:
@@ -46,6 +56,80 @@ def dog_attack(dog: Dog) -> int:
     if per and per.get("atk_mult"):
         atk = int(atk * (1 + per["atk_mult"]))
     return atk
+
+
+def dog_defense(dog: Dog) -> int:
+    """دفاع سگ (کانگال 🛡 + سرسخت 🪨)"""
+    cfg = config.DOGS.get(dog.dog_key, {})
+    dfn = cfg.get("defense", 0) + cfg.get("def_per_level", 0) * max(0, dog.level - 1)
+    per = personality_of(dog)
+    if per and per.get("def_flat"):
+        dfn += per["def_flat"]
+    return dfn
+
+
+def breed_cooldown_mult(dogs: list[Dog]) -> float:
+    """دوبرمن ⚡ + چابک 🌀، کولدون حمله رو کم می‌کنن (بهترین اثر حساب میشه)"""
+    best = 1.0
+    for d in dogs:
+        m = config.DOGS.get(d.dog_key, {}).get("cooldown_mult", 1.0)
+        best = min(best, m)
+        per = personality_of(d)
+        if per and per.get("cooldown_mult"):
+            best = min(best, per["cooldown_mult"])
+    return best
+
+
+def battle_xp_mult(dogs: list[Dog]) -> float:
+    """ژرمن شپرد 🎁 + باهوش 🧠 + فرمان‌بردار 🤝، تجربه نبرد بیشتر"""
+    best = 1.0
+    for d in dogs:
+        m = config.DOGS.get(d.dog_key, {}).get("xp_mult", 1.0)
+        best = max(best, m)
+    bonus = 0.0
+    for d in dogs:
+        per = personality_of(d)
+        if per and per.get("xp_mult"):
+            bonus = max(bonus, per["xp_mult"])
+    return best + bonus
+
+
+async def add_battle_xp(dogs: list[Dog], amount: int) -> list[str]:
+    """تجربه نبرد برای سگ‌ها، لول‌آپ قدرتشون رو می‌بره بالا"""
+    notes: list[str] = []
+    for d in dogs:
+        d.xp += amount
+        while d.level < config.DOG_MAX_LEVEL and d.xp >= dog_xp_need(d.level):
+            d.xp -= dog_xp_need(d.level)
+            d.level += 1
+            notes.append(f"🐕 {d.name} رسید به لول {fa_num(d.level)}")
+    return notes
+
+
+def find_dog_by_name(dogs: list[Dog], query: str):
+    """پیدا کردن سگ از روی اسم (دقیق یا بخشی از اسم)"""
+    q = normalize_fa(query)
+    for d in dogs:
+        if normalize_fa(d.name) == q:
+            return d
+    for d in dogs:
+        if q in normalize_fa(d.name):
+            return d
+    return None
+
+
+def rename_dog(dogs: list[Dog], query: str, new_name: str) -> tuple[bool, str]:
+    """تغییر اسم سگ با دستور «اسم سگ»، خروجی: (اوکی, پیام)"""
+    dog = find_dog_by_name(dogs, query)
+    if not dog:
+        return False, "🤷 سگی با این اسم پیدا نکردم"
+    others = [d for d in dogs if d.id != dog.id]
+    ok, display, why = check_dog_name(others, new_name)
+    if not ok:
+        return False, why
+    old = dog.name
+    dog.name = display
+    return True, f"🐕 اسم {old} شد «{display}»"
 
 
 def personality_steal_bonus(dogs: list[Dog]) -> float:

@@ -150,7 +150,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
             p.planted_at = None
             p.ready_at = None
             continue
-        tier = world_svc.roll_quality(q5_bonus)
+        tier = world_svc.roll_quality(q5_bonus + economy.plot_quality_bonus(p.level))
         base = economy.crop_yield(p.crop, p.level, user.level)
         mkt = world_svc.market_mult(pcts, p.crop)
         gain = int(base * tier["mult"] * sell_mult * mkt)
@@ -203,9 +203,13 @@ async def upgrade_plot(session: AsyncSession, user: User, plot: Plot) -> tuple[b
         return False, f"🔒 آپگرید به لول {fa_num(plot.level + 1)} لول {fa_num(req_level)} می‌خواد"
 
     price = economy.upgrade_price(plot.level)
+    wood = economy.upgrade_wood(plot.level)
     if user.cash < price:
         return False, "❌ تی‌پوینتت کافی نیس"
+    if user.wood < wood:
+        return False, f"🪵 {fa_num(wood)} چوب می‌خواد و {fa_num(user.wood)} تا داری"
 
     user.cash -= price
+    user.wood -= wood
     plot.level += 1
     return True, f"⬆️ زمین رفت رو لول {fa_num(plot.level)}"
