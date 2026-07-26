@@ -1,7 +1,7 @@
 """
 منطق بانک شخصی 🏦
 پولی که تو بانکه موقع حمله دزدیده نمیشه، ظرفیت بانک با لولش زیاد میشه
-و لول بانک نمی‌تونه از لول خود بازیکن جلوتر بره
+و هر لول بانک حداقل لول بازیکن خودشو می‌خواد
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,14 +14,21 @@ from utils import fa_num, money
 # ───────── فرمول‌ها ─────────
 
 def bank_capacity(level: int) -> int:
-    """ظرفیت بانک بر اساس لولش"""
-    return config.BANK_CAP_BASE * max(1, level)
+    """ظرفیت بانک بر اساس لولش، جدول ثابت"""
+    lv = min(max(level, 1), config.BANK_MAX_LEVEL)
+    return config.BANK_CAPS[lv - 1]
 
 
 def bank_upgrade_price(level: int) -> int:
     """هزینه ارتقا از لول فعلی به لول بعد، جدول رند قیمت"""
     lv = min(max(level, 1), config.BANK_MAX_LEVEL)
     return config.BANK_UPGRADE_PRICES[lv - 1]
+
+
+def bank_min_level(level: int) -> int:
+    """حداقل لول بازیکن برای داشتن این لول بانک"""
+    lv = min(max(level, 1), config.BANK_MAX_LEVEL)
+    return config.BANK_MIN_LEVELS[lv - 1]
 
 
 # ───────── عملیات ─────────
@@ -55,12 +62,13 @@ async def withdraw(session: AsyncSession, user: User, amount: int) -> tuple[bool
 
 
 async def upgrade_bank(session: AsyncSession, user: User) -> tuple[bool, str]:
-    """ارتقای لول بانک، لول بانک نمی‌تونه از لول خودت جلو بزنه"""
+    """ارتقای لول بانک، هر لول یه حداقل سطح بازیکن می‌خواد"""
     if user.bank_level >= config.BANK_MAX_LEVEL:
         return False, "⭐ بانکت مکس لوله"
     next_level = user.bank_level + 1
-    if user.level < next_level:
-        return False, f"🔒 برای بانک لول {fa_num(next_level)} خودت باید لول {fa_num(next_level)} باشی"
+    req = bank_min_level(next_level)
+    if user.level < req:
+        return False, f"🔒 برای بانک لول {fa_num(next_level)} خودت باید لول {fa_num(req)} باشی"
     price = bank_upgrade_price(user.bank_level)
     if user.cash < price:
         return False, f"❌ ارتقا {money(price)} هزینه داره و پولت کمه"

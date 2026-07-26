@@ -38,15 +38,19 @@ async def _send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, mar
 # ───────── آب و هوا 🌦 ─────────
 
 async def weather_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    from services import power as power_svc
     async with session_scope() as s:
         key, rolled = await world_svc.ensure_weather(s)
         groups = await world_svc.active_group_ids(s, config.WEATHER_GROUP_ACTIVE_HOURS) if rolled else []
+        offs = await power_svc.off_group_ids(s) if rolled else set()
         await s.commit()
 
     if not rolled:
         return
     text = world_svc.weather_announce_text(key)
     for gid in groups:
+        if gid in offs:
+            continue  # گروه خاموشه (/botoff)
         await _send(context, gid, text)
 
 
@@ -98,9 +102,11 @@ async def caravan_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                     pass
             await _send(context, chat_id, world_svc.caravan_end_text(res["rewards"], killed=False))
 
-    # ۲) اسپون جدید برای گروه‌های فعال ۲۴ ساعت اخیر
+    # ۲) اسپون جدید برای گروه‌های فعال ۲۴ ساعت اخیر (گروه‌های خاموش نه)
+    from services import power as power_svc
     async with session_scope() as s:
-        groups = await world_svc.active_group_ids(s, config.CARAVAN_GROUP_ACTIVE_HOURS)
+        offs = await power_svc.off_group_ids(s)
+        groups = [g for g in await world_svc.active_group_ids(s, config.CARAVAN_GROUP_ACTIVE_HOURS) if g not in offs]
         cooldown_limit = now_utc() - timedelta(hours=config.CARAVAN_GROUP_COOLDOWN_HOURS)
         spawns: list[int] = []
         for gid in groups:

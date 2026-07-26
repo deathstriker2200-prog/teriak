@@ -215,7 +215,7 @@ async def main() -> None:
 
         plot.ready_at = now_utc() - timedelta(seconds=1)
         cash_before = u1.cash
-        ok, alert, extra, (dq_d1, dq_l1) = await farming.harvest_all(s, u1)
+        ok, alert, extra, (dq_d1, dq_l1), _notes = await farming.harvest_all(s, u1)
         gain_min = economy.crop_yield("teriak", 1, u1.level)
         check("برداشت موفق (بازه کیفیت ⭐ تا ⭐⭐⭐⭐⭐)",
               ok and cash_before + gain_min <= u1.cash <= cash_before + gain_min * 3,
@@ -227,11 +227,11 @@ async def main() -> None:
         await farming.add_seed_stock(s, u1.id, "teriak", 1)
         await farming.plant(s, u1, plot, "teriak")
         plot.ready_at = now_utc() - timedelta(seconds=1)
-        ok, msg, _, _dq = await farming.harvest_all(s, u1)
+        ok, msg, _, _dq, _nn = await farming.harvest_all(s, u1)
         check("کولدان ۲ دقیقه برداشت جلوگیری می‌کنه", not ok and "2 دقیقه" in msg, msg)
 
         u1.last_harvest_at = now_utc() - timedelta(seconds=config.HARVEST_COOLDOWN_SECONDS + 5)
-        ok, alert, extra, _dq2 = await farming.harvest_all(s, u1)
+        ok, alert, extra, _dq2, _nn2 = await farming.harvest_all(s, u1)
         check("بعد از کولدان برداشت میشه", ok)
 
         # ── گیت لول فروشگاه ──
@@ -527,6 +527,9 @@ async def main() -> None:
     class _Msg(SimpleNamespace):
         async def reply_html(self, text, **k):
             self.calls.append(("reply", text, k))
+            return self
+        async def reply_document(self, document=None, filename=None, caption=None, **k):
+            self.calls.append(("doc", caption, {"filename": filename}))
             return self
 
     def _text_update(txt, uid=7701, uname="miner", fname="ماینر"):
@@ -1213,12 +1216,22 @@ async def main() -> None:
         team.week_points = 7777
         bank_b = team.bank
         await team_svc.meta_set(s, "week_key", "2000-W01")  # شبیه‌سازی هفته قدیمی
+        # سطل مدال هفتگی اعضا رو برای هفته تموم‌شده پر کن (مبنای جدید رتبه‌بندی رول‌اور)
+        members = await team_svc.get_members(s, team.id)
+        for m in members:
+            mu = await s.get(User, m.user_id)
+            mu.medals = 300
+            m.join_medals = 0
+            mu.medals_week = 100
+            mu.medals_week_id = "2000-W01"
         winners = await team_svc.maybe_weekly_rollover(s)
         check("رول‌اور اجرا شد چون هفته عوض شده", winners is not None and len(winners) >= 1)
         check("قهرمان رتبه ۱ جایزه‌شو گرفت تو بانک تیم",
               winners[0]["rank"] == 1 and winners[0]["team"].name == "فوتبالیست‌ها"
               and team.bank == bank_b + config.TEAM_WEEKLY_PRIZES[1],
               f"{team.bank - bank_b}")
+        check("رتبه‌بندی رول‌اور بر اساس مدال هفته اعضاست",
+              winners[0]["points"] == 3 * 100, str(winners[0]["points"]))
         check("امتیاز هفته ریست شد", team.week_points == 0)
         check("هفته جدید ذخیره شد", (await team_svc.meta_get(s, "week_key")) == team_svc.current_week_key())
         check("نتیجه هفته پیش ذخیره شد", "فوتبالیست‌ها" in (await team_svc.meta_get(s, "last_week_result") or ""))
@@ -1343,7 +1356,7 @@ async def main() -> None:
             kb.shop_seed_kb(u1, stock), kb.shop_dog_kb(u1, {d.dog_key for d in dogs}, len(dogs)),
             kb.shop_food_kb(),
             kb.my_dogs_kb(dogs),
-            kb.heal_kb(), kb.rank_kb(),
+            kb.heal_kb(), kb.rank_kb("week", "all", "🌍 کلی"),
             kb.tx_confirm_kb("weap", "knife", 123),
             kb.bank_kb(u1), kb.team_bld_kb(SimpleNamespace(atk_bld=1, def_bld=2), True, u1.telegram_id),
             kb.team_bld_confirm_kb("atk", u1.telegram_id),
@@ -1366,8 +1379,16 @@ async def main() -> None:
     check("پارس مبلغ فارسی و لاتین", parse_amount("۱۲۰۰") == 1200 and parse_amount("1,200") == 1200
           and parse_amount("الکی") is None and parse_amount("0") is None)
     check("ظرفیت بانک با لول رشد می‌کنه",
-          bank_svc.bank_capacity(3) == 3 * config.BANK_CAP_BASE > bank_svc.bank_capacity(1))
-    check("هزینه ارتقای بانک تصاعدیه", bank_svc.bank_upgrade_price(2) > bank_svc.bank_upgrade_price(1))
+          bank_svc.bank_capacity(1) == config.BANK_CAPS[0]
+          and bank_svc.bank_capacity(5) == config.BANK_CAPS[-1]
+          and bank_svc.bank_capacity(3) > bank_svc.bank_capacity(1))
+    check("ظرفیت بانک دقیقاً همون جدول ۲۰تا ۵۰۰هزار",
+          [bank_svc.bank_capacity(i) for i in range(1, 6)] == [20000, 50000, 100000, 200000, 500000])
+    check("هزینه ارتقای بانک از جدول میاد و تصاعدیه",
+          [bank_svc.bank_upgrade_price(i) for i in range(1, 5)] == [25000, 50000, 100000, 200000])
+    check("گیت لول داشتن هر لول بانک",
+          [bank_svc.bank_min_level(i) for i in range(1, 6)] == config.BANK_MIN_LEVELS
+          and bank_svc.bank_min_level(2) == 4 and bank_svc.bank_min_level(5) == 16)
 
     async with session_scope() as s:
         b, _ = await users.get_or_create(s, tg(7711, "bnk", "بانکدار"))
@@ -1386,17 +1407,17 @@ async def main() -> None:
         ok, msg = await bank_svc.withdraw(s, b, 99999)
         check("برداشت بیشتر از موجودی بانک رد", not ok)
 
-        # ظرفیت لول ۱ = 25,000، پر کردنش و رد بیشترش
+        # ظرفیت لول ۱ = 20,000، پر کردنش و رد بیشترش
         b.cash = 100000
-        ok, msg = await bank_svc.deposit(s, b, 23000)
-        check("تا سقف ظرفیت واریز میشه", ok and b.bank_balance == 25000, f"{b.bank_balance}")
+        ok, msg = await bank_svc.deposit(s, b, 18000)
+        check("تا سقف ظرفیت واریز میشه", ok and b.bank_balance == 20000, f"{b.bank_balance}")
         ok, msg = await bank_svc.deposit(s, b, 1)
         check("بیشتر از ظرفیت رد میشه", not ok and "ظرفیت" in msg or "پر" in msg, msg)
 
-        # ارتقای بانک به لول خودت گره خورده
+        # ارتقای بانک به لول خودت گره خورده (لول ۲ بانک، لول ۴ بازیکن می‌خواد)
         ok, msg = await bank_svc.upgrade_bank(s, b)
-        check("ارتقا بدون لول کافی رد (لول ۱ می‌خواد بره لول ۲)", not ok and "لول" in msg, msg)
-        b.level = 3
+        check("ارتقا بدون لول کافی رد (لول ۴ می‌خواد بره لول ۲)", not ok and "لول" in msg, msg)
+        b.level = 4
         cash_b = b.cash
         ok, msg = await bank_svc.upgrade_bank(s, b)
         check("ارتقا با لول کافی انجام شد",
@@ -1677,6 +1698,7 @@ async def main() -> None:
         q.message.reply_html = _qreply
         return SimpleNamespace(
             callback_query=q,
+            message=q.message,
             effective_message=q.message,
             effective_user=SimpleNamespace(id=uid, username="flow", first_name="فلو"),
             effective_chat=_Chat(type="private"),
@@ -1771,6 +1793,19 @@ async def main() -> None:
     check("«آپگرید کنده کاری» لخت و پیشونددار و جدا از خود ضربه",
           pats["mine_upg"].match("تی آپگرید کنده کاری") and pats["mine_upg"].match("آپگرید کنده کاری")
           and not pats["mine_upg"].match("کنده کاری"))
+    check("«کنده کاری آپگرید» برعکسش هم همون صفحه رو میاره",
+          pats["mine_upg"].match("تی کنده کاری آپگرید") and pats["mine_upg"].match("کنده کاری آپگرید")
+          and pats["mine_upg"].match("تریاکی کنده کاری آپگرید")
+          and not pats["mine_upg"].match("تی کنده کاری نآپگرید"))
+
+    # ─── «تی بکاپ» و «تی کپی» ───
+    check("«تی بکاپ» منوی بک‌آپ، لخت نه",
+          pats["backup_menu"].match("تی بکاپ") and pats["backup_menu"].match("تریاکی بک‌آپ")
+          and pats["backup_menu"].match("تی‌بکاپ") and not pats["backup_menu"].match("بکاپ"))
+    check("«تی کپی» با نیم‌فاصله و هر سه پیشوند، لخت نه",
+          pats["backup_copy"].match("تی کپی") and pats["backup_copy"].match("تی‌کپی")
+          and pats["backup_copy"].match("تریاکی کپی") and pats["backup_copy"].match("تریاک کپی")
+          and not pats["backup_copy"].match("کپی"))
     check("«حمله» لخت و پیشونددار هر دو",
           pats["attack"].match("حمله") and pats["attack"].match("تریاکی حمله")
           and pats["attack"].match("تریاک حمله") and pats["attack"].match("تی حمله"))
@@ -2904,7 +2939,7 @@ async def main() -> None:
     async with session_scope() as s:
         huser = await users.get_by_tg(s, 1001)
         huser.last_harvest_at = now_utc() - timedelta(seconds=42)
-        ok, msg, _, _dqc = await farming.harvest_all(s, huser)
+        ok, msg, _, _dqc, _nnc = await farming.harvest_all(s, huser)
         check("متن کولدان برداشت با ویرگول",
               not ok and "میشه برداشت کرد،" in msg and "مونده" in msg, msg)
 
@@ -3124,7 +3159,8 @@ async def main() -> None:
     await start_h2.start_cmd(upd, None)
     stx = upd.message.calls[-1][1]
     check("استارت پیوی دستورهای تریاکی‌دار رو یاد میده",
-          "«تریاکی حمله»" in stx and "«کنده کاری»" in stx and "«تریاکی شاپ»" in stx, stx[:140])
+          "«حمله»" in stx and "«کنده کاری»" in stx and "«تریاکی شاپ»" in stx
+          and "به طور خلاصه‌تر «تی»" in stx and "آموزشات" in stx, stx[:200])
 
     # ── متن‌های راهنما داخل صفحه‌ها هم پیشوند گرفتن ──
     from handlers import bank as bank_h2, battle as battle_h2
@@ -3253,9 +3289,9 @@ async def main() -> None:
 
     slash_bot = _SlashBot()
     await bot_mod.on_start(SimpleNamespace(bot=slash_bot))
-    check("set_my_commands با start و help و menu و profile و heal صدا زده میشه",
+    check("set_my_commands با start و help و profile و heal صدا زده میشه (بدون menu)",
           slash_bot.cmds is not None
-          and {c.command for c in slash_bot.cmds} == {"start", "help", "menu", "profile", "heal"}
+          and {c.command for c in slash_bot.cmds} == {"start", "help", "profile", "heal"}
           and all(isinstance(c, _BC) for c in slash_bot.cmds),
           str([c.command for c in (slash_bot.cmds or [])]))
 
@@ -3325,7 +3361,7 @@ async def main() -> None:
     ed = next((c for c in upd.callback_query.calls if c[0] == "edit"), None)
     check("صفحه کوئست‌های روزانه باز میشه",
           ed is not None and "<b>📅 کوئست‌های روزانه</b>" in ed[1]
-          and "هر شب ساعت 12 (به‌وقت ایران) ریست میشن" in ed[1]
+          and "هر شب ساعت 12 ریست میشن" in ed[1]
           and "🎁" in ed[1], ed[1][:140] if ed else "-")
     check("کوئست‌های انجام‌شده خط خوردن و تیک خوردن",
           ed is not None and "<s>" in ed[1] and "✅ انجام شد" in ed[1] and "🏆 همه کوئست‌های امروز رو درو کردی" in ed[1],
@@ -4257,7 +4293,13 @@ async def main() -> None:
         mu.pick_level = 5
         raws = [res_svc.mine_loot(mu) for _ in range(400)]
         check("تی‌پوینت کنده‌کاری همیشه میده", all(config.MINE_MIN <= r["cash"] for r in raws))
-        check("تجربه کنده‌کاری ۱ تا ۵", all(1 <= r["xp"] <= 5 for r in raws))
+        check("تجربه کنده‌کاری پایه ۱ تا ۵",
+              all(1 <= res_svc.mine_loot(SimpleNamespace(axe_level=1, pick_level=1))["xp"] <= 5
+                  for _ in range(200)))
+        check("بونس تجربه ابزار تو کنده‌کاری",
+              res_svc.mine_xp_mult(mu) == 1 + config.TOOL_XP_PER_LEVEL * 8)
+        check("تجربه با ابزار قوی می‌تونه از ۵ رد بشه",
+              max(r["xp"] for r in raws) > 5, str(max(r["xp"] for r in raws)))
         check("با ابزار مکس هم چوب هم آهن میفتاد",
               sum(1 for r in raws if r["wood"]) > 100 and sum(1 for r in raws if r["iron"]) > 50)
         check("شکار کمیاب گاهی اتفاق میفته و ضربدر مولتیپلایره",
@@ -4799,6 +4841,584 @@ async def main() -> None:
     await mine_h.mine_tools_cb(upd_mu, None)
     check("«تی آپگرید کنده کاری» صفحه وضعیت و ارتقای ابزار رو میاره",
           "وضعیت ابزار" in upd_mu.message.calls[-1][1], upd_mu.message.calls[-1][1][:80])
+    upd_mu2 = _text_update("تی کنده کاری آپگرید", uid=9659, uname="pvminer", fname="ماینرپی‌وی")
+    await mine_h.mine_tools_cb(upd_mu2, None)
+    check("«تی کنده کاری آپگرید» هم همون صفحه ابزار رو میاره",
+          "وضعیت ابزار" in upd_mu2.message.calls[-1][1], upd_mu2.message.calls[-1][1][:80])
+
+    # ── «تی بکاپ» / «تی کپی»، فایل با اسم تریاکی ──
+    from handlers import backup as backup_h
+
+    class _Bot:
+        def __init__(self): self.docs = []
+        async def send_document(self, chat_id=None, document=None, filename=None, caption=None, **k):
+            self.docs.append((chat_id, filename))
+    bot_fake = _Bot()
+    ctx_fake = SimpleNamespace(bot=bot_fake, user_data={})
+
+    upd_bk = _text_update("تی بکاپ", uid=1001, uname="ali", fname="علی")
+    await backup_h.backup_menu_text(upd_bk, ctx_fake)
+    check("«تی بکاپ» منوی بک‌آپ رو با دکمه میاره",
+          "بکاپ تریاکی" in upd_bk.message.calls[-1][1]
+          and upd_bk.message.calls[-1][2].get("reply_markup") is not None, upd_bk.message.calls[-1][1][:60])
+
+    upd_cp = _text_update("تی کپی", uid=1001, uname="ali", fname="علی")
+    await backup_h.backup_copy_text(upd_cp, ctx_fake)
+    doc_call = [c for c in upd_cp.message.calls if c[0] == "doc"]
+    check("«تی کپی» فایل دی‌بی رو با اسم «تریاکی-…» میفرسته",
+          bool(doc_call) and doc_call[-1][2]["filename"].startswith("تریاکی-"), str(doc_call))
+    check("کپشن بک‌آپ آمار رو داره", bool(doc_call) and "بک‌آپ کامل تریاکی" in doc_call[-1][1])
+    check("برای ادمین، نسخه به پی‌وی بقیه اونرها هم میره",
+          any(cid == 1003 for cid, _ in bot_fake.docs), str(bot_fake.docs))
+
+    bot_fake.docs.clear()
+    upd_cp2 = _text_update("تی کپی", uid=7788, uname="na", fname="معمولی")
+    await backup_h.backup_copy_text(upd_cp2, ctx_fake)
+    doc_call2 = [c for c in upd_cp2.message.calls if c[0] == "doc"]
+    check("کاربر عادی تو پی‌وی بات هم فایل تریاکی رو می‌گیره", bool(doc_call2), str(doc_call2))
+    check("ولی نسخه‌ای برای اونرها نمیره", not bot_fake.docs, str(bot_fake.docs))
+
+    upd_cg = _text_update("تی کپی", uid=7788, uname="na", fname="معمولی")
+    upd_cg.effective_chat = SimpleNamespace(id=-100777, type="supergroup")
+    await backup_h.backup_copy_text(upd_cg, ctx_fake)
+    check("«تی کپی» برای غریبه تو گروه سکوت محضه", not upd_cg.message.calls, str(upd_cg.message.calls))
+
+    upd_mk = _fake_update("bk:make", uid=1001)
+    async def _mk_doc(document=None, filename=None, caption=None, **k):
+        upd_mk.callback_query.calls.append(("doc", caption, {"filename": filename}))
+    upd_mk.message.reply_document = _mk_doc
+    await backup_h.backup_make_cb(upd_mk, ctx_fake)
+    check("دکمه «ساخت بکاپ» فایل تریاکی رو میفرسته",
+          any(c[0] == "doc" and c[2]["filename"].startswith("تریاکی-") for c in upd_mk.callback_query.calls),
+          str(upd_mk.callback_query.calls))
+
+    upd_up = _fake_update("bk:up", uid=7788)
+    await backup_h.backup_upload_cb(upd_up, ctx_fake)
+    check("آپلود بکاپ برای غریبه قفله",
+          any(c[0] == "answer" and "فقط دست ادمینه" in str(c[1]) for c in upd_up.callback_query.calls),
+          str(upd_up.callback_query.calls))
+
+    upd_up2 = _fake_update("bk:up", uid=1001)
+    ctx_fake.user_data = {}
+    await backup_h.backup_upload_cb(upd_up2, ctx_fake)
+    check("آپلود بکاپ برای ادمین حالت انتظار فایل روشن می‌کنه",
+          ctx_fake.user_data.get("await_backup") is True
+          and any(c[0] == "edit" and "آپلود بکاپ" in c[1] for c in upd_up2.callback_query.calls),
+          str(upd_up2.callback_query.calls))
+
+    # ═══ این دور: مدال 🎖️ | خاموشی ربات و گروه | ریست اکانت | لیدربرد تب‌دار | سپر خودی | آنتی‌اسپم ═══
+    from handlers import common as common_h
+    from handlers import power as power_h
+    from handlers import rank as rank_h2
+    from services import power as power_svc
+    from telegram.ext import ApplicationHandlerStop
+
+    # ── مدال = تجربه گرفته‌شده، با سطل روزانه و هفتگی به‌وقت ایران ──
+    async with session_scope() as s:
+        wk_key = team_svc.current_week_key()
+        md1, _ = await users.get_or_create(s, tg(9801, "mdl1", "مدالی۱"))
+        md2, _ = await users.get_or_create(s, tg(9802, "mdl2", "مدالی۲"))
+        md1.medals = md1.medals_day = md1.medals_week = 0
+        md2.medals = md2.medals_day = md2.medals_week = 0
+        users.add_xp(md1, 30)
+        users.add_xp(md2, 10)
+        check("مدال دقیقاً به اندازه تجربه گرفته‌شده جمع میشه",
+              md1.medals == 30 and md2.medals == 10, f"{md1.medals}")
+        check("سطل روزانه و هفتگی مدال با کلید ایران پر شد",
+              md1.medals_day == 30 and md1.medals_day_date == iran_today()
+              and md1.medals_week == 30 and md1.medals_week_id == wk_key)
+        stale_ns = SimpleNamespace(medals=99, medals_day=5, medals_day_date="2000-01-01",
+                                   medals_week=7, medals_week_id="2000-W01")
+        check("سطل کهنه روزانه و هفتگی صفر حساب میشه ولی کلی می‌مونه",
+              users.medal_value(stale_ns, "day") == 0
+              and users.medal_value(stale_ns, "week") == 0
+              and users.medal_value(stale_ns, "all") == 99)
+        top_all = await users.top_by_medals(s, "all", 10)
+        vals = [users.medal_value(u, "all") for u in top_all]
+        check("تاپ مدال کلی نزولیه", vals == sorted(vals, reverse=True), str(vals[:6]))
+        from sqlalchemy import func as _f2
+        n_higher = (await s.execute(select(_f2.count(User.id)).where(User.medals > 30))).scalar_one()
+        rk1 = await users.medal_rank(s, md1, "all")
+        check("رتبه مدال کلی درسته", rk1 == n_higher + 1, f"{rk1} vs {n_higher + 1}")
+        md_stale, _ = await users.get_or_create(s, tg(9803, "mdl3", "مدالی۳"))
+        md_stale.medals = 500
+        md_stale.medals_day, md_stale.medals_day_date = 500, "2000-01-01"
+        md_fresh, _ = await users.get_or_create(s, tg(9804, "mdl4", "مدالی۴"))
+        md_fresh.medals = 3
+        md_fresh.medals_day, md_fresh.medals_day_date = 3, iran_today()
+        rk_stale = await users.medal_rank(s, md_stale, "day")
+        rk_fresh = await users.medal_rank(s, md_fresh, "day")
+        check("تو تب روزانه سطل کهنه باخته به سطل تازه",
+              rk_fresh < rk_stale and users.medal_value(md_stale, "day") == 0,
+              f"{rk_fresh} vs {rk_stale}")
+        await s.commit()
+
+    # ── مدال تیم: بِیس‌لاین جوین وسط بازه و جمع اعضا ──
+    from models import TeamMember
+    async with session_scope() as s:
+        wk_key = team_svc.current_week_key()
+        tlead, _ = await users.get_or_create(s, tg(9811, "tml1", "کاپیتان"))
+        tlead.level = 30
+        tlead.cash = config.TEAM_CREATE_COST + 1000
+        tlead.medals = 100
+        tlead.medals_day, tlead.medals_day_date = 40, iran_today()
+        tlead.medals_week, tlead.medals_week_id = 80, wk_key
+        ok, tname = await team_svc.create_team(s, tlead, "مدالیست‌ها")
+        check("ساخت تیم مدالیست‌ها", ok, tname)
+        team_md = await team_svc.get_team_of(s, tlead.id)
+        m_lead = await team_svc.get_membership(s, tlead.id)
+        check("بِیس‌لاین مدال موقع ساخت تیم ذخیره میشه",
+              m_lead.join_medals == 100, str(m_lead.join_medals))
+        tmm, _ = await users.get_or_create(s, tg(9812, "tmm1", "عضومدال"))
+        tmm.medals = 120
+        tmm.medals_day, tmm.medals_day_date = 85, iran_today()
+        tmm.medals_week, tmm.medals_week_id = 75, wk_key
+        m_mid = TeamMember(team_id=team_md.id, user_id=tmm.id, role="member",
+                           join_medals=50, joined_at=now_utc())
+        s.add(m_mid)
+        await s.flush()
+        check("جوین وسط بازه فقط مدال بعد اومدنش حساب میشه",
+              team_svc._member_medals(m_mid, tmm, "week") == 70
+              and team_svc._member_medals(m_mid, tmm, "day") == 70,
+              f"{team_svc._member_medals(m_mid, tmm, 'week')}")
+        check("تب کلی همه مدال‌های عضو حساب میشه",
+              team_svc._member_medals(m_mid, tmm, "all") == 120)
+        m_mid.joined_at = team_svc.week_start_utc_for(wk_key) - timedelta(days=1)
+        check("عضو قبل از شروع هفته کل سطل هفتگیش حساب میشه",
+              team_svc._member_medals(m_mid, tmm, "week") == 75)
+        m_mid.joined_at = now_utc()
+        sums = await team_svc.team_medal_sums(s, team_md.id)
+        check("جمع مدال تیم، کلی همه مدال‌های اعضاست",
+              sums["all"] == 220, str(sums))
+        check("جمع مدال هفته و روز با بِیس‌لاین جوین حساب میشه",
+              sums["week"] == 70 and sums["day"] == 70, str(sums))
+        tops_md = await team_svc.top_teams_by_medals(s, "all", 10)
+        check("لیدربرد تیم بر اساس مدال نزولیه",
+              bool(tops_md) and all(tops_md[i][1] >= tops_md[i + 1][1] for i in range(len(tops_md) - 1)),
+              str([(t.name, v) for t, v, _ in tops_md[:4]]))
+        data_md = await team_svc.team_stats_data(s, team_md)
+        check("آمار تیم جمع لول نداره و مدال داره",
+              "level_sum" not in data_md and data_md["medals"]["all"] == 220, str(data_md.get("medals")))
+        st_md = team_h._team_stats_text(data_md)
+        check("خط مجموع مدال‌ها تو پروفایل تیمه", "🎖️ مجموع مدال‌ها" in st_md, st_md[:160])
+        await s.commit()
+
+    # ── لیدربرد بازیکن: تب‌دار، پیش‌فرض هفتگی، مدال‌محور ──
+    upd_rk = _fake_update("menu:rank", uid=1001)
+    await rank_h2.rank_cb(upd_rk, None)
+    ed_rk = next((c for c in upd_rk.callback_query.calls if c[0] == "edit"), None)
+    check("پیش‌فرض لیدربرد تب هفتگیه",
+          ed_rk is not None and "<b>🏆 لیدربرد 🗓 هفتگی</b>" in ed_rk[1],
+          ed_rk[1][:90] if ed_rk else "-")
+    check("لیدربرد مدال‌محوره و رتبه کاربر رو هم میگه",
+          ed_rk is not None and "🎖️" in ed_rk[1] and "رتبه تو" in ed_rk[1]
+          and "مدال‌ها با تجربه‌ای که از بازی می‌گیری جمع میشن" in ed_rk[1],
+          ed_rk[1][-140:] if ed_rk else "-")
+    mk_rk = ed_rk[2].get("reply_markup") if ed_rk else None
+    btn_rk = mk_rk.inline_keyboard[0][0] if mk_rk else None
+    check("دکمه چرخش به تب بعدی لیدربرد",
+          btn_rk is not None and btn_rk.callback_data == "rank:tab:all" and btn_rk.text.startswith("🔁"),
+          str(btn_rk))
+    upd_rk2 = _fake_update("rank:tab:day", uid=1001)
+    await rank_h2.rank_tab_cb(upd_rk2, None)
+    ed_rk2 = next((c for c in upd_rk2.callback_query.calls if c[0] == "edit"), None)
+    check("سوئیچ به تب روزانه لیدربرد",
+          ed_rk2 is not None and "<b>🏆 لیدربرد 📅 روزانه</b>" in ed_rk2[1])
+
+    # ── لیدربرد تیم: تب‌دار با جمع مدال اعضا ──
+    upd_tt = _fake_update("ttop:x", uid=1001)
+    await team_h.top_teams_text(upd_tt, None)
+    ed_tt = next((c for c in upd_tt.callback_query.calls if c[0] == "edit"), None)
+    check("لیدربرد تیم پیش‌فرض هفتگیه و با مدال رتبه‌بندی میشه",
+          ed_tt is not None and "🏆 لیدربرد تیم‌ها 📅 هفتگی" in ed_tt[1] and "🎖️" in ed_tt[1],
+          ed_tt[1][:110] if ed_tt else "-")
+    mk_tt = ed_tt[2].get("reply_markup") if ed_tt else None
+    check("دکمه چرخش تب لیدربرد تیم",
+          mk_tt is not None and mk_tt.inline_keyboard[0][0].callback_data == "ttop:tab:all")
+    upd_tt2 = _fake_update("ttop:tab:day", uid=1001)
+    await team_h.top_teams_tab_cb(upd_tt2, None)
+    ed_tt2 = next((c for c in upd_tt2.callback_query.calls if c[0] == "edit"), None)
+    check("سوئیچ به تب روزانه لیدربرد تیم",
+          ed_tt2 is not None and "🏆 لیدربرد تیم‌ها ☀️ روزانه" in ed_tt2[1])
+
+    # ── دکمه آپدیت مزرعه + حذف رفرش پروفایل ──
+    from keyboards import keyboards as kb3
+    async with session_scope() as s:
+        fu = await users.get_by_tg(s, 1001)
+        fplots = await farming.get_user_plots(s, fu.id)
+        fkb = kb3.farm_kb(fu, fplots, economy.plot_price(len(fplots)), 0)
+        farm_flat = [(b.text, b.callback_data, b.style) for r in fkb.inline_keyboard for b in r]
+        check("دکمه آپدیت مزرعه هست",
+              any(t == "🔄 آپدیت" and c == "farm:rf" for t, c, _ in farm_flat), str(farm_flat[-2:]))
+        pkb = kb3.profile_kb()
+        prof_flat = [(b.text, b.callback_data) for r in pkb.inline_keyboard for b in r]
+        check("رفرش پروفایل حذف شده",
+              not any("رفرش" in t or "آپدیت" in t for t, _ in prof_flat), str(prof_flat))
+        await s.commit()
+
+    # ── تراتل داخلی و ضدتکرار دستورهای متنی ──
+    check("تراتل کلیک اول آزاده", common_h.throttle("tkey1", 555000, 2) == 0)
+    check("تراتل کلیک دوم بلاکه", common_h.throttle("tkey1", 555000, 2) > 0)
+    check("تراتل برای کاربر دیگه آزاده", common_h.throttle("tkey1", 555001, 2) == 0)
+
+    ran_sp = {"n": 0}
+
+    @common_h.text_dedup
+    async def _dummy_cmd(u, c):
+        ran_sp["n"] += 1
+
+    upd_sp1 = _text_update("اسپم تستی", uid=555010)
+    await _dummy_cmd(upd_sp1, None)
+    upd_sp2 = _text_update("اسپم تستی", uid=555010)
+    stopped_sp = False
+    try:
+        await _dummy_cmd(upd_sp2, None)
+    except ApplicationHandlerStop:
+        stopped_sp = True
+    check("دستور متنی تکراری زیر ۲ ثانیه اجرا نمیشه", ran_sp["n"] == 1 and stopped_sp)
+    check("اولین تکرار پیام «آروم‌تر» می‌گیره",
+          any("آروم‌تر" in str(c[1]) for c in upd_sp2.message.calls), str(upd_sp2.message.calls))
+    upd_sp3 = _text_update("اسپم تستی", uid=555010)
+    try:
+        await _dummy_cmd(upd_sp3, None)
+    except ApplicationHandlerStop:
+        pass
+    check("تکرارهای بعدی سایلنت میشن", not upd_sp3.message.calls)
+    upd_sp4 = _text_update("یه دستور دیگه", uid=555010)
+    await _dummy_cmd(upd_sp4, None)
+    check("متن فرق‌کرده محدودیت نداره", ran_sp["n"] == 2)
+
+    # ── نوت‌های لول‌آپ پیام جدا ──
+    upd_an = _text_update("حمله", uid=555020)
+    await common_h.announce_notes(upd_an, ["🎉 لول 2 شدی", "🔓 شاپ برات باز شد"])
+    n_replies = len([c for c in upd_an.message.calls if c[0] == "reply"])
+    check("هر نوت لول‌آپ یه پیام جداست", n_replies == 2, str(upd_an.message.calls))
+    await common_h.announce_notes(upd_an, None)
+    check("نوت خالی پیامی نمی‌فرسته",
+          len([c for c in upd_an.message.calls if c[0] == "reply"]) == 2)
+
+    # ── دکمه آپدیت مزرعه با تراتل ──
+    from handlers import farm as farm_h2
+    upd_rf1 = _fake_update("farm:rf", uid=555030)
+    await farm_h2.farm_refresh_cb(upd_rf1, None)
+    check("کلیک اول آپدیت مزرعه رندر میشه",
+          any(c[0] == "edit" for c in upd_rf1.callback_query.calls), str(upd_rf1.callback_query.calls))
+    upd_rf2 = _fake_update("farm:rf", uid=555030)
+    await farm_h2.farm_refresh_cb(upd_rf2, None)
+    check("کلیک دوم آپدیت مزرعه «آروم‌تر» می‌گیره",
+          any(c[0] == "answer" and any("آروم‌تر" in str(x) for x in c[1])
+              for c in upd_rf2.callback_query.calls),
+          str(upd_rf2.callback_query.calls))
+    check("و رندر دوباره انجام نمیشه",
+          not any(c[0] == "edit" for c in upd_rf2.callback_query.calls))
+
+    # ── خاموشی کلی و گروهی ربات (/botdown /botup /botoff /boton) ──
+    def _pow_update(text, uid, chat_id=5511, chat_type="group", cb=False):
+        msg = _Msg(text=text, calls=[], chat_id=chat_id, message_id=44)
+        q = None
+        if cb:
+            q = _Q(data=text, message=SimpleNamespace(photo=None), calls=[])
+        return SimpleNamespace(
+            message=None if cb else msg,
+            effective_message=q.message if cb else msg,
+            callback_query=q,
+            effective_user=SimpleNamespace(id=uid, username="pwr", first_name="پاور"),
+            effective_chat=SimpleNamespace(id=chat_id, type=chat_type),
+        )
+
+    def _gcm(status):
+        async def _f(chat_id, user_id):
+            return SimpleNamespace(status=status)
+        return _f
+
+    member_ctx = SimpleNamespace(bot=SimpleNamespace(get_chat_member=_gcm("member")))
+    gadmin_ctx = SimpleNamespace(bot=SimpleNamespace(get_chat_member=_gcm("administrator")))
+
+    upd_bd0 = _pow_update("/botdown", 7788)
+    await power_h.botdown_cmd(upd_bd0, None)
+    check("/botdown برای غیرادمین سکوت محضه", not upd_bd0.message.calls)
+
+    upd_bf_pv = _pow_update("/botoff", 7788, chat_id=7788, chat_type="private")
+    await power_h.botoff_cmd(upd_bf_pv, None)
+    check("/botoff تو پی‌وی راهنما میده",
+          "ویژه گروه" in upd_bf_pv.message.calls[-1][1], upd_bf_pv.message.calls[-1][1][:80])
+
+    upd_bf_m = _pow_update("/botoff", 7788)
+    await power_h.botoff_cmd(upd_bf_m, member_ctx)
+    check("ممبر نمی‌تونه ربات رو تو گروه خاموش کنه",
+          "فقط توسط ادمین" in upd_bf_m.message.calls[-1][1], upd_bf_m.message.calls[-1][1][:60])
+
+    upd_bf_a = _pow_update("/botoff", 7788)
+    await power_h.botoff_cmd(upd_bf_a, gadmin_ctx)
+    check("ادمین گروه ربات رو خاموش می‌کنه",
+          "خاموش شد" in upd_bf_a.message.calls[-1][1], upd_bf_a.message.calls[-1][1][:80])
+    async with session_scope() as s:
+        check("خاموشی گروه تو دی‌بی ثبت شد", await power_svc.group_off(s, 5511))
+        offs = await power_svc.off_group_ids(s)
+        check("لیست گروه خاموش درسته", 5511 in offs)
+        await s.commit()
+
+    upd_gs = _pow_update("کنده کاری", 7788, chat_type="supergroup")
+    stopped_g = False
+    try:
+        await power_h.power_gate(upd_gs, None)
+    except ApplicationHandlerStop:
+        stopped_g = True
+    check("تو گروه خاموش هیچ واکنشی نیس",
+          stopped_g and not upd_gs.message.calls, str(upd_gs.message.calls))
+
+    upd_bo = _pow_update("/boton", 7788, chat_type="supergroup")
+    try:
+        await power_h.power_gate(upd_bo, None)
+        passed_bo = True
+    except ApplicationHandlerStop:
+        passed_bo = False
+    check("/boton از گیت رد میشه تا هندلرش برسه", passed_bo)
+
+    upd_on = _pow_update("/boton", 7788)
+    await power_h.boton_cmd(upd_on, gadmin_ctx)
+    check("ادمین گروه ربات رو روشن می‌کنه",
+          "روشن شد" in upd_on.message.calls[-1][1], upd_on.message.calls[-1][1][:80])
+    async with session_scope() as s:
+        check("گروه دوباره روشنه", not await power_svc.group_off(s, 5511))
+        await s.commit()
+
+    upd_bd = _pow_update("/botdown", 1001)
+    await power_h.botdown_cmd(upd_bd, None)
+    check("/botdown تایید میده", "تعمیر" in upd_bd.message.calls[-1][1], upd_bd.message.calls[-1][1][:60])
+    async with session_scope() as s:
+        check("ربات رو حالت تعمیره", await power_svc.is_down(s))
+        await s.commit()
+
+    power_h._MAINT_LAST.clear()
+    upd_m1 = _pow_update("کنده کاری", 7788, chat_id=6611, chat_type="supergroup")
+    stopped_m = False
+    try:
+        await power_h.power_gate(upd_m1, None)
+    except ApplicationHandlerStop:
+        stopped_m = True
+    check("گیت تعمیر دستور کاربر عادی رو قطع می‌کنه", stopped_m)
+    check("پیام «در دست توسعه و تعمیره» جواب داده میشه",
+          any(config.MAINTENANCE_TEXT in str(c[1]) for c in upd_m1.message.calls),
+          str(upd_m1.message.calls))
+    n_calls1 = len(upd_m1.message.calls)
+    try:
+        await power_h.power_gate(upd_m1, None)
+    except ApplicationHandlerStop:
+        pass
+    check("اسپم تو چند ثانیه فقط یه بار مارک تعمیر می‌گیره",
+          len(upd_m1.message.calls) == n_calls1)
+
+    upd_ma = _pow_update("کنده کاری", 1001, chat_id=6611, chat_type="supergroup")
+    try:
+        await power_h.power_gate(upd_ma, None)
+        passed_ma = True
+    except ApplicationHandlerStop:
+        passed_ma = False
+    check("ادمین ربات از گیت تعمیر رد میشه", passed_ma and not upd_ma.message.calls)
+
+    upd_cbm = _pow_update("menu:home", 7788, chat_id=6611, cb=True)
+    stopped_cb = False
+    try:
+        await power_h.power_gate(upd_cbm, None)
+    except ApplicationHandlerStop:
+        stopped_cb = True
+    check("دکمه‌ها تو مد تعمیر الرت می‌گیرن",
+          stopped_cb and any(c[0] == "answer" and any(config.MAINTENANCE_TEXT in str(x) for x in c[1])
+                             for c in upd_cbm.callback_query.calls),
+          str(upd_cbm.callback_query.calls))
+
+    upd_bu = _pow_update("/botup", 1001)
+    await power_h.botup_cmd(upd_bu, None)
+    check("/botup ربات رو برمی‌گردونه", "برگشت رو هوا" in upd_bu.message.calls[-1][1])
+    async with session_scope() as s:
+        check("ربات دیگه پایین نیس", not await power_svc.is_down(s))
+        await s.commit()
+
+    # ── /menu حذف شده ──
+    from handlers import start as start_h3
+    check("هندلر /menu دیگه وجود نداره", not hasattr(start_h3, "menu_cmd"))
+    _adm_txt = admin_h._panel_text(SimpleNamespace(cash=0, level=1, xp=0))
+    check("پنل ادمین دستورای جدید رو لیست کرده",
+          "/clearacc" in _adm_txt and "/botdown" in _adm_txt and "/botoff" in _adm_txt)
+
+    # ── /clearacc، ریست کامل اکانت با تاییدیه ──
+    async with session_scope() as s:
+        tgt, _ = await users.get_or_create(s, tg(7741, "victimx", "قربانی‌ریست"))
+        tgt.level = 9
+        tgt.cash = 99999
+        tgt.wood = 50
+        tgt.medals = 77
+        tgt.wins = 4
+        s.add(Plot(user_id=tgt.id))
+        await s.commit()
+
+    upd_ca0 = _text_update("/clearacc", uid=1001)
+    await admin_h.clearacc_cmd(upd_ca0, SimpleNamespace(args=[]))
+    check("clearacc بدون آرگومان فرم درست رو میگه",
+          "فرم درست" in upd_ca0.message.calls[-1][1], upd_ca0.message.calls[-1][1][:70])
+    upd_ca1 = _text_update("/clearacc همچینکسی‌نی", uid=1001)
+    await admin_h.clearacc_cmd(upd_ca1, SimpleNamespace(args=["همچینکسی‌نی"]))
+    check("clearacc آدمی که نیس رو پیدا نمی‌کنه",
+          "پیدا نشد" in upd_ca1.message.calls[-1][1])
+    upd_ca2 = _text_update("/clearacc 7741", uid=1001)
+    await admin_h.clearacc_cmd(upd_ca2, SimpleNamespace(args=["7741"]))
+    ca2_txt, ca2_kw = upd_ca2.message.calls[-1][1], upd_ca2.message.calls[-1][2]
+    check("clearacc پیش‌نمایش ریست رو با تاییدیه میاره",
+          "ریست اکانت" in ca2_txt and "7741" in ca2_txt, ca2_txt[:120])
+    ca_cbs = [b.callback_data for r in ca2_kw["reply_markup"].inline_keyboard for b in r]
+    check("دکمه‌های تایید و لغو ریست", "cacc:ok:7741" in ca_cbs and "cacc:no:7741" in ca_cbs, str(ca_cbs))
+
+    upd_can = _fake_update("cacc:no:7741", uid=1001)
+    await admin_h.clearacc_cb(upd_can, None)
+    async with session_scope() as s:
+        tgt2 = await users.get_by_tg(s, 7741)
+        check("لغو ریست، اکانت دست‌نخورده میمونه", tgt2.level == 9 and tgt2.cash == 99999)
+        await s.commit()
+
+    sent_dm = []
+
+    class _CcBot:
+        async def send_message(self, *a, **k):
+            sent_dm.append(a)
+
+    upd_cok = _fake_update("cacc:ok:7741", uid=1001)
+    await admin_h.clearacc_cb(upd_cok, SimpleNamespace(bot=_CcBot()))
+    async with session_scope() as s:
+        w = await users.get_by_tg(s, 7741)
+        check("ریست اکانت به حالت روز اول برمی‌گردونه",
+              w.level == 1 and w.cash == config.START_CASH and w.medals == 0
+              and w.wood == 0 and w.wins == 0 and w.bank_balance == 0,
+              f"lvl {w.level} cash {w.cash} medals {w.medals}")
+        wplots = await farming.get_user_plots(s, w.id)
+        check("بعد ریست یه زمین رایگان داره", len(wplots) == 1, str(len(wplots)))
+        check("سلامت بعد ریست فوله", w.hp == battle_svc.max_hp(1))
+        await s.commit()
+    ed_cok = next((c for c in upd_cok.callback_query.calls if c[0] == "edit"), None)
+    check("پیام موفقیت ریست", ed_cok is not None and "ریست شد" in ed_cok[1])
+    check("به خود کاربر هم خبر رفت", bool(sent_dm) and sent_dm[0][0] == 7741, str(sent_dm))
+
+    async with session_scope() as s:
+        wown, _ = await users.get_or_create(s, tg(7745, "wown", "صاحبتیم"))
+        wown.level = 30
+        wown.cash = config.TEAM_CREATE_COST + 500
+        ok, _ = await team_svc.create_team(s, wown, "موقتی‌ها")
+        check("تیم موقتی ساخته شد", ok)
+        await users.wipe_account(s, wown)
+        check("ریست رهبر، تیمش منحل میشه",
+              await team_svc.get_team_by_name(s, "موقتی‌ها") is None)
+        check("بعد ریست عضو تیمی نیس", await team_svc.get_team_of(s, wown.id) is None)
+        await s.commit()
+
+    # ── سپر محافظتی خودی: حمله اول تاییدیه می‌خواد ──
+    async with session_scope() as s:
+        atk, _ = await users.get_or_create(s, tg(9861, "atkr", "مهاجم"))
+        vic, _ = await users.get_or_create(s, tg(9862, "vicm", "قربان"))
+        atk.level = vic.level = 12
+        atk.energy = config.MAX_ENERGY
+        atk.last_attack_at = None
+        atk.shield_until = now_utc() + timedelta(hours=2)
+        vic.shield_until = None
+        vic.hp = battle_svc.max_hp(vic.level)
+        vic.dead_until = None
+        atk_db, vic_db = atk.id, vic.id
+        await s.commit()
+
+    atk_dm = []
+
+    class _AtkBot:
+        async def send_message(self, *a, **k):
+            atk_dm.append(a)
+
+    upd_sh = _fake_update(f"patt:hit:{vic_db}", uid=9861)
+    await attack_h2.target_hit_cb(upd_sh, SimpleNamespace(bot=_AtkBot()))
+    ed_sh = next((c for c in upd_sh.callback_query.calls if c[0] == "edit"), None)
+    check("حمله با سپر خودی فعال تاییدیه می‌خواد",
+          ed_sh is not None and "سپر محافظتی داری" in ed_sh[1] and "سپر میشکنه" in ed_sh[1],
+          ed_sh[1][:120] if ed_sh else "-")
+    mk_sh = ed_sh[2].get("reply_markup") if ed_sh else None
+    sh_cbs = [b.callback_data for r in mk_sh.inline_keyboard for b in r] if mk_sh else []
+    check("دکمه تایید شکستن سپر خودی",
+          f"patt:shcf:{vic_db}" in sh_cbs and "patt:back" in sh_cbs, str(sh_cbs))
+    async with session_scope() as s:
+        atk2 = await users.get_by_tg(s, 9861)
+        check("بدون تایید نه سپر شکست نه حمله خورد",
+              atk2.shield_until is not None and atk2.pv_attack_at is None)
+        await s.commit()
+
+    upd_sh2 = _fake_update(f"patt:shcf:{vic_db}", uid=9861)
+    await attack_h2.ownshield_hit_cb(upd_sh2, SimpleNamespace(bot=_AtkBot()))
+    async with session_scope() as s:
+        atk3 = await users.get_by_tg(s, 9861)
+        vic3 = await users.get_by_tg(s, 9862)
+        check("با تایید، سپر خودی شکست و حمله انجام شد",
+              atk3.shield_until is None and atk3.pv_attack_at is not None)
+        check("قربانی سپر 12 ساعته گرفت", vic3.shield_until is not None)
+        await s.commit()
+    ed_sh2 = next((c for c in upd_sh2.callback_query.calls if c[0] == "edit"), None)
+    check("نتیجه حمله بعد تایید نمایش داده شد",
+          ed_sh2 is not None and ("⚔️ بردی" in ed_sh2[1] or "تونست دفاع کنه، باختی" in ed_sh2[1]),
+          ed_sh2[1][:110] if ed_sh2 else "-")
+    check("دی‌ام قربانی هدر و سپر جدید رو داره",
+          bool(atk_dm) and "🚨 بهت حمله شد" in str(atk_dm[-1][1])
+          and "از حملات در امانی" in str(atk_dm[-1][1]), str(atk_dm[-1][1][:120] if atk_dm else "-"))
+
+    # ── متن باخت مهاجم و دفاع قربانی (فرمول جدید) ──
+    vt_lose = attack_h2._victim_text("تستی", {"won": False, "penalty": 23, "steal": 0, "victim_xp": 3})
+    check("متن دی‌ام دفاع موفق قربانی",
+          "<b>🚨 بهت حمله شد</b>" in vt_lose and "🛡 حریف «تستی» بهت حمله کرد ولی دفاع کردی" in vt_lose
+          and "💵 23 تی‌پوینت جریمه‌ش رسید دستت" in vt_lose and "✨ 3 تجربه گرفتی" in vt_lose
+          and "🛡 تا 12 ساعت از حملات در امانی" in vt_lose,
+          vt_lose.replace("\n", " | ")[:170])
+
+    # ── بانک ۵ لولی: جدول ظرفیت و قیمت و گیت سطح + قفل کیبورد ──
+    bk_lock = kb3.bank_kb(SimpleNamespace(bank_level=1, level=1))
+    bk_flat = [(b.text, b.callback_data, b.style) for r in bk_lock.inline_keyboard for b in r]
+    check("دکمه قفل ارتقای بانک با سطح لازم",
+          any("🔒 ارتقای بانک | لول 2 | سطح 4" in t and c == "noop:banklock" and st == "danger"
+              for t, c, st in bk_flat), str(bk_flat))
+    bk_open = kb3.bank_kb(SimpleNamespace(bank_level=1, level=4))
+    bk_flat2 = [(b.text, b.callback_data) for r in bk_open.inline_keyboard for b in r]
+    check("با سطح کافی دکمه ارتقای بانک فعاله",
+          any(c == "bank:up" for _, c in bk_flat2), str(bk_flat2))
+    bk_max = kb3.bank_kb(SimpleNamespace(bank_level=5, level=20))
+    check("بانک لول مکس دکمه مکس داره",
+          any("مکس" in b.text for r in bk_max.inline_keyboard for b in r))
+
+    # ── متن شرکت: موجودی بالا + وضعیت هر ساختمان ──
+    from services import company as company_svc
+    cu = SimpleNamespace(wood=10, iron=20, lumber_level=0, ironmill_level=0)
+    ctx_company = company_svc.company_text(cu)
+    check("موجودی چوب و آهن بالای صفحه شرکته",
+          "🪵 چوب 10 | ⛏️ آهن 20" in ctx_company.splitlines()[2], ctx_company[:150])
+    check("قالب ساخته‌نشده هر ساختمان",
+          ctx_company.count("وضعیت: ساخته نشده") == 2 and "هزینه ساخت:" in ctx_company
+          and "تی‌پوینت" in ctx_company and " TP" not in ctx_company)
+    cu2 = SimpleNamespace(wood=10, iron=20, lumber_level=2, ironmill_level=0)
+    ctx_company2 = company_svc.company_text(cu2)
+    per_hour = config.FACTORIES["lumber"]["per_tick"] * 2 * (3600 // config.FACTORY_TICK_SECONDS)
+    check("قالب ساخته‌شده با سرعت تولید ساعتی",
+          "وضعیت: ساخته شده (لول 2)" in ctx_company2
+          and f"⚙️ سرعت تولید: {fa_num(per_hour)} چوب در ساعت" in ctx_company2,
+          ctx_company2.replace("\n", " | ")[:200])
+
+    # ── متن ابزار با تی‌پوینت کامل ──
+    tt = mine_h.tools_text(SimpleNamespace(axe_level=1, pick_level=1))
+    check("هزینه ارتقای ابزار تی‌پوینت کامله نه TP",
+          "تی‌پوینت" in tt and " TP" not in tt, tt.replace("\n", " | ")[:160])
+
+    # ── مخفیگاه → مخفیگاه و انبار ──
+    world_h2 = None
+    from handlers import world as world_h2
+    sht = await world_h2._shelter_text(SimpleNamespace(shelter_level=0, wood=0, iron=0, level=1))
+    check("تیتر صفحه پناهگاه «انبار و پناهگاه» ـه",
+          sht.startswith("<b>🏚 انبار و پناهگاه</b>"), sht[:40])
+    mm_flat = [b.text for r in kb3.main_menu_kb().inline_keyboard for b in r]
+    check("دکمه منوی اصلی «مخفیگاه و انبار» ـه", "🏚 مخفیگاه و انبار" in mm_flat, str(mm_flat))
+    check("بخش هلپ مخفیگاه اسم جدید رو داره",
+          "🏚 مخفیگاه و انبار" in start_h3.HELP_SECTIONS["shelter"])
+    check("هلپ نبرد سلامت گفته نه HP",
+          "سلامت" in start_h3.HELP_SECTIONS["battle"] and "HP" not in start_h3.HELP_SECTIONS["battle"])
 
     print(f"\n🎉 همه تست‌ها سبز شدن، {PASS} مورد")
 

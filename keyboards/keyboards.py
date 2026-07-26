@@ -63,7 +63,7 @@ def main_menu_kb() -> InlineKeyboardMarkup:
          _btn("🏴 تیم من", "menu:team", PRIMARY)],
         [_btn("⛏ کنده کاری", "menu:mine", PRIMARY),
          _btn("🏭 شرکت", "menu:company", PRIMARY)],
-        [_btn("🏚 مخفیگاه", "menu:shelter", PRIMARY),
+        [_btn("🏚 مخفیگاه و انبار", "menu:shelter", PRIMARY),
          _btn("🏦 بانک", "menu:bank", PRIMARY)],
         [_btn("📊 رتبه‌بندی", "menu:rank", PRIMARY),
          _btn("📅 کوئست‌های روزانه", "menu:dquests", PRIMARY)],
@@ -112,8 +112,18 @@ def admin_kb() -> InlineKeyboardMarkup:
          _btn("✨ +1,000 XP", "adm:xp:1000", PRIMARY)],
         [_btn("📊 آمار ربات", "adm:stats:0", PRIMARY)],
         [_btn("📢 عضویت اجباری", "adm:fj:0", PRIMARY)],
+        [_btn("🗄 بکاپ تریاکی", "bk:menu", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
+
+
+def backup_menu_kb(is_admin: bool) -> InlineKeyboardMarkup:
+    """منوی بک‌آپ، آپلود فقط برای ادمینه چون ری‌استور خطرناکه"""
+    rows = [[_btn("🗄 ساخت بکاپ", "bk:make", SUCCESS)]]
+    if is_admin:
+        rows.append([_btn("📤 آپلود بکاپ", "bk:up", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
 
 
 def admin_stats_kb() -> InlineKeyboardMarkup:
@@ -145,6 +155,14 @@ def force_join_kb(link: str) -> InlineKeyboardMarkup:
     ])
 
 
+def clearacc_confirm_kb(tg_id: int) -> InlineKeyboardMarkup:
+    """تایید ریست کامل اکانت (/clearacc)، فقط خود ادمین"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید، همه چیشو پاک کن", f"cacc:ok:{tg_id}", SUCCESS),
+        _btn("❌ لغو", f"cacc:no:{tg_id}", DANGER),
+    ]])
+
+
 def admin_users_kb(users: list) -> InlineKeyboardMarkup:
     """لیست نتایج جستجوی /user، هرکدوم یه دکمه"""
     rows = []
@@ -172,7 +190,7 @@ HELP_MENU = [
     ("farm",      "🌱 مزرعه"),
     ("dogs",      "🐕 سگ‌ها"),
     ("company",   "🏭 شرکت"),
-    ("shelter",   "🏚 مخفیگاه"),
+    ("shelter",   "🏚 مخفیگاه و انبار"),
     ("team",      "👥 تیم"),
     ("resources", "🎒 منابع"),
     ("shop",      "🛒 فروشگاه"),
@@ -200,8 +218,8 @@ def help_back_kb() -> InlineKeyboardMarkup:
 # ───────── پروفایل ─────────
 
 def profile_kb() -> InlineKeyboardMarkup:
+    """کیبورد پروفایل، دکمه رفرش حذف شد چون کاربرد خاصی نداشت"""
     return InlineKeyboardMarkup([
-        [_btn("🔃 رفرش", "menu:profile", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -256,6 +274,7 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
     else:
         rows.append([_btn("🏡 هر 5 زمین رو داری", "noop:maxplots")])
 
+    rows.append([_btn("🔄 آپدیت", "farm:rf", PRIMARY)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -538,6 +557,15 @@ def pv_break_kb(target_id: int) -> InlineKeyboardMarkup:
     ])
 
 
+def pv_ownshield_kb(target_id: int, break_victim: bool = False) -> InlineKeyboardMarkup:
+    """تاییدیه شکستن سپر محافظتی خودی قبل از حمله"""
+    confirm = f"patt:shbr:{target_id}" if break_victim else f"patt:shcf:{target_id}"
+    return InlineKeyboardMarkup([
+        [_btn("✅ تایید، سپرمو بشکن و حمله کن", confirm, DANGER)],
+        [_btn("❌ لغو، سپرم بمونه", "patt:back", PRIMARY)],
+    ])
+
+
 def heal_kb() -> InlineKeyboardMarkup:
     """کیبورد بخش درمان، هر آیتم با یه کلیک خریده و همون لحظه استفاده میشه"""
     rows: list[list[InlineKeyboardButton]] = []
@@ -553,9 +581,10 @@ def heal_kb() -> InlineKeyboardMarkup:
 
 # ───────── رتبه‌بندی ─────────
 
-def rank_kb() -> InlineKeyboardMarkup:
+def rank_kb(tab: str, next_tab: str, next_title: str) -> InlineKeyboardMarkup:
+    """کیبورد لیدربرد، دکمه چرخش بین تب روزانه/هفتگی/کلی"""
     return InlineKeyboardMarkup([
-        [_btn("🔃 رفرش", "menu:rank", PRIMARY)],
+        [_btn(f"🔁 {next_title}", f"rank:tab:{next_tab}", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -656,7 +685,7 @@ def team_bld_confirm_kb(kind: str, tg_id: int) -> InlineKeyboardMarkup:
 
 def bank_kb(user: User) -> InlineKeyboardMarkup:
     """کیبورد بانک، واریز و برداشت مبلغ رو با پیام بعدی می‌پرسن"""
-    from services.bank import bank_upgrade_price
+    from services.bank import bank_min_level, bank_upgrade_price
 
     rows: list[list[InlineKeyboardButton]] = [
         [_btn("💰 واریز", "bank:dep", SUCCESS),
@@ -664,10 +693,17 @@ def bank_kb(user: User) -> InlineKeyboardMarkup:
     ]
     if user.bank_level < config.BANK_MAX_LEVEL:
         price = bank_upgrade_price(user.bank_level)
-        rows.append([_btn(
-            f"⬆️ ارتقای بانک | لول {fa_num(user.bank_level + 1)} | {money_tp(price)}",
-            "bank:up", PRIMARY,
-        )])
+        req = bank_min_level(user.bank_level + 1)
+        if user.level < req:
+            rows.append([_btn(
+                f"🔒 ارتقای بانک | لول {fa_num(user.bank_level + 1)} | سطح {fa_num(req)} می‌خواد",
+                "noop:banklock", DANGER,
+            )])
+        else:
+            rows.append([_btn(
+                f"⬆️ ارتقای بانک | لول {fa_num(user.bank_level + 1)} | {money_tp(price)}",
+                "bank:up", PRIMARY,
+            )])
     else:
         rows.append([_btn("🏦 بانک 👑 لول مکس", "noop:maxbank")])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
@@ -698,6 +734,15 @@ def team_back_kb(home: bool = True) -> InlineKeyboardMarkup:
     if home:
         rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
+
+
+def team_top_kb(next_tab: str, next_title: str) -> InlineKeyboardMarkup:
+    """کیبورد لیدربرد تیم‌ها، چرخش بین تب روزانه/هفتگی/کلی + برگشت"""
+    return InlineKeyboardMarkup([
+        [_btn(f"🔁 {next_title}", f"ttop:tab:{next_tab}", PRIMARY)],
+        [_btn("🔙 تیم من", "menu:team", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
 
 
 def team_mine_kb() -> InlineKeyboardMarkup:
@@ -793,7 +838,7 @@ def shelter_kb(user: User) -> InlineKeyboardMarkup:
 def sell_menu_kb() -> InlineKeyboardMarkup:
     """کیبورد ساده بخش فروش منابع، کار اصلی با دستور متنی انجام میشه"""
     return InlineKeyboardMarkup([
-        [_btn("🏚 مخفیگاه", "menu:shelter", PRIMARY)],
+        [_btn("🏚 مخفیگاه و انبار", "menu:shelter", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 

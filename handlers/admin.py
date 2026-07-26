@@ -34,6 +34,9 @@ def _panel_text(user, extra: str | None = None) -> str:
         "▫️ <code>/addtp 123456789 5000</code>، واریز مستقیم تی‌پوینت\n"
         "▫️ <code>/addxp 123456789 100</code>، دادن مستقیم تجربه\n"
         "▫️ <code>/detp 123456789 5000</code> و <code>/dexp 123456789 100</code>، کم کردن مستقیم سکه و تجربه\n"
+        "▫️ <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
+        "▫️ /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
+        "▫️ /botoff و /boton توی گروه، خاموش و روشن کردن ربات فقط تو همون گروه\n"
         "▫️ /backup و /upload_backup، بک‌آپ و ری‌استور"
     )
     if extra:
@@ -220,6 +223,86 @@ async def dexp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"<b>✨ {fa_num(amount)} تجربه از {name} کم شد</b>\n\n"
         f"⭐ الان ✨ {fa_num(xp)} تجربه داره"
     )
+
+
+# ───────── /clearacc، ریست کامل اکانت ─────────
+
+async def clearacc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_admin(update):
+        return
+
+    query = " ".join(context.args or []).strip()
+    if not query:
+        return await update.message.reply_html(
+            "❌ فرم درست: <code>/clearacc 123456789</code> یا <code>/clearacc @username</code> یا بخشی از اسم"
+        )
+
+    async with session_scope() as s:
+        found = await users.search_users(s, query)
+        if not found:
+            await s.commit()
+            return await update.message.reply_html(f"🤷 کسی با «{esc(query)}» پیدا نشد")
+        if len(found) > 1:
+            names = "\n".join(f"▫️ {esc(users.display_name(u))} | <code>{u.telegram_id}</code>" for u in found)
+            await s.commit()
+            return await update.message.reply_html(
+                f"<b>👥 {fa_num(len(found))} نفر پیدا شدن، دقیق‌تر بگو:</b>\n\n{names}"
+            )
+        target = found[0]
+        name = esc(users.display_name(target))
+        uname = f"@{esc(target.username)}" if target.username else "بدون یوزرنیم"
+        tg_id = target.telegram_id
+        level, cash = target.level, target.cash
+        await s.commit()
+
+    text = (
+        "<b>🧨 ریست اکانت</b>\n\n"
+        f"می‌خوای حساب «{name}» ({uname} | <code>{tg_id}</code>) رو کامل پاک کنی؟\n\n"
+        f"⭐ لول {fa_num(level)} و 💵 {money(cash)} و همه زمین‌ها و سگ‌ها و آیتم‌هاش می‌پره\n"
+        f"برمی‌گرده به حالت روز اول با {money(config.START_CASH)}\n\n"
+        "انجامش بدیم؟"
+    )
+    await update.message.reply_html(text, reply_markup=kb.clearacc_confirm_kb(tg_id))
+
+
+async def clearacc_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """تایید/لغو ریست اکانت، فقط ادمین"""
+    if not _is_admin(update):
+        await update.callback_query.answer()
+        return
+    _, action, raw = parts(update)
+    tg_id = int(raw)
+
+    if action == "no":
+        return await respond(update, "<b>😅 بی‌خیال ریست شدیم</b>\n\nاکانت دست نخورده موند", kb.admin_kb())
+
+    async with session_scope() as s:
+        target = await users.get_by_tg(s, tg_id)
+        if target is None:
+            await s.commit()
+            return await respond(update, "❌ طرف دیگه تو بازی نیس", kb.admin_kb())
+        name = esc(users.display_name(target))
+        await users.wipe_account(s, target)
+        await s.commit()
+
+    await respond(
+        update,
+        f"<b>✅ اکانت «{name}» ریست شد</b>\n\n"
+        f"همه چیش پاک شد، الان مثل روز اوله\n"
+        f"💰 {money(config.START_CASH)} تو جیبشه",
+        kb.admin_kb(),
+    )
+    # به خود طرف هم خبر بدیم، استارت کرده باشه
+    try:
+        await context.bot.send_message(
+            tg_id,
+            "<b>🔄 اکانتت ریست شد</b>\n\n"
+            f"حسابت توسط مدیریت به حالت روز اول برگشت\n"
+            f"💰 دوباره با {money(config.START_CASH)} شروع می‌کنی",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
 
 
 # ───────── دکمه‌های پنل (خودی + کارت کاربر) ─────────

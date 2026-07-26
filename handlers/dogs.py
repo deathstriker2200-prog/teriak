@@ -219,9 +219,10 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # غذا از همون کارت سگ داده میشه، برمی‌گردیم همونجا
     extra = f"{msg}\n💵 نقدینگی {fa_num(cash)}TP"
-    if notes:
-        extra += "\n" + "\n".join(notes)
     await render_dog_card(update, dog, alert="🍖 نوش جون", extra=extra)
+    # لول‌آپ به‌صورت پیام جدا میاد
+    from handlers.common import announce_notes
+    await announce_notes(update, notes)
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 

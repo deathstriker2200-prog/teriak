@@ -53,6 +53,11 @@ _NEW_COLUMNS = {
         ("lumber_level", "INTEGER NOT NULL DEFAULT 0"),
         ("ironmill_level", "INTEGER NOT NULL DEFAULT 0"),
         ("company_at", "DATETIME"),
+        ("medals", "INTEGER NOT NULL DEFAULT 0"),
+        ("medals_day", "INTEGER NOT NULL DEFAULT 0"),
+        ("medals_day_date", "VARCHAR(10)"),
+        ("medals_week", "INTEGER NOT NULL DEFAULT 0"),
+        ("medals_week_id", "VARCHAR(10)"),
     ],
         "inventory": [
         ("level", "INTEGER NOT NULL DEFAULT 1"),
@@ -72,6 +77,9 @@ _NEW_COLUMNS = {
         ("def_bld", "INTEGER NOT NULL DEFAULT 0"),
         ("level", "INTEGER NOT NULL DEFAULT 1"),
         ("xp", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "team_members": [
+        ("join_medals", "INTEGER NOT NULL DEFAULT 0"),
     ],
 }
 

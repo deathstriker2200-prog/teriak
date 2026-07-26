@@ -96,6 +96,12 @@ def mine_cash_mult(user: User) -> float:
     return 1 + config.TOOL_CASH_PER_LEVEL * lv
 
 
+def mine_xp_mult(user: User) -> float:
+    """تجربه کنده‌کاری هم با بونس هر دو ابزار رشد می‌کنه"""
+    lv = (user.axe_level - 1) + (user.pick_level - 1)
+    return 1 + config.TOOL_XP_PER_LEVEL * lv
+
+
 def mine_rare_chance(user: User) -> float:
     """شانس شکار کمیاب با بونس هر دو ابزار"""
     lv = (user.axe_level - 1) + (user.pick_level - 1)
@@ -112,7 +118,7 @@ def mine_loot(user: User) -> dict:
     from services import economy
 
     cash = int(economy.mine_roll() * mine_cash_mult(user))
-    xp = random.randint(config.MINE_XP_MIN, config.MINE_XP_MAX)
+    xp = max(1, int(random.randint(config.MINE_XP_MIN, config.MINE_XP_MAX) * mine_xp_mult(user)))
     wood, iron = 0, 0
     rare = random.random() < mine_rare_chance(user)
     boost = config.MINE_RARE_MULT if rare else 1

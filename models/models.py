@@ -81,6 +81,14 @@ class User(Base):
     dq_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     dq_data: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
+    # مدال‌ها 🎖️ — با تجربه‌ای که از بازی می‌گیری جمع میشه (۱به۱)
+    # روزانه بر اساس تاریخ ایران و هفتگی بر اساس هفته ISO ایران ریست میشن
+    medals: Mapped[int] = mapped_column(Integer, default=0)
+    medals_day: Mapped[int] = mapped_column(Integer, default=0)
+    medals_day_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    medals_week: Mapped[int] = mapped_column(Integer, default=0)
+    medals_week_id: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     plots: Mapped[list["Plot"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -230,6 +238,8 @@ class TeamMember(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     role: Mapped[str] = mapped_column(String(8), default="member")  # owner / admin / member
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    # مدال کاربر لحظه عضویت — مدالِ «تو تیم» = مدال الان منهای این
+    join_medals: Mapped[int] = mapped_column(Integer, default=0)
 
     team: Mapped[Team] = relationship(back_populates="members")
     user: Mapped[User] = relationship()

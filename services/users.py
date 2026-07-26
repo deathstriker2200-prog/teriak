@@ -1,14 +1,14 @@
-"""سرویس کاربر: ثبت‌نام | انرژی | آیتم | لول‌آپ"""
+"""سرویس کاربر: ثبت‌نام | انرژی | آیتم | لول‌آپ | مدال‌ها 🎖️"""
 
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import InventoryItem, Plot, User
 from services.economy import xp_need
-from utils import fa_num, money, now_utc
+from utils import fa_num, iran_today, iran_week_key, money, now_utc
 
 
 async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
@@ -40,6 +40,65 @@ async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
 async def get_by_tg(session: AsyncSession, telegram_id: int) -> User | None:
     q = select(User).where(User.telegram_id == telegram_id)
     return (await session.execute(q)).scalar_one_or_none()
+
+
+async def wipe_account(session: AsyncSession, user: User) -> None:
+    """
+    ریست کامل اکانت به حالت روز اول (برای /clearacc ادمین)
+    زمین‌ها، سگ‌ها، آیتم‌ها، بذرها، تیم و همه آمار پاک میشه و یه زمین رایگان دوباره میدیم
+    """
+    from sqlalchemy import delete as sql_delete
+
+    from models import Dog, SeedStock, TeamDaily, TeamMember, TeamRequest, Team
+
+    # تیم: رهبره → انحلال کامل | عضو ساده → حذف عضویت
+    from services import teams as team_svc
+    m = await team_svc.get_membership(session, user.id)
+    if m:
+        team = await session.get(Team, m.team_id)
+        if m.role == "owner" and team:
+            team_svc.TEAM_MINE_SESSIONS.pop(team.id, None)
+            await session.execute(sql_delete(TeamRequest).where(TeamRequest.team_id == team.id))
+            await session.execute(sql_delete(TeamDaily).where(TeamDaily.team_id == team.id))
+            await session.delete(team)  # memberها با cascade پاک میشن
+        else:
+            await session.delete(m)
+        await session.flush()
+
+    for model in (Plot, InventoryItem, Dog, SeedStock):
+        await session.execute(sql_delete(model).where(model.user_id == user.id))
+    await session.flush()
+
+    # برگشت به حالت روز اول
+    user.level, user.xp = 1, 0
+    user.cash = config.START_CASH
+    user.energy = config.MAX_ENERGY
+    user.energy_updated_at = now_utc()
+    user.wins = user.losses = 0
+    user.last_attack_at = user.last_mine_at = user.last_harvest_at = None
+    user.feeds_used_today = 0
+    user.feed_day = None
+    user.bank_balance = 0
+    user.bank_level = 1
+    user.shelter_level = 0
+    user.wood = user.iron = 0
+    user.axe_level = user.pick_level = 1
+    user.lumber_level = user.ironmill_level = 0
+    user.company_at = None
+    user.last_search_at = user.last_casino_at = None
+    user.pending_action = user.pending_value = None
+    user.shield_until = user.pv_attack_at = None
+    user.dead_until = None
+    user.dq_date = user.dq_data = None
+    user.medals = 0
+    user.medals_day = 0
+    user.medals_day_date = None
+    user.medals_week = 0
+    user.medals_week_id = None
+
+    from services import battle as battle_svc
+    session.add(Plot(user_id=user.id))  # زمین اول هدیه خونه‌بختگی دوباره 🎁
+    battle_svc.ensure_hp(user)
 
 
 async def search_users(session: AsyncSession, query: str) -> list[User]:
@@ -131,16 +190,72 @@ def artifact_luck(artis: set[str]) -> float:
     return best
 
 
+# ───────── مدال‌ها 🎖️ (هر تجربه‌ای = مدال، مبنای لیدربرد روزانه/هفتگی/کلی) ─────────
+
+def award_medals(user: User, amount: int) -> None:
+    """مدال = همون تجربه‌ای که کاربر می‌گیره، روزانه و هفتگی با مرز ایران ریست میشن"""
+    if amount <= 0:
+        return
+    user.medals = (user.medals or 0) + amount
+
+    today = iran_today()
+    if user.medals_day_date != today:
+        user.medals_day = 0
+        user.medals_day_date = today
+    user.medals_day += amount
+
+    week = iran_week_key()
+    if user.medals_week_id != week:
+        user.medals_week = 0
+        user.medals_week_id = week
+    user.medals_week += amount
+
+
+def medal_value(user: User, tab: str) -> int:
+    """مدال موثر کاربر برای تب لیدربرد، سطلی کهنه صفر حساب میشه"""
+    if tab == "day":
+        return user.medals_day if user.medals_day_date == iran_today() else 0
+    if tab == "week":
+        return user.medals_week if user.medals_week_id == iran_week_key() else 0
+    return user.medals or 0
+
+
+def _medal_expr(tab: str):
+    """عبارت SQL مدال موثر برای مرتب‌سازی، ستون کهنه صفر میشه"""
+    if tab == "day":
+        return case((User.medals_day_date == iran_today(), User.medals_day), else_=0)
+    if tab == "week":
+        return case((User.medals_week_id == iran_week_key(), User.medals_week), else_=0)
+    return User.medals
+
+
+async def top_by_medals(session: AsyncSession, tab: str, limit: int) -> list[User]:
+    """تاپ کاربرا بر اساس مدال موثر تب"""
+    q = select(User).order_by(_medal_expr(tab).desc(), User.medals.desc(), User.id).limit(limit)
+    return list((await session.execute(q)).scalars())
+
+
+async def medal_rank(session: AsyncSession, user: User, tab: str) -> int:
+    """رتبه کاربر تو تب مدالی، بر اساس مقدار موثر"""
+    mine = medal_value(user, tab)
+    higher = (await session.execute(
+        select(func.count(User.id)).where(_medal_expr(tab) > mine)
+    )).scalar_one()
+    return higher + 1
+
+
 def add_xp(user: User, amount: int) -> list[str]:
     """
     اضافه کردن xp + مدیریت لول‌آپ، خروجی: لیست پیام‌های تبریک لول‌آپ
     جایزه هر لول: اسکناس + شارژ کامل انرژی + HP فول + لیست چیزایی که باز میشن
     بعد از لول مکس فقط تجربه جمع میشه و لول‌آپی اتفاق نمیفته
+    هر xp که واریز میشه به همون اندازه مدال هم جمع میشه
     """
     from services import battle as battle_svc
 
     notes: list[str] = []
     user.xp += amount
+    award_medals(user, amount)
 
     while user.level < config.MAX_LEVEL and user.xp >= xp_need(user.level):
         user.xp -= xp_need(user.level)

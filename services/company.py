@@ -110,7 +110,9 @@ async def upgrade(session: AsyncSession, user: User, fac_key: str) -> tuple[bool
 # ───────── متن‌ها ─────────
 
 def company_text(user: User, got: dict | None = None) -> str:
+    """متن صفحه شرکت، هر ساختمان یه بلاک باکس با وضعیت و سرعت تولید ساعتی"""
     lines = ["<b>🏭 شرکت</b>", ""]
+    lines.append(f"🪵 چوب {fa_num(user.wood)} | ⛏️ آهن {fa_num(user.iron)}")
     if got and (got["wood"] or got["iron"]):
         parts = []
         if got["wood"]:
@@ -118,18 +120,22 @@ def company_text(user: User, got: dict | None = None) -> str:
         if got["iron"]:
             parts.append(f"⛏️ {fa_num(got['iron'])} آهن")
         lines.append(f"📥 تولید انباشته: {' + '.join(parts)}")
-        lines.append("")
 
     res_name = {"lumber": "چوب", "ironmill": "آهن"}
+    ticks_per_hour = 3600 // config.FACTORY_TICK_SECONDS
     for key, cfg in config.FACTORIES.items():
         lv = factory_level(user, key)
+        lines.append("")
+        lines.append(f"<b>{cfg['emoji']} {cfg['name']}</b>")
         if lv <= 0:
-            lines.append(f"{cfg['emoji']} {cfg['name']} | ساخته نشده")
+            tp, wood = build_cost(key)
+            cost = money(tp)
+            if wood:
+                cost += f" + 🪵 {fa_num(wood)} چوب"
+            lines.append("وضعیت: ساخته نشده")
+            lines.append(f"هزینه ساخت: {cost}")
         else:
-            lines.append(
-                f"{cfg['emoji']} {cfg['name']} | لول {fa_num(lv)} | "
-                f"هر ۱۰ دقیقه {fa_num(factory_production(key, lv))} {res_name[key]}"
-            )
-    lines.append("")
-    lines.append(f"🪵 چوب {fa_num(user.wood)} | ⛏️ آهن {fa_num(user.iron)}")
+            per_hour = factory_production(key, lv) * ticks_per_hour
+            lines.append(f"وضعیت: ساخته شده (لول {fa_num(lv)})")
+            lines.append(f"⚙️ سرعت تولید: {fa_num(per_hour)} {res_name[key]} در ساعت")
     return "\n".join(lines)

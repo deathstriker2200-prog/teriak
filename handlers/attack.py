@@ -15,7 +15,7 @@ from handlers.common import parts, respond
 from keyboards import keyboards as kb
 from models import User
 from services import pvattack, users
-from utils import esc, fa_num, money
+from utils import esc, fa_dur, fa_num, money
 
 # ───────── متن‌ها ─────────
 
@@ -125,24 +125,35 @@ def _victim_text(attacker_name: str, result: dict) -> str:
     """دی‌ام پی‌وی به قربانی: کی حمله کرد، چقدر دزدید/جریمه رفت، تجربه ناچیز"""
     name = esc(attacker_name)
     if result["won"]:
-        head = f"⚔️ «{name}» بهت حمله کرد و برد"
+        head = f"⚔️ حریف «{name}» بهت حمله کرد و برد"
         money_line = (f"💰 {money(result['steal'])} ازت دزدید" if result["steal"]
                       else "💰 جیبت خالی بود، چیزی نتونست بدزده")
     else:
-        head = f"🛡 «{name}» بهت حمله کرد ولی دفاع کردی"
-        money_line = (f"💵 {money(result['penalty'])} جریمه‌ش رسید به جیبت" if result["penalty"]
+        head = f"🛡 حریف «{name}» بهت حمله کرد ولی دفاع کردی"
+        money_line = (f"💵 {money(result['penalty'])} جریمه‌ش رسید دستت" if result["penalty"]
                       else "💸 جیبش خالی بود، جریمه‌ای گیرت نیومد")
     return (
-        "<b>🚨 بهت حمله شد!</b>\n\n"
+        "<b>🚨 بهت حمله شد</b>\n\n"
         f"{head}\n"
         f"{money_line}\n"
         f"✨ {fa_num(result['victim_xp'])} تجربه گرفتی\n\n"
-        "🛡 تا 12 ساعت از حمله‌های پی‌وی مصونی"
+        "🛡 تا 12 ساعت از حملات در امانی"
     )
 
 
-async def _run_attack(update: Update, context, target_id: int, break_shield: bool = False) -> None:
-    """حمله روی هدف پیش‌نمایش‌شده، با کولدان و انتخاب شکستن سپر و دی‌ام قربانی"""
+async def _own_shield_view(update: Update, target_id: int, own_left: float, break_victim: bool) -> None:
+    """تاییدیه شکستن سپر محافظتی خودی قبل از حمله، تا وقتی داری از حمله‌ها در امانی"""
+    text = (
+        "<b>🛡 سپر محافظتی داری</b>\n\n"
+        f"تا {fa_dur(own_left)} دیگه از حمله‌ها در امانی\n"
+        "اگه حمله کنی این سپر میشکنه و هرکسی می‌تونه بهت حمله کنه\n\n"
+        "انجامش بدیم؟"
+    )
+    await respond(update, text, kb.pv_ownshield_kb(target_id, break_victim))
+
+
+async def _run_attack(update: Update, context, target_id: int, break_shield: bool = False, own_shield_ok: bool = False) -> None:
+    """حمله روی هدف پیش‌نمایش‌شده، با کولدان و تاییدیه شکستن سپر خودی/قربانی و دی‌ام قربانی"""
     dq_done, dq_left, uname = [], 0, ""
 
     async with session_scope() as s:
@@ -158,6 +169,14 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         if victim is None:
             await s.commit()
             return await pv_panel(update, alert="🤷 هدف گم شد، یه هدف دیگه بگیر")
+
+        # سپر محافظتی خود مهاجم، حمله یعنی شکستنش و اول باید تاییدش کنه
+        own_sl = pvattack.shield_left(user)
+        if own_sl and not own_shield_ok:
+            await s.commit()
+            return await _own_shield_view(update, target_id, own_sl, break_shield)
+        if own_sl:
+            user.shield_until = None
 
         name = users.display_name(victim)
         sl = pvattack.shield_left(victim)
@@ -202,16 +221,18 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         )
     else:
         if result["penalty"]:
-            lose_line = f"💸 {money(result['penalty'])} از جیبت رفت تو جیبش"
+            lose_line = f"💸 {money(result['penalty'])} ازت کم شد"
         else:
             lose_line = "💸 جیبت خالی بود، چیزی باخت ندادی"
         text = (
-            f"<b>🛡 «{esc(name)}» دفاع کرد، باختی</b>\n\n"
+            f"<b>🛡 حریف «{esc(name)}» تونست دفاع کنه، باختی</b>\n\n"
             f"{lose_line}\n"
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
 
     await respond(update, text, kb.pv_attack_kb())
+    from handlers.common import announce_notes
+    await announce_notes(update, result.get("notes"))
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
@@ -243,3 +264,13 @@ async def target_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def target_break_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """💥 شکستن سپر قربانی با پول و اجرای حمله"""
     await _run_attack(update, context, int(parts(update)[2]), break_shield=True)
+
+
+async def ownshield_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """✅ تایید شکستن سپر خودی و اجرای حمله"""
+    await _run_attack(update, context, int(parts(update)[2]), break_shield=False, own_shield_ok=True)
+
+
+async def ownshield_break_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """✅ تایید شکستن سپر خودی + سپر قربانی و اجرای حمله"""
+    await _run_attack(update, context, int(parts(update)[2]), break_shield=True, own_shield_ok=True)

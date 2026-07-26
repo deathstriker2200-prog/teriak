@@ -125,12 +125,12 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     """
     left = harvest_cooldown_left(user)
     if left:
-        return False, f"⏳ هر 2 دقیقه یه بار میشه برداشت کرد، {fa_dur(left)} مونده", None, ([], 0)
+        return False, f"⏳ هر 2 دقیقه یه بار میشه برداشت کرد، {fa_dur(left)} مونده", None, ([], 0), []
 
     plots = await get_user_plots(session, user.id)
     ready = [p for p in plots if p.current_status()[0] == "ready"]
     if not ready:
-        return False, "▫️ چیزی آماده برداشت نیس", None, ([], 0)
+        return False, "▫️ چیزی آماده برداشت نیس", None, ([], 0), []
 
     # افکت‌های جهان: کیفیت برداشت ⭐ + آب و هوا 🌦 + بازار سیاه 📈
     from services import world as world_svc
@@ -186,9 +186,8 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         extra += f"\n{w['emoji']} افکت {w['name']} روش حساب شد"
     if quest_msg:
         extra += "\n\n" + quest_msg
-    if notes:
-        extra += "\n" + "\n".join(notes)
-    return True, f"💰 {money(total_gain)}", extra, dq
+    # یادداشت‌های لول‌آپ جدا برمی‌گردن تا هندلر به‌صورت پیام مجزا بفرسته
+    return True, f"💰 {money(total_gain)}", extra, dq, notes
 
 
 # ───────── آپگرید ─────────

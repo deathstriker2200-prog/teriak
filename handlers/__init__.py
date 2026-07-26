@@ -11,7 +11,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, mine, pending, profile, rank, seen, shop, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, mine, pending, power, profile, rank, seen, shop, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -23,7 +23,7 @@ TP = rf"^(?:(?:تریاکی|تریاک|تی){S}+)?"  # پیشوند اختیار
 # فرمت: (اسم، الگو، هندلر)، تست‌ها روی همین جدول پترن‌ها رو چک می‌کنن
 TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("team_mine", rf"{TP}کنده{S}*کاری{S}*تیمی!?$|{TP}استخراج{S}*تیمی!?$", team.team_mine_text),
-    ("mine_upg", rf"{TP}آپگرید{S}+کنده{S}*کاری!?$|{TP}ابزار{S}*کنده{S}*کاری!?$", mine.mine_tools_cb),  # ارتقای ابزار، صفحه وضعیت ابزار
+    ("mine_upg", rf"{TP}آپگرید{S}+کنده{S}*کاری!?$|{TP}کنده{S}*کاری{S}+آپگرید!?$|{TP}ابزار{S}*کنده{S}*کاری!?$", mine.mine_tools_cb),  # ارتقای ابزار، صفحه وضعیت ابزار
     ("mine", rf"^کنده[\s‌]*کاری!?$|{T}کنده{S}*کاری!?$", mine.mine_cmd),  # با و بدون پیشوند
     ("shop", rf"{T}شاپ!?$|{T}فروشگاه!?$", textcmd.shop_text),
     ("profile", rf"{T}پروفایل!?$", textcmd.profile_text),
@@ -57,12 +57,14 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("team_admin", rf"{TP}تیم{S}+ادمین{S}+(.+)$", team.team_admin_text),
     ("quests", rf"{TP}کوئست{S}*تیم!?$|{TP}کوئست!?$|{TP}استعلام{S}*کوئست!?$", team.quests_text),
     ("team", rf"{TP}تیم(?:{S}+(.+))?!?$", team.team_text),
+    ("backup_menu", rf"{T}بک{S}*[اآ]پ!?$", backup.backup_menu_text),  # «تی بکاپ» منوی بک‌آپ، با الف ساده و مده‌دار
+    ("backup_copy", rf"{T}کپی!?$", backup.backup_copy_text),  # «تی کپی» ساخت فوری بک‌آپ
     ("backup_cancel", rf"{T}لغو{S}*بک{S}*آپ!?$", backup.cancel_upload_text),
     # ── سیستم‌های جهان ──
     ("search", rf"{T}جستجو!?$|{T}جست{S}*و{S}*جو!?$", world.search_cmd),
     ("weather", rf"{T}وضعیت{S}+آب{S}+و{S}+هوا!?$|{T}آب{S}*و{S}*هوا!?$|{T}وضعیت{S}+هواشناسی!?$|{T}هواشناسی!?$|{T}وضعیت{S}+هوا!?$", world.weather_cmd),
     ("market", rf"{T}وضعیت{S}+بازار!?$|{T}بازار{S}*سیاه!?$|{T}بازار!?$", world.market_cmd),
-    ("shelter", rf"{T}پناهگاه!?$|{T}مخفیگاه!?$", world.shelter_cmd),
+    ("shelter", rf"{T}پناهگاه!?$|{T}مخفیگاه!?$|{T}انبار!?$|{T}انبار{S}+و{S}+پناهگاه!?$", world.shelter_cmd),
     ("company", rf"{T}شرکت!?$|{T}کارخانه!?$", company.company_cb),
     ("dogrename", rf"{T}اسم{S}+سگ{S}+(.+)$", dogs.dog_rename_text),
     ("casino", rf"{T}قمارخانه!?$|{T}قمار!?$", world.casino_cmd),
@@ -77,6 +79,10 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
 
 def register_handlers(app: Application) -> None:
     fa_text = filters.TEXT & ~filters.COMMAND
+
+    # ── گیت خاموشی (/botdown کلی و /botoff گروهی)، قبل از همه چیز ──
+    app.add_handler(MessageHandler(filters.ALL, power.power_gate), group=-5)
+    app.add_handler(CallbackQueryHandler(power.power_gate), group=-5)
 
     # ── ثبت کاربران دیده‌شده (برای حمله با @یوزرنیم به غریبه‌ها)، بی‌صدا و قبل از همه ──
     app.add_handler(MessageHandler(filters.ALL, seen.track), group=-4)
@@ -94,7 +100,6 @@ def register_handlers(app: Application) -> None:
 
     # ── دستورهای اسلشی ──
     app.add_handler(CommandHandler("start", start.start_cmd))
-    app.add_handler(CommandHandler("menu", start.menu_cmd))
     app.add_handler(CommandHandler("profile", profile.profile_cmd))
     app.add_handler(CommandHandler("farm", farm.farm_cb))
     app.add_handler(CommandHandler("shop", shop.shop_cb))
@@ -112,13 +117,20 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
     app.add_handler(CommandHandler("detp", admin.detp_cmd))
     app.add_handler(CommandHandler("dexp", admin.dexp_cmd))
+    app.add_handler(CommandHandler("clearacc", admin.clearacc_cmd))
+    # ── سوئیچ خاموش/روشن ──
+    app.add_handler(CommandHandler("botdown", power.botdown_cmd))
+    app.add_handler(CommandHandler("botup", power.botup_cmd))
+    app.add_handler(CommandHandler("botoff", power.botoff_cmd))
+    app.add_handler(CommandHandler("boton", power.boton_cmd))
 
     # ── اد شدن ربات به گروه، خودش متن خوش‌آمد می‌فرسته ──
     app.add_handler(ChatMemberHandler(start.bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
     # ── دستورهای متنی فارسی (PV و گروه)، همه با پیشوند «تریاکی » به‌جز کنده کاری ──
+    # رَپر dedup: ۵۰ تا از یه دستور پشت سر هم بفرستی فقط اولیش اجرا میشه
     for _name, pattern, func in TEXT_HANDLERS:
-        app.add_handler(MessageHandler(fa_text & filters.Regex(pattern), func))
+        app.add_handler(MessageHandler(fa_text & filters.Regex(pattern), common.text_dedup(func)))
 
     # ── فایل بک‌آپ (فقط بعد از /upload_backup و فقط ادمین) ──
     app.add_handler(MessageHandler(filters.ATTACHMENT & ~filters.COMMAND, backup.backup_doc))
@@ -134,7 +146,10 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(attack.target_next_cb, pattern=r"^patt:next:\d+$"))
     app.add_handler(CallbackQueryHandler(attack.target_back_cb, pattern=r"^patt:back$"))
     app.add_handler(CallbackQueryHandler(attack.target_break_cb, pattern=r"^patt:break:\d+$"))
+    app.add_handler(CallbackQueryHandler(attack.ownshield_hit_cb, pattern=r"^patt:shcf:\d+$"))
+    app.add_handler(CallbackQueryHandler(attack.ownshield_break_cb, pattern=r"^patt:shbr:\d+$"))
     app.add_handler(CallbackQueryHandler(rank.rank_cb, pattern=r"^menu:rank$"))
+    app.add_handler(CallbackQueryHandler(rank.rank_tab_cb, pattern=r"^rank:tab:\w+$"))
     app.add_handler(CallbackQueryHandler(dogs.dogs_cb, pattern=r"^menu:dogs$"))
     app.add_handler(CallbackQueryHandler(team.team_cb, pattern=r"^menu:team$"))
     app.add_handler(CallbackQueryHandler(dquests.daily_quests_cb, pattern=r"^menu:dquests$"))
@@ -161,6 +176,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(farm.plant_confirm, pattern=r"^farm:plant:\d+:\w+$"))
     app.add_handler(CallbackQueryHandler(farm.plant_execute, pattern=r"^cf:plant:\d+:\w+$"))
     app.add_handler(CallbackQueryHandler(farm.harvest_cb, pattern=r"^farm:hv$"))
+    app.add_handler(CallbackQueryHandler(farm.farm_refresh_cb, pattern=r"^farm:rf$"))
     app.add_handler(CallbackQueryHandler(farm.upgrade_confirm, pattern=r"^farm:up:\d+$"))
     app.add_handler(CallbackQueryHandler(farm.upgrade_execute, pattern=r"^cf:farm:up:\d+$"))
 
@@ -183,6 +199,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.quests_text, pattern=r"^team:quests$"))
     app.add_handler(CallbackQueryHandler(team.team_mine_text, pattern=r"^team:mine$"))  # دکمه جمعی
     app.add_handler(CallbackQueryHandler(team.top_teams_text, pattern=r"^team:top$"))
+    app.add_handler(CallbackQueryHandler(team.top_teams_tab_cb, pattern=r"^ttop:tab:\w+$"))
     app.add_handler(CallbackQueryHandler(team.leave_confirm, pattern=r"^team:leave$"))
     app.add_handler(CallbackQueryHandler(team.disband_confirm, pattern=r"^team:disband$"))
     app.add_handler(CallbackQueryHandler(team.team_confirm_cb, pattern=r"^tmcf:(?:leave|disband):\d+$"))
@@ -227,6 +244,12 @@ def register_handlers(app: Application) -> None:
 
     # ── ادمین ──
     app.add_handler(CallbackQueryHandler(admin.admin_cb, pattern=r"^adm:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(admin.clearacc_cb, pattern=r"^cacc:(?:ok|no):\d+$"))
+
+    # ── منوی بک‌آپ ──
+    app.add_handler(CallbackQueryHandler(backup.backup_menu_cb, pattern=r"^bk:menu$"))
+    app.add_handler(CallbackQueryHandler(backup.backup_make_cb, pattern=r"^bk:make$"))
+    app.add_handler(CallbackQueryHandler(backup.backup_upload_cb, pattern=r"^bk:up$"))
 
     # ── عمومی ──
     app.add_handler(CallbackQueryHandler(start.cancel_cb, pattern=r"^cl$"))

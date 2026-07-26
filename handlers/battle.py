@@ -56,9 +56,6 @@ def hit_text(result: dict, target_name: str) -> str:
             f"🏆 دوئل به پایان رسید"
         )
 
-    notes = result.get("notes") or []
-    if notes:
-        text += "\n\n" + "\n\n".join(notes)
     return text
 
 
@@ -206,6 +203,9 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return await respond(update, nodmg_text(target_name))
 
     await respond(update, hit_text(result, target_name))
+    # لول‌آپ به‌صورت پیام جدا میاد
+    from handlers.common import announce_notes
+    await announce_notes(update, result.get("notes"))
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 

@@ -22,6 +22,25 @@ def iran_today() -> str:
     return now_iran().date().isoformat()
 
 
+def iran_week_key() -> str:
+    """کلید هفته جاری به‌وقت ایران (ISO)، مثل 2026-W30 — مبنای مدال هفتگی و رقابت تیم‌ها"""
+    iso = now_iran().isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def iran_day_start_utc() -> datetime:
+    """شروع امروز به‌وقت ایران، برگردونده‌شده به UTC"""
+    d = now_iran().date()
+    return datetime(d.year, d.month, d.day) - _IRAN_OFFSET
+
+
+def iran_week_start_utc() -> datetime:
+    """شروع هفته ISO جاری به‌وقت ایران (دوشنبه ۰۰:۰۰)، برگردونده‌شده به UTC"""
+    n = now_iran()
+    d = n.date() - timedelta(days=n.isoweekday() - 1)
+    return datetime(d.year, d.month, d.day) - _IRAN_OFFSET
+
+
 def gregorian_to_jalali(gy: int, gm: int, gd: int) -> tuple[int, int, int]:
     """تبدیل میلادی به شمسی — بدون هیچ دیپندنسی (الگوریتم کلاسیک jdf)"""
     g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]

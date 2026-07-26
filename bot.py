@@ -30,10 +30,9 @@ async def on_start(app: Application) -> None:
     # کامندهای منوی «/» تلگرام
     await app.bot.set_my_commands([
         BotCommand("start", "شروع بازی و منوی اصلی"),
-        BotCommand("menu", "منوی اصلی"),
         BotCommand("profile", "پروفایلت"),
         BotCommand("help", "آموزشات بازی"),
-        BotCommand("heal", "درمان و برگردوندن HP"),
+        BotCommand("heal", "درمان و برگردوندن سلامت"),
     ])
 
     logger.info("دیتابیس آماده شد ✅ | DB: %s", _safe_db())

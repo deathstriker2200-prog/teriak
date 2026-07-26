@@ -64,7 +64,7 @@ def tools_text(user) -> str:
             lines.append("👑 لول مکس")
         else:
             tp, iron = res_svc.tool_upgrade_cost(key, lv)
-            lines.append(f"⬆️ بعدی: 💰 {money_tp(tp)} + ⛏️ {fa_num(iron)} آهن")
+            lines.append(f"⬆️ بعدی: 💰 {money(tp)} + ⛏️ {fa_num(iron)} آهن")
         lines.append("")
     lines.append("هر لول ابزار چوب و آهن و تی‌پوینت بیشتری میده")
     lines.append("شانس پیدا کردن منابع کمیاب هم بیشتر میشه")
@@ -80,6 +80,7 @@ async def _do_roll(update: Update) -> None:
     kb_out = None if in_group else kb.mine_kb()
 
     dq_done, dq_left, uname = [], 0, ""
+    notes: list[str] = []
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         now = now_utc()
@@ -104,11 +105,12 @@ async def _do_roll(update: Update) -> None:
             uname = users.display_name(user)
 
             text = _loot_text(loot, user)
-            if notes:
-                text += "\n\n" + "\n".join(notes)
         await s.commit()
 
     await respond(update, text, kb_out)
+    # لول‌آپ به‌صورت پیام جدا میاد تا متن کنده‌کاری شلوغ نشه
+    from handlers.common import announce_notes
+    await announce_notes(update, notes)
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 

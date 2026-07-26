@@ -116,7 +116,7 @@ async def _shelter_text(user) -> str:
     cap = world_svc.seed_storage_cap(user)
     wcap, icap = res_svc.wood_cap(user), res_svc.iron_cap(user)
     lines = [
-        "<b>🏚 پناهگاه</b>",
+        "<b>🏚 انبار و پناهگاه</b>",
         "",
         f"⭐ لول {fa_num(user.shelter_level)}" + (f" از {fa_num(config.SHELTER_MAX_LEVEL)}" if user.shelter_level else "، هنوز نداری"),
         "",

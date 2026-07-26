@@ -42,7 +42,7 @@ async def render_dquests(update: Update, alert: str | None = None) -> None:
             lines.append(f"💪 {fa_num(left)} کوئست مونده، جایزه‌شون همونجایی که داری بازی می‌کنی اعلام میشه")
         else:
             lines.append("🏆 همه کوئست‌های امروز رو درو کردی، دستت درد نکنه")
-        lines.append("🕛 هر شب ساعت 12 (به‌وقت ایران) ریست میشن و کوئستای جدید میان")
+        lines.append("🕛 هر شب ساعت 12 ریست میشن و کوئستای جدید میان")
         text = "\n".join(lines)
         await s.commit()
 

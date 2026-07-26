@@ -59,9 +59,9 @@ def _team_stats_text(data: dict) -> str:
     lines.append("")
     lines.append("━━━━━━ 📊 آمار تیم ━━━━━━")
     lines.append(f"⚔️ برد اعضا {fa_num(data['wins'])} | ❌ باخت {fa_num(data['losses'])}")
-    lines.append(f"⭐ مجموع لول اعضا {fa_num(data['level_sum'])}")
+    lines.append(f"🎖️ مجموع مدال‌ها {fa_num(data['medals']['all'])}")
     lines.append(f"🎯 کشتارهای تیم {fa_num(team.total_kills)} | 🌾 برداشت‌های تیم {fa_num(team.total_harvests)}")
-    lines.append(f"💎 امتیاز تیم {fa_num(team.points)} | 📅 امتیاز این هفته {fa_num(team.week_points)}")
+    lines.append(f"📅 مدال این هفته {fa_num(data['medals']['week'])} | ☀️ مدال امروز {fa_num(data['medals']['day'])}")
     atk_pct = int(config.TEAM_ATK_BONUS_PER_LEVEL * (team.atk_bld or 0) * 100)
     def_pct = int(config.TEAM_DEF_BONUS_PER_LEVEL * (team.def_bld or 0) * 100)
     lines.append(f"🏗 ساختمان حمله لول {fa_num(team.atk_bld or 0)} (+{fa_num(atk_pct)}%)")
@@ -234,53 +234,54 @@ async def _announce_winners(context: ContextTypes.DEFAULT_TYPE, winners: list[di
                 pass  # بلاک یا ریستارت، مهم نیس
 
 
-async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🏆 لیدربرد تیم‌ها، امتیاز کلی + رقابت این هفته + قهرمانای هفته پیش («تیم لیدربرد»)"""
+_TEAM_TOP_TABS = [("day", "☀️ روزانه"), ("week", "📅 هفتگی"), ("all", "🌍 کلی")]
+
+
+async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str | None = None) -> None:
+    """🏆 لیدربرد تیم‌ها بر اساس جمع مدال‌های اعضا، تب روزانه/هفتگی/کلی («تیم لیدربرد»)"""
+    keys = [k for k, _ in _TEAM_TOP_TABS]
+    titles = dict(_TEAM_TOP_TABS)
+    if tab not in keys:
+        tab = "week"  # پیش‌فرض رقابت هفتگی
+
     async with session_scope() as s:
         winners = await teams.maybe_weekly_rollover(s)
-        tops = await teams.top_teams_by_points(s, config.RANK_LIMIT)
-        week_tops = await teams.top_teams_week(s, config.RANK_LIMIT)
+        tops = await teams.top_teams_by_medals(s, tab, limit=config.RANK_LIMIT)
         last_week = await teams.meta_get(s, "last_week_result")
         await s.commit()
 
     if winners:
         await _announce_winners(context, winners)
 
+    lines = [f"<b>🏆 لیدربرد تیم‌ها {titles[tab]}</b>", ""]
     if not tops:
-        text = (
-            "<b>🏆 لیدربرد تیم‌ها</b>\n\n"
-            "هنوز هیچ تیمی ساخته نشده\n"
-            "اولیشو تو بساز 😎 «ساخت تیم»"
-        )
-        return await respond(update, text, kb.team_back_kb())
+        lines.append("هنوز هیچ تیمی ساخته نشده\nاولیشو تو بساز 😎 «ساخت تیم»")
+    else:
+        for i, (t, total, n) in enumerate(tops, 1):
+            medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{fa_num(i)}.")
+            lines.append(f"{medal} «{esc(t.name)}» | 🎖️ {fa_num(total)}")
+        if tab == "week" or not last_week:
+            p1, p2, p3 = (config.TEAM_WEEKLY_PRIZES.get(i, 0) for i in (1, 2, 3))
+            lines.append("")
+            lines.append(f"🏁 آخر هفته: 🥇 {money_tp(p1)} | 🥈 {money_tp(p2)} | 🥉 {money_tp(p3)}، به بانک تیم")
 
-    medals_row = []
-    lines = ["<b>🏆 لیدربرد تیم‌ها</b>", ""]
-    lines.append("━━━━ 🎯 بر اساس امتیاز ━━━━")
-    for i, (t, n) in enumerate(tops, 1):
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{fa_num(i)}.")
-        lines.append(f"{medal} «{esc(t.name)}» | 💎 {fa_num(t.points)} | 👥 {fa_num(n)}")
-
-    lines.append("")
-    lines.append("━━━━ 📅 رقابت این هفته ━━━━")
-    for i, (t, n) in enumerate(week_tops[:5], 1):
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{fa_num(i)}.")
-        lines.append(f"{medal} «{esc(t.name)}» | 💎 {fa_num(t.week_points)}")
-    p1, p2, p3 = (config.TEAM_WEEKLY_PRIZES.get(i, 0) for i in (1, 2, 3))
-    lines.append(
-        f"🏁 آخر هفته: 🥇 {money_tp(p1)} | 🥈 {money_tp(p2)} | 🥉 {money_tp(p3)}، به بانک تیم"
-    )
-
-    if last_week:
+    if last_week and tab != "week":
         lines.append("")
         lines.append("━━━━ 👑 قهرمانای هفته پیش ━━━━")
         lines.append(esc(last_week))
 
     lines.append("")
-    lines.append("💎 امتیاز با برد تو حمله و برداشت محصول جمع میشه")
+    lines.append("🎖️ مدال‌های اعضا موقع بازی کردن جمع میشن، کلی همه مدال‌هاست")
     lines.append("💡 آمار هر تیم با «تیم [اسم]»، مثلا «تیم فوتبالیست‌ها»")
     text = "\n".join(lines)
-    await respond(update, text, kb.team_back_kb())
+
+    nxt = keys[(keys.index(tab) + 1) % len(keys)]
+    await respond(update, text, kb.team_top_kb(nxt, titles[nxt]))
+
+
+async def top_teams_tab_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """تعویض تب لیدربرد تیم‌ها"""
+    await top_teams_text(update, context, tab=update.callback_query.data.split(":")[-1])
 
 
 # ───────── ساخت تیم ─────────
@@ -497,11 +498,11 @@ async def _push_mine_state(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     status = res["status"]
 
     if status == "no_team":
-        return await respond(update, "🏴 کنده‌کاری تیمی مال تیم‌ست، اول عضو یه تیم شو 😅")
+        return await respond(update, "🏴 کنده‌کاری تیمی مال تیم‌ست، اول عضو یه تیم شو 😅", kb.team_no_kb())
     if status == "too_few":
-        return await respond(update, "⛏ کنده‌کاری تیمی حداقل 3 نفره می‌خواد، اول تیمتو بزرگ کن 😅")
+        return await respond(update, "⛏ کنده‌کاری تیمی حداقل 3 نفره می‌خواد، اول تیمتو بزرگ کن 😅", kb.team_back_kb())
     if status == "cooldown":
-        return await respond(update, f"⏳ کنده‌کاری تیمی هر {fa_num(config.TEAM_MINE_COOLDOWN_MINUTES)} دقیقه یه باره، {fa_dur(res['left'])} مونده")
+        return await respond(update, f"⏳ کنده‌کاری تیمی هر {fa_num(config.TEAM_MINE_COOLDOWN_MINUTES)} دقیقه یه باره، {fa_dur(res['left'])} مونده", kb.team_back_kb())
 
     if status == "completed":
         return await respond(update, _mine_complete_text(res), kb.team_back_kb())

@@ -180,18 +180,40 @@ async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
+# ───────── دکمه 🔄 آپدیت، کولدان خیلی ریز برای جلوی اسپم ─────────
+
+async def farm_refresh_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """فقط کلیک اول تو پنجره FARM_UPDATE_SECONDS اجرا میشه، بقیه پیام «آروم‌تر» می‌گیرن"""
+    from handlers.common import throttle
+
+    left = throttle("farm_rf", update.effective_user.id, config.FARM_UPDATE_SECONDS)
+    if left:
+        try:
+            await update.callback_query.answer(
+                f"⏳ یخورده آروم‌تر، {fa_num(int(left) + 1)} ثانیه دیگه بزن", show_alert=True
+            )
+        except Exception:
+            pass
+        return
+    await render_farm(update)
+
+
 # ───────── برداشت (همه آماده‌ها، کولدان ۲ دقیقه) ─────────
 
 async def harvest_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     dq_done, dq_left, uname = [], 0, ""
+    notes: list[str] = []
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        ok, alert, extra, dq = await farming.harvest_all(s, user)
+        ok, alert, extra, dq, notes = await farming.harvest_all(s, user)
         if ok:
             dq_done, dq_left = dq
             uname = users.display_name(user)
         await s.commit()
     await render_farm(update, extra=extra, alert=alert)
+    # لول‌آپ به‌صورت پیام جدا میاد
+    from handlers.common import announce_notes
+    await announce_notes(update, notes)
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
@@ -219,6 +241,8 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 alert=f"🔒 آپگرید به لول {fa_num(plot.level + 1)} لول {fa_num(req_level)} می‌خواد",
             )
 
+        plots = await farming.get_user_plots(s, user.id)
+        plot_index = next((i for i, p in enumerate(plots, 1) if p.id == plot.id), 1)
         price = economy.upgrade_price(plot.level)
         wood = economy.upgrade_wood(plot.level)
         old_sp = economy.plot_speed_mult(plot.level)
@@ -226,13 +250,11 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         q0 = int((config.QUALITY_TIERS[-1]["chance"] + economy.plot_quality_bonus(plot.level)) * 100)
         q1 = int((config.QUALITY_TIERS[-1]["chance"] + economy.plot_quality_bonus(plot.level + 1)) * 100)
         text = (
-            f"<b>⬆️ لول‌آپ زمین، تا لول {fa_num(config.PLOT_MAX_LEVEL)}</b>\n\n"
-            f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n"
-            f"🔓 لول {fa_num(req_level)} به بالا لازمه\n"
-            f"💸 هزینه {money(price)} + 🪵 {fa_num(wood)} چوب\n"
+            f"<b>⬆️ لول‌آپ زمین شماره {fa_num(plot_index)}</b>\n\n"
+            f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n\n"
+            f"💸 هزینه: {money(price)} + 🪵 {fa_num(wood)} چوب\n"
             f"⚡ سرعت رشد 40% بیشتر میشه (×{old_sp:.1f} ← ×{new_sp:.1f})\n"
-            f"⭐ شانس محصول افسانه‌ای می‌رسه به {fa_num(q1)} درصد (الان {fa_num(q0)})\n"
-            "📈 خود قیمت محصول عوض نمیشه، کیفیت‌هاش بهتر میشن\n\n"
+            f"⭐ شانس محصول افسانه‌ای می‌رسه به {fa_num(q1)} درصد (الان {fa_num(q0)})\n\n"
             "انجامش بدیم؟"
         )
         markup = kb.confirm_kb(f"cf:farm:up:{plot.id}")

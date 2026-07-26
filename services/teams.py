@@ -7,14 +7,14 @@
 
 import math
 import random
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import GameMeta, Team, TeamDaily, TeamMember, TeamRequest, User
-from utils import fa_num, money, normalize_fa, now_utc
+from utils import fa_num, iran_day_start_utc, iran_today, iran_week_key, iran_week_start_utc, money, normalize_fa, now_utc
 
 # ───────── سشن‌های کنده‌کاری تیمی (درون حافظه، با ری‌استارت پاک میشن) ─────────
 # team_id → {chat_id, message_id, members(set of user_id), needed, member_count, expires_at}
@@ -142,7 +142,7 @@ async def create_team(session: AsyncSession, user: User, name: str) -> tuple[boo
     team = Team(name=display, name_norm=team_name_norm(display), owner_id=user.id)
     session.add(team)
     await session.flush()
-    session.add(TeamMember(team_id=team.id, user_id=user.id, role="owner"))
+    session.add(TeamMember(team_id=team.id, user_id=user.id, role="owner", join_medals=user.medals or 0))
     return True, display
 
 
@@ -240,7 +240,7 @@ async def accept_request(session: AsyncSession, req: TeamRequest, target: User) 
     if team is not None and count >= team_capacity(team):
         await session.delete(req)
         return False, "🏴 تیم پر شده بود، درخواست پاک شد"
-    session.add(TeamMember(team_id=req.team_id, user_id=target.id, role="member"))
+    session.add(TeamMember(team_id=req.team_id, user_id=target.id, role="member", join_medals=target.medals or 0))
     await session.delete(req)
     return True, ""
 
@@ -372,6 +372,16 @@ async def team_stats_data(session: AsyncSession, team: Team) -> dict:
                     owner_name = u.first_name or u.username or "؟"
             break
 
+    by_id = {u.id: u for u in users}
+    medals_sum = {"all": 0, "week": 0, "day": 0}
+    for m in members:
+        u = by_id.get(m.user_id)
+        if not u:
+            continue
+        medals_sum["all"] += _member_medals(m, u, "all")
+        medals_sum["week"] += _member_medals(m, u, "week")
+        medals_sum["day"] += _member_medals(m, u, "day")
+
     return {
         "team": team,
         "members": members,
@@ -380,7 +390,7 @@ async def team_stats_data(session: AsyncSession, team: Team) -> dict:
         "owner_name": owner_name,
         "wins": sum(u.wins for u in users),
         "losses": sum(u.losses for u in users),
-        "level_sum": sum(u.level for u in users),
+        "medals": medals_sum,
         "daily": daily,
     }
 
@@ -575,9 +585,8 @@ def bind_mine_message(team_id: int, chat_id: int, message_id: int) -> None:
 # ───────── امتیاز تیم و رقابت هفتگی 🏆 ─────────
 
 def current_week_key() -> str:
-    """کلید هفته جاری (ISO)، مثل 2026-W30"""
-    iso = now_utc().isocalendar()
-    return f"{iso[0]}-W{iso[1]:02d}"
+    """کلید هفته جاری به‌وقت ایران (ISO)، مثل 2026-W30"""
+    return iran_week_key()
 
 
 async def meta_get(session: AsyncSession, key: str) -> str | None:
@@ -607,6 +616,73 @@ async def top_teams_week(session: AsyncSession, limit: int = 10) -> list[tuple[T
     return [(t, await member_count(session, t.id)) for t in teams_]
 
 
+# ───────── مدال‌های تیم 🎖️ (مبنای لیدربرد تیم روزانه/هفتگی/کلی) ─────────
+# کلی: همه مدال‌های اعضا | هفتگی/روزانه: فقط مدال‌هایی که تو بازه و بعد از عضویت جمع شده
+
+def _member_medals(m: TeamMember, u: User, tab: str, week_id: str | None = None, day_id: str | None = None) -> int:
+    """سهم مدالی یه عضو برای یه تب، استثنای جوین وسط بازه با baseline لحظه عضویت"""
+    if tab == "day":
+        did = day_id or iran_today()
+        start = iran_day_start_utc() if day_id is None else _day_start_utc_for(did)
+        fresh = u.medals_day if u.medals_day_date == did else 0
+    elif tab == "week":
+        wid = week_id or iran_week_key()
+        start = iran_week_start_utc() if week_id is None else week_start_utc_for(wid)
+        fresh = u.medals_week if u.medals_week_id == wid else 0
+    else:
+        return u.medals or 0
+    if m.joined_at and m.joined_at > start:
+        # وسط بازه اومده، فقط مدال‌هایی که بعد اومدنش و تو همون بازه گرفته
+        return max(0, min((u.medals or 0) - (m.join_medals or 0), fresh))
+    return fresh
+
+
+def _day_start_utc_for(day_id: str) -> datetime:
+    """شروع یه روز خاص به‌وقت ایران، برگردونده‌شده به UTC"""
+    from datetime import datetime as _dt
+    y, mo, d = (int(x) for x in day_id.split("-"))
+    return _dt(y, mo, d) - timedelta(hours=3, minutes=30)
+
+
+def week_start_utc_for(week_id: str) -> datetime:
+    """شروع دوشنبه یه هفته ISO خاص به‌وقت ایران، برگردونده‌شده به UTC"""
+    from datetime import date as _date, datetime as _dt
+    y, w = (int(x) for x in week_id.replace("W", "").split("-") if x)
+    d = _date.fromisocalendar(y, w, 1)
+    return _dt(d.year, d.month, d.day) - timedelta(hours=3, minutes=30)
+
+
+async def team_medal_sums(session: AsyncSession, team_id: int) -> dict:
+    """جمع مدال‌های اعضای تیم توی سه بازه کلی/هفته/امروز"""
+    members = await get_members(session, team_id)
+    out = {"all": 0, "week": 0, "day": 0}
+    for m in members:
+        u = await session.get(User, m.user_id)
+        if not u:
+            continue
+        out["all"] += _member_medals(m, u, "all")
+        out["week"] += _member_medals(m, u, "week")
+        out["day"] += _member_medals(m, u, "day")
+    return out
+
+
+async def top_teams_by_medals(session: AsyncSession, tab: str, limit: int = 10,
+                              week_id: str | None = None, day_id: str | None = None) -> list[tuple[Team, int, int]]:
+    """برترین تیم‌ها بر اساس مدال اعضا توی تب، خروجی: (تیم، جمع مدال، تعداد اعضا)"""
+    all_teams = list((await session.execute(select(Team))).scalars())
+    scored: list[tuple[Team, int, int]] = []
+    for t in all_teams:
+        members = await get_members(session, t.id)
+        total = 0
+        for m in members:
+            u = await session.get(User, m.user_id)
+            if u:
+                total += _member_medals(m, u, tab, week_id=week_id, day_id=day_id)
+        scored.append((t, total, len(members)))
+    scored.sort(key=lambda x: (-x[1], -x[2], x[0].id))
+    return scored[:limit]
+
+
 async def member_telegram_ids(session: AsyncSession, team_id: int) -> list[int]:
     """تلگرام‌آی‌دی اعضا، برای اطلاع‌رسانی جایزه هفتگی"""
     q = select(TeamMember.user_id).where(TeamMember.team_id == team_id)
@@ -622,7 +698,7 @@ async def member_telegram_ids(session: AsyncSession, team_id: int) -> list[int]:
 async def maybe_weekly_rollover(session: AsyncSession) -> list[dict] | None:
     """
     رول‌اور رقابت هفتگی، اگه هفته (ISO) عوض شده باشه:
-    به ۳ تیم اول امتیاز هفته جایزه میرسه (به بانک تیم) و امتیاز هفته همه ریست میشه
+    به ۳ تیم اولِ جمع مدال‌های هفته اعضا جایزه میرسه (به بانک تیم) و امتیاز هفته همه ریست میشه
     خروجی: لیست برنده‌ها [{team, rank, prize, points}] یا None اگه هفته عوض نشده
     نتیجه هفته قبل هم تو game_meta ذخیره میشه تا تو «تیم لیدربرد» نمایش داده بشه
     """
@@ -630,25 +706,26 @@ async def maybe_weekly_rollover(session: AsyncSession) -> list[dict] | None:
     last = await meta_get(session, "week_key")
     if last == wk:
         return None
+    if not last:
+        # اولین اجرا، فقط کلید هفته رو ست کن و جایزه‌ای نده
+        await meta_set(session, "week_key", wk)
+        await session.flush()
+        return None
 
-    q = (
-        select(Team)
-        .where(Team.week_points > 0)
-        .order_by(Team.week_points.desc(), Team.points.desc())
-        .limit(3)
-    )
-    winners = list((await session.execute(q)).scalars())
+    # رتبه‌بندی بر اساس مدال‌های هفته‌ای که تازه تموم شده (سطل‌های کاربرا هنوز کلید قدیمی دارن)
+    scored = await top_teams_by_medals(session, "week", limit=3, week_id=last)
+    winners = [(t, total) for t, total, _ in scored if total > 0][:3]
 
-    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    medals_row = {1: "🥇", 2: "🥈", 3: "🥉"}
     out: list[dict] = []
     summary: list[str] = []
-    for i, t in enumerate(winners, 1):
+    for i, (t, total) in enumerate(winners, 1):
         prize = config.TEAM_WEEKLY_PRIZES.get(i, 0)
         t.bank += prize
-        rec = {"team": t, "rank": i, "prize": prize, "points": t.week_points}
+        rec = {"team": t, "rank": i, "prize": prize, "points": total}
         out.append(rec)
         summary.append(
-            f"{medals[i]} «{t.name}» با {fa_num(t.week_points)} امتیاز، {money(prize)} به بانک تیم"
+            f"{medals_row[i]} «{t.name}» با {fa_num(total)} مدال، {money(prize)} به بانک تیم"
         )
 
     await session.execute(update(Team).values(week_points=0))
