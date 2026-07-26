@@ -63,7 +63,7 @@ def main_menu_kb() -> InlineKeyboardMarkup:
          _btn("🏴 تیم من", "menu:team", PRIMARY)],
         [_btn("⛏ کنده کاری", "menu:mine", PRIMARY),
          _btn("🏭 شرکت", "menu:company", PRIMARY)],
-        [_btn("🏚 مخفیگاه و انبار", "menu:shelter", PRIMARY),
+        [_btn("🏚 مخفیگاه", "menu:shelter", PRIMARY),
          _btn("🏦 بانک", "menu:bank", PRIMARY)],
         [_btn("📊 رتبه‌بندی", "menu:rank", PRIMARY),
          _btn("📅 کوئست‌های روزانه", "menu:dquests", PRIMARY)],
@@ -190,7 +190,7 @@ HELP_MENU = [
     ("farm",      "🌱 مزرعه"),
     ("dogs",      "🐕 سگ‌ها"),
     ("company",   "🏭 شرکت"),
-    ("shelter",   "🏚 مخفیگاه و انبار"),
+    ("shelter",   "🏚 مخفیگاه"),
     ("team",      "👥 تیم"),
     ("resources", "🎒 منابع"),
     ("shop",      "🛒 فروشگاه"),
@@ -788,19 +788,11 @@ def company_kb(user: User) -> InlineKeyboardMarkup:
     for key, cfg in config.FACTORIES.items():
         lv = company_svc.factory_level(user, key)
         if lv <= 0:
-            tp, wood = company_svc.build_cost(key)
-            label = f"🔨 ساخت {cfg['emoji']} {cfg['name']} | {money_tp(tp)}"
-            if wood:
-                label += f" + 🪵 {fa_num(wood)}"
-            rows.append([_btn(label, f"comp:build:{key}", SUCCESS)])
+            rows.append([_btn(f"🔨ساخت {cfg['name']} {cfg['emoji']}", f"comp:build:{key}", SUCCESS)])
         elif lv >= config.FACTORY_MAX_LEVEL:
             rows.append([_btn(f"👑 {cfg['emoji']} {cfg['name']} | لول مکس", "noop:maxfac")])
         else:
-            tp, wood = company_svc.upgrade_cost(key, lv + 1)
-            rows.append([_btn(
-                f"⬆️ {cfg['emoji']} {cfg['name']} به لول {fa_num(lv + 1)} | {money_tp(tp)} + 🪵 {fa_num(wood)}",
-                f"comp:upg:{key}", SUCCESS,
-            )])
+            rows.append([_btn(f"⬆️ ارتقای {cfg['name']} {cfg['emoji']}", f"comp:upg:{key}", SUCCESS)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -838,7 +830,7 @@ def shelter_kb(user: User) -> InlineKeyboardMarkup:
 def sell_menu_kb() -> InlineKeyboardMarkup:
     """کیبورد ساده بخش فروش منابع، کار اصلی با دستور متنی انجام میشه"""
     return InlineKeyboardMarkup([
-        [_btn("🏚 مخفیگاه و انبار", "menu:shelter", PRIMARY)],
+        [_btn("🏚 مخفیگاه", "menu:shelter", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 

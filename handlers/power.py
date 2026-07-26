@@ -20,6 +20,9 @@ from services import power as power_svc
 # آخرین لحظه مارک تعمیر هر چت، که سیل پیام مارک تعمیر نشه
 _MAINT_LAST: dict[int, float] = {}
 
+# الرت دکمه‌ها HTML نمی‌فهمه، نسخه ساده متن تعمیر رو بهش میدیم
+MAINTENANCE_PLAIN = config.MAINTENANCE_TEXT.replace("<b>", "").replace("</b>", "")
+
 
 def _is_bot_admin(update: Update) -> bool:
     return bool(update.effective_user) and update.effective_user.id in config.ADMIN_IDS
@@ -71,7 +74,7 @@ async def botoff_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "برای خاموش کردن ربات در گروه، همین دستور رو داخل خود گروه بزن"
         )
     if not await _is_group_admin(update, context):
-        return await update.message.reply_html("❌ این دستور فقط توسط ادمین قابل استفاده است")
+        return await update.message.reply_html("❌ این دستور فقط توسط ادمین گروه قابل استفاده است")
     async with session_scope() as s:
         await power_svc.set_group_off(s, chat.id, True)
         await s.commit()
@@ -91,7 +94,7 @@ async def boton_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "برای روشن کردن ربات در گروه، همین دستور رو داخل خود گروه بزن"
         )
     if not await _is_group_admin(update, context):
-        return await update.message.reply_html("❌ این دستور فقط توسط ادمین قابل استفاده است")
+        return await update.message.reply_html("❌ این دستور فقط توسط ادمین گروه قابل استفاده است")
     async with session_scope() as s:
         await power_svc.set_group_off(s, chat.id, False)
         await s.commit()
@@ -136,7 +139,7 @@ async def power_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if down:
         if update.callback_query:
             try:
-                await update.callback_query.answer(config.MAINTENANCE_TEXT, show_alert=True)
+                await update.callback_query.answer(MAINTENANCE_PLAIN, show_alert=True)
             except Exception:
                 pass
         elif update.effective_message:

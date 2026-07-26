@@ -28,10 +28,14 @@ async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str |
         tab = "week"  # پیش‌فرض لیدربرد هفتگی
 
     async with session_scope() as s:
+        from sqlalchemy import func as _func, select as _select
+        from models import User as _User
+
         me, _ = await users.get_or_create(s, update.effective_user)
         top = await users.top_by_medals(s, tab, config.RANK_LIMIT)
         my_rank = await users.medal_rank(s, me, tab)
         my_medals = users.medal_value(me, tab)
+        total = (await s.execute(_select(_func.count(_User.id)))).scalar_one()
 
         lines: list[str] = []
         for i, u in enumerate(top, 1):
@@ -46,8 +50,8 @@ async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str |
         text = (
             f"<b>🏆 لیدربرد {TAB_TITLES[tab]}</b>\n\n"
             + "\n".join(lines)
-            + f"\n\nرتبه تو {fa_num(my_rank)} ـه با 🎖️ {fa_num(my_medals)} مدال\n"
-            + "مدال‌ها با تجربه‌ای که از بازی می‌گیری جمع میشن"
+            + f"\n\nرتبه‌ات توی جدول: {fa_num(my_rank)} از {fa_num(total)} با (🎖️{fa_num(my_medals)})\n"
+            + "مدال‌هاتون از روی تجربه‌اتون حساب میشه"
         )
         await s.commit()
 

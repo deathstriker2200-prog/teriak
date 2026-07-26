@@ -62,6 +62,7 @@ async def announce_completed(update: Update, user_name: str, completed: list[dic
     """
     if not completed:
         return
+    notes_all: list[str] = []
     for q in completed:
         title = esc(dq_svc.quest_title(q))
         reward = dq_svc.reward_text(q)
@@ -79,10 +80,11 @@ async def announce_completed(update: Update, user_name: str, completed: list[dic
                 f"🎁 جایزه: {reward}\n"
                 f"هنوز {fa_num(left)} کوئست دیگه مونده، به تلاشت ادامه بده 💪"
             )
-        notes = q.get("notes") or []
-        if notes:
-            text += "\n\n" + "\n".join(notes)
+        notes_all += q.get("notes") or []
 
     msg = update.effective_message
     if msg is not None:
         await msg.reply_html(text)
+    # تبریک لول‌آپ جایزه تجربه، پیام جدا تو همون چت
+    from handlers.common import announce_notes
+    await announce_notes(update, notes_all)

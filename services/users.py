@@ -267,11 +267,7 @@ def add_xp(user: User, amount: int) -> list[str]:
         user.energy_updated_at = now_utc()
         battle_svc.full_heal(user)  # لول‌آپ یعنی جان تازه
 
-        note = (
-            f"🎉 <b>تبریک، لول {fa_num(user.level)} شدی</b>\n\n"
-            f"💰 {money(reward)} جایزه\n"
-            f"⚡ انرژی کاملا شارژ شد"
-        )
+        note = f"🎉 تبریک، لول‌آپ شدی ({fa_num(user.level - 1)}←{fa_num(user.level)})"
         if user.level == config.MAX_LEVEL:
             note += "\n👑 لولت مکس شد، از این به بعد فقط تجربه جمع میشه"
 

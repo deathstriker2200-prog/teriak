@@ -30,14 +30,14 @@ def _panel_text(user, extra: str | None = None) -> str:
         f"⭐ لول {fa_num(user.level)} | ✨ {fa_num(user.xp)} از {fa_num(economy.xp_need(user.level))}\n\n"
         "چی بر داری؟\n\n"
         "<b>دستورهای مدیریتی:</b>\n"
-        "▫️ <code>/user @username</code> یا <code>/user 123456789</code> یا بخشی از اسم، پیداش کن، پروفایلش رو ببین و از همونجا پول/XP بده\n"
-        "▫️ <code>/addtp 123456789 5000</code>، واریز مستقیم تی‌پوینت\n"
-        "▫️ <code>/addxp 123456789 100</code>، دادن مستقیم تجربه\n"
-        "▫️ <code>/detp 123456789 5000</code> و <code>/dexp 123456789 100</code>، کم کردن مستقیم سکه و تجربه\n"
-        "▫️ <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
-        "▫️ /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
-        "▫️ /botoff و /boton توی گروه، خاموش و روشن کردن ربات فقط تو همون گروه\n"
-        "▫️ /backup و /upload_backup، بک‌آپ و ری‌استور"
+        "👤 <code>/user @username</code> یا <code>/user 123456789</code> یا بخشی از اسم، پیداش کن، پروفایلش رو ببین و از همونجا پول/XP بده\n"
+        "💵 <code>/addtp 123456789 5000</code>، واریز مستقیم تی‌پوینت\n"
+        "✨ <code>/addxp 123456789 100</code>، دادن مستقیم تجربه\n"
+        "💸 <code>/detp 123456789 5000</code> و <code>/dexp 123456789 100</code>، کم کردن مستقیم سکه و تجربه\n"
+        "🧨 <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
+        "🔧 /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
+        "💾 /backup و /upload_backup، بک‌آپ و ری‌استور\n"
+        "🔌 /botoff و /boton توی گروه، خاموش و روشن کردن ربات فقط تو همون گروه"
     )
     if extra:
         text += f"\n\n{extra}"
@@ -162,9 +162,10 @@ async def addxp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await s.commit()
 
     text = f"<b>✨ {fa_num(amount)} تجربه دادی به {name}</b>\n\n⭐ الان لول {fa_num(level)} ـه"
-    if notes:
-        text += "\n\n" + "\n".join(notes)
     await update.message.reply_html(text)
+    # پیام تبریک لول‌آپ جدا میاد، قاطی گزارش ادمین نمیشه
+    from handlers.common import announce_notes
+    await announce_notes(update, notes)
 
 
 # ───────── /detp و /dexp، کم کردن مستقیم ─────────
@@ -404,19 +405,21 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if kind == "cash":
             user.cash += num
             alert = f"💵 {money(num)} اضافه شد"
-            extra = None
+            notes = None
         elif kind == "xp":
             notes = users.add_xp(user, num)
             alert = f"✨ {fa_num(num)} XP اضافه شد"
-            extra = "\n".join(notes) if notes else None
         else:
             alert = "❌ چیزی نیست که"
-            extra = None
+            notes = None
 
-        text = _panel_text(user, extra)
+        text = _panel_text(user)
         await s.commit()
 
     await respond(update, text, kb.admin_kb(), alert=alert)
+    # تبریک لول‌آپ پیام جداشو داره، قاطی پنل نمیشه
+    from handlers.common import announce_notes
+    await announce_notes(update, notes)
 
 
 # ───────── 📊 آمار ربات ─────────

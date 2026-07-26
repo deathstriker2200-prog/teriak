@@ -168,9 +168,9 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 level = target.level
                 await s.commit()
                 out = f"<b>✨ {fa_num(amount)} تجربه دادی به {name}</b>\n\n⭐ الان لول {fa_num(level)} ـه"
-                if notes:
-                    out += "\n\n" + "\n".join(notes)
                 await update.message.reply_html(out)
+                from handlers.common import announce_notes
+                await announce_notes(update, notes)
             raise ApplicationHandlerStop()
 
         # ── کانال عضویت اجباری بعد از دکمه ست کردن (فقط ادمین) ──

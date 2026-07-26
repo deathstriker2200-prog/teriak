@@ -27,12 +27,15 @@ async def on_start(app: Application) -> None:
     me = await app.bot.get_me()
     keyboards.BOT_USERNAME = me.username or ""
 
-    # کامندهای منوی «/» تلگرام
+    # کامندهای منوی «/» تلگرام — /botoff و /boton ته لیستن
     await app.bot.set_my_commands([
-        BotCommand("start", "شروع بازی و منوی اصلی"),
-        BotCommand("profile", "پروفایلت"),
-        BotCommand("help", "آموزشات بازی"),
-        BotCommand("heal", "درمان و برگردوندن سلامت"),
+        BotCommand("start", "🎮 شروع بازی و منوی اصلی"),
+        BotCommand("profile", "🏠 پروفایلت"),
+        BotCommand("help", "📖 آموزشات بازی"),
+        BotCommand("heal", "❤️ درمان و برگردوندن سلامت"),
+        BotCommand("shop", "🛒 فروشگاه"),
+        BotCommand("botoff", "🔌 خاموش کردن ربات تو گروه (ادمین گروه)"),
+        BotCommand("boton", "🔌 روشن کردن ربات تو گروه (ادمین گروه)"),
     ])
 
     logger.info("دیتابیس آماده شد ✅ | DB: %s", _safe_db())

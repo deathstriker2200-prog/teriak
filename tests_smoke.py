@@ -2803,11 +2803,16 @@ async def main() -> None:
               t.cash == 6000 and "واریز شد" in updx.message.calls[-1][1] and "6,000" in updx.message.calls[-1][1],
           updx.message.calls[-1][1][:100])
 
-    updx = await _run_admin_cmd(admin_h.addxp_cmd, ["8812", "300"], 1001)
+    updx = await _run_admin_cmd(admin_h.addxp_cmd, ["8812", "700"], 1001)
     async with session_scope() as s:
         t = await users.get_by_tg(s, 8812)
         check("/addxp مستقیم xp داد", t.xp > 0 or t.level > 5, f"lvl={t.level} xp={t.xp}")
-        check("گزارش addxp", "تجربه دادی" in updx.message.calls[-1][1], updx.message.calls[-1][1][:100])
+        check("گزارش addxp تمیز و بدون تبریک چسبیده‌ست",
+              any("تجربه دادی" in c[1] and "لول‌آپ شدی" not in c[1] for c in updx.message.calls),
+              str([c[1][:60] for c in updx.message.calls]))
+        check("تبریک لول‌آپ به‌صورت پیام جدا با قالب اورجینال اومد",
+              any("لول‌آپ شدی (" in c[1] and c[1].startswith("🎉 تبریک") for c in updx.message.calls),
+              str([c[1][:60] for c in updx.message.calls]))
 
     updx = await _run_admin_cmd(admin_h.addtp_cmd, ["999999999", "5000"], 1001)
     check("addtp به طرف ناموجود خطا میده", "نیس" in updx.message.calls[-1][1])
@@ -2818,10 +2823,12 @@ async def main() -> None:
 
     # /detp و /dexp، کم کردن مستقیم سکه و تجربه (فقط ادمین)
     updx = await _run_admin_cmd(admin_h.detp_cmd, ["8812", "1500"], 1001)
+    expected_cash = 6000 + config.LEVEL_CASH_REWARD * 6 - 1500  # ۶۰۰۰ واریزی + جایزه لول‌آپ به ۶ - کسر
     async with session_scope() as s:
         t = await users.get_by_tg(s, 8812)
         check("/detp مستقیم سکه کم کرد",
-              t.cash == 4500 and "کم شد" in updx.message.calls[-1][1] and "4,500" in updx.message.calls[-1][1],
+              t.cash == expected_cash and "کم شد" in updx.message.calls[-1][1]
+              and f"{expected_cash:,}" in updx.message.calls[-1][1],
               updx.message.calls[-1][1][:100])
     updx = await _run_admin_cmd(admin_h.detp_cmd, ["8812", "999999"], 1001)
     async with session_scope() as s:
@@ -3289,11 +3296,15 @@ async def main() -> None:
 
     slash_bot = _SlashBot()
     await bot_mod.on_start(SimpleNamespace(bot=slash_bot))
-    check("set_my_commands با start و help و profile و heal صدا زده میشه (بدون menu)",
+    check("set_my_commands با لیست جدید صدا زده میشه (بدون menu، botoff/boton ته لیست)",
           slash_bot.cmds is not None
-          and {c.command for c in slash_bot.cmds} == {"start", "help", "profile", "heal"}
+          and [c.command for c in slash_bot.cmds]
+          == ["start", "profile", "help", "heal", "shop", "botoff", "boton"]
           and all(isinstance(c, _BC) for c in slash_bot.cmds),
           str([c.command for c in (slash_bot.cmds or [])]))
+    check("توضیح هر کامند ایموجی مخصوص خودشو داره",
+          all(c.description and c.description[0] in "🎮🏠📖❤️🛒🔌" for c in slash_bot.cmds),
+          str([c.description for c in (slash_bot.cmds or [])]))
 
     # ═══ این دور: کوئست‌های روزانه 📅 | سپر ۱۵ دقیقه و نبرد قدرت‌محور | رگرسیون باگ رها کردن سگ ═══
 
@@ -5011,8 +5022,9 @@ async def main() -> None:
           ed_rk is not None and "<b>🏆 لیدربرد 🗓 هفتگی</b>" in ed_rk[1],
           ed_rk[1][:90] if ed_rk else "-")
     check("لیدربرد مدال‌محوره و رتبه کاربر رو هم میگه",
-          ed_rk is not None and "🎖️" in ed_rk[1] and "رتبه تو" in ed_rk[1]
-          and "مدال‌ها با تجربه‌ای که از بازی می‌گیری جمع میشن" in ed_rk[1],
+          ed_rk is not None and "🎖️" in ed_rk[1] and "رتبه‌ات توی جدول:" in ed_rk[1]
+          and "از" in ed_rk[1] and "با (🎖️" in ed_rk[1]
+          and "مدال‌هاتون از روی تجربه‌اتون حساب میشه" in ed_rk[1],
           ed_rk[1][-140:] if ed_rk else "-")
     mk_rk = ed_rk[2].get("reply_markup") if ed_rk else None
     btn_rk = mk_rk.inline_keyboard[0][0] if mk_rk else None
@@ -5223,10 +5235,13 @@ async def main() -> None:
         await power_h.power_gate(upd_cbm, None)
     except ApplicationHandlerStop:
         stopped_cb = True
-    check("دکمه‌ها تو مد تعمیر الرت می‌گیرن",
-          stopped_cb and any(c[0] == "answer" and any(config.MAINTENANCE_TEXT in str(x) for x in c[1])
+    check("دکمه‌ها تو مد تعمیر الرت می‌گیرن (نسخه ساده بدون تگ)",
+          stopped_cb and any(c[0] == "answer" and any(power_h.MAINTENANCE_PLAIN in str(x) for x in c[1])
                              for c in upd_cbm.callback_query.calls),
           str(upd_cbm.callback_query.calls))
+    check("متن تعمیر بولده و نسخه ساده‌اش تگ نداره",
+          config.MAINTENANCE_TEXT.startswith("<b>") and "<b>" not in power_h.MAINTENANCE_PLAIN
+          and "🔧 ربات تریاکی در دست توسعه و تعمیره" in power_h.MAINTENANCE_PLAIN)
 
     upd_bu = _pow_update("/botup", 1001)
     await power_h.botup_cmd(upd_bu, None)
@@ -5414,11 +5429,87 @@ async def main() -> None:
     check("تیتر صفحه پناهگاه «انبار و پناهگاه» ـه",
           sht.startswith("<b>🏚 انبار و پناهگاه</b>"), sht[:40])
     mm_flat = [b.text for r in kb3.main_menu_kb().inline_keyboard for b in r]
-    check("دکمه منوی اصلی «مخفیگاه و انبار» ـه", "🏚 مخفیگاه و انبار" in mm_flat, str(mm_flat))
+    check("دکمه منوی اصلی «مخفیگاه» ـه", "🏚 مخفیگاه" in mm_flat, str(mm_flat))
     check("بخش هلپ مخفیگاه اسم جدید رو داره",
-          "🏚 مخفیگاه و انبار" in start_h3.HELP_SECTIONS["shelter"])
+          start_h3.HELP_SECTIONS["shelter"].startswith("<b>🏚 مخفیگاه</b>"))
     check("هلپ نبرد سلامت گفته نه HP",
           "سلامت" in start_h3.HELP_SECTIONS["battle"] and "HP" not in start_h3.HELP_SECTIONS["battle"])
+
+    # ═══ این دور: دکمه‌های شرکت بدون قیمت | مخفیگاه تو هلپ | لول‌آپ اورجینال جدا | ایموجی کامندها ═══
+
+    # ── دکمه ساخت/ارتقای شرکت بدون قیمت، قیمت تو صفحه تاییده ──
+    ckb_new = kb3.company_kb(SimpleNamespace(lumber_level=0, ironmill_level=0))
+    ckb_flat = [(b.text, b.callback_data) for r in ckb_new.inline_keyboard for b in r]
+    check("دکمه ساخت چوب‌بری بدون قیمت با قالب جدید",
+          ("🔨ساخت چوب‌بری 🪵", "comp:build:lumber") in ckb_flat, str(ckb_flat))
+    check("دکمه ساخت کارخانه آهن بدون قیمت با قالب جدید",
+          ("🔨ساخت کارخانه آهن 🏭", "comp:build:ironmill") in ckb_flat, str(ckb_flat))
+    check("قیمت توی دکمه‌های شرکت نیس",
+          not any("TP" in t or "تی‌پوینت" in t for t, _ in ckb_flat), str(ckb_flat))
+    ckb_up = kb3.company_kb(SimpleNamespace(lumber_level=2, ironmill_level=0))
+    ckb_flat2 = [(b.text, b.callback_data) for r in ckb_up.inline_keyboard for b in r]
+    check("دکمه ارتقای چوب‌بری هم بدون قیمته",
+          ("⬆️ ارتقای چوب‌بری 🪵", "comp:upg:lumber") in ckb_flat2, str(ckb_flat2))
+    upd_cc = _fake_update("comp:build:lumber", uid=1001)
+    from handlers import company as company_h
+    await company_h.company_action_confirm(upd_cc, None)
+    ed_cc = next((c for c in upd_cc.callback_query.calls if c[0] == "edit"), None)
+    check("صفحه تایید ساخت، هزینه رو نشون میده",
+          ed_cc is not None and "💸 تی‌پوینت" in ed_cc[1] and "🪵 چوب" in ed_cc[1],
+          ed_cc[1][:120] if ed_cc else "-")
+
+    # ── متن لول‌آپ اورجینال: 🎉 تبریک، لول‌آپ شدی (5←6) ──
+    async with session_scope() as s:
+        lu, _ = await users.get_or_create(s, tg(9901, "lvup", "لول‌آپی"))
+        lu.level, lu.xp = 1, 0
+        notes_lu = users.add_xp(lu, 60)
+        check("قالب اورجینال لول‌آپ",
+              notes_lu and notes_lu[0].startswith("🎉 تبریک، لول‌آپ شدی (1←2)"),
+              notes_lu[0][:60] if notes_lu else "-")
+        check("خط جایزه و انرژی از متن لول‌آپ حذف شده (جایزه‌ها همچنان واریز میشن)",
+              notes_lu and "جایزه" not in notes_lu[0] and "شارژ" not in notes_lu[0]
+              and lu.cash > 0)
+        await s.commit()
+    async with session_scope() as s:
+        lu2, _ = await users.get_or_create(s, tg(9902, "lvup2", "لول‌آپی۲"))
+        lu2.level, lu2.xp = 4, 0
+        notes_lu2 = users.add_xp(lu2, 500)
+        check("لول‌آپ با آنلاک، لیست «آیتم های جدید باز شدن» رو داره",
+              notes_lu2 and any("🔓 آیتم های جدید باز شدن" in n for n in notes_lu2),
+              str([n[:50] for n in notes_lu2]))
+        await s.commit()
+
+    # ── پنل ادمین: ایموجی مخصوص هر کامند و botoff/boton ته لیست ──
+    pan = admin_h._panel_text(SimpleNamespace(cash=0, level=1, xp=0))
+    check("ایموجی مخصوص هر کامند مدیریتی",
+          all(e in pan for e in ("👤", "💵", "✨", "💸", "🧨", "🔧", "💾", "🔌")), pan[:400])
+    check("botoff/boton ته لیست دستورهای مدیریتی‌ان",
+          pan.find("/botoff") > pan.find("/backup") and pan.rfind("🔌") > pan.rfind("💾"))
+
+    # ── پیام ممبر برای /botoff با کلمه گروه ──
+    upd_bf_m2 = _pow_update("/botoff", 7788)
+    await power_h.botoff_cmd(upd_bf_m2, member_ctx)
+    check("متن رد ممبر «ادمین گروه» میگه",
+          "❌ این دستور فقط توسط ادمین گروه قابل استفاده است" == upd_bf_m2.message.calls[-1][1],
+          upd_bf_m2.message.calls[-1][1][:80])
+    upd_bn_m = _pow_update("/boton", 7788)
+    await power_h.boton_cmd(upd_bn_m, member_ctx)
+    check("متن رد ممبر boton هم همینه",
+          "❌ این دستور فقط توسط ادمین گروه قابل استفاده است" == upd_bn_m.message.calls[-1][1])
+
+    # ── اعلان کوئست با جایزه تجربه: لول‌آپ پیام جداست ──
+    upd_dqn = _text_update("x", uid=555040, uname="dqn", fname="کوئستی‌لول")
+    q_xp = [{"kind": "mine", "target": 20, "progress": 20, "done": True,
+             "reward": {"type": "xp", "amount": 60},
+             "notes": ["🎉 تبریک، لول‌آپ شدی (1←2)"]}]
+    from handlers import dquests as dquests_h2
+    await dquests_h2.announce_completed(upd_dqn, "کوئستی‌لول", q_xp, 1)
+    dq_texts = [c[1] for c in upd_dqn.message.calls if c[0] == "reply"]
+    check("اعلان کوئست قاطی تبریک لول‌آپ نمیشه",
+          dq_texts and "کوئست «20 بار کنده‌کاری»" in dq_texts[0] and "لول‌آپ شدی" not in dq_texts[0],
+          str(dq_texts))
+    check("تبریک لول‌آپ کوئست پیام جدا اومد",
+          any(t.startswith("🎉 تبریک، لول‌آپ شدی") for t in dq_texts[1:]), str(dq_texts))
 
     print(f"\n🎉 همه تست‌ها سبز شدن، {PASS} مورد")
 

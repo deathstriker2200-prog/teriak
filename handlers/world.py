@@ -354,6 +354,10 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await query.answer(f"⚔️ {fa_num(res['dmg'])} دمیج، 💰 {fa_num(res['cash'])}TP", show_alert=True)
 
+    # تبریک لول‌آپ (تجربه ضربه کاروان) پیام جدا تو همون گروه
+    from handlers.common import announce_notes
+    await announce_notes(update, res.get("notes"))
+
     # برد کاروان بعد هر ضربه ادیت نمیشه، جاب 2 دقیقه‌ای خودش رفرشش می‌کنه
 
     if res["status"] == "killed":
