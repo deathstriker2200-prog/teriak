@@ -275,13 +275,16 @@ async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE, tab
     lines.append("💡 آمار هر تیم با «تیم [اسم]»، مثلا «تیم فوتبالیست‌ها»")
     text = "\n".join(lines)
 
-    nxt = keys[(keys.index(tab) + 1) % len(keys)]
-    await respond(update, text, kb.team_top_kb(nxt, titles[nxt]))
+    await respond(update, text, kb.team_top_kb(tab))
 
 
 async def top_teams_tab_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """تعویض تب لیدربرد تیم‌ها"""
-    await top_teams_text(update, context, tab=update.callback_query.data.split(":")[-1])
+    """تعویض تب لیدربرد تیم‌ها، زدن رو دکمه تب فعلی هیچ واکنشی نداره (فقط لودینگ قطع میشه)"""
+    _p, _t, cur, tgt = update.callback_query.data.split(":")
+    if cur == tgt:
+        await update.callback_query.answer()
+        return
+    await top_teams_text(update, context, tab=tgt)
 
 
 # ───────── ساخت تیم ─────────

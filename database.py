@@ -58,6 +58,9 @@ _NEW_COLUMNS = {
         ("medals_day_date", "VARCHAR(10)"),
         ("medals_week", "INTEGER NOT NULL DEFAULT 0"),
         ("medals_week_id", "VARCHAR(10)"),
+        ("fj_member_status", "INTEGER"),
+        ("fj_checked_at", "DATETIME"),
+        ("fj_left_at", "DATETIME"),
     ],
         "inventory": [
         ("level", "INTEGER NOT NULL DEFAULT 1"),

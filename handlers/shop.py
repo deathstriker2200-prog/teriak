@@ -15,6 +15,21 @@ from utils import esc, fa_num, money, money_tp
 SEP = "━━━━━━━━━━━━━━"
 
 
+def _has_emoji(text: str) -> bool:
+    """اسم آیتم خودش ایموجی داره؟ (مثل «کلت کمری 🔫») که دوباره پیشوندی نزنیم و جفت جفت نشه"""
+    return any(ord(ch) >= 0x2500 for ch in text)
+
+
+def _item_head(prefix: str, name: str) -> str:
+    """سر خط آیتم: اگه اسمش خودش ایموجی داره همونو بذار، وگرنه ایموجی بخش رو پیشوند کن"""
+    return name if _has_emoji(name) else f"{prefix} {name}"
+
+
+def _status_line(user) -> str:
+    """خط سطح و موجودی زیر سر تیتر همه بخش‌های فروشگاه"""
+    return f"🌟 سطح: {fa_num(user.level)} | 💵 موجودی: {money_tp(user.cash)}"
+
+
 # ───────── متن‌ها ─────────
 
 def _sections_text(cash: int, level: int) -> str:
@@ -30,7 +45,7 @@ def _sections_text(cash: int, level: int) -> str:
 
 def _weap_home_text(user) -> str:
     """صفحه انتخاب دسته سلاح، هر دسته قفلش جداست"""
-    lines = ["<b>🛒 فروشگاه</b>", "", "🔫 سلاح‌ها", "", "روی بخش مورد نظر بزن", ""]
+    lines = ["<b>🛒 فروشگاه</b>", _status_line(user), "", "🔫 سلاح‌ها", "", "روی بخش مورد نظر بزن", ""]
     for sec, sc in config.WEAPON_SECTIONS.items():
         keys = [k for k, w in config.WEAPONS.items() if w.get("sec", "cold") == sec]
         if not keys:
@@ -52,13 +67,13 @@ def _weap_home_text(user) -> str:
 def _wsec_text(user, sec: str) -> str:
     """باکس هر سلاح یه دسته: نام | دمیج | آهن | قیمت | وضعیت"""
     sc = config.WEAPON_SECTIONS.get(sec) or config.WEAPON_SECTIONS["cold"]
-    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", "", "برای خرید روی آیتم موردنظر بزن", ""]
+    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", _status_line(user), "", "برای خرید روی آیتم موردنظر بزن", ""]
     for key, w in config.WEAPONS.items():
         if w.get("sec", "cold") != sec:
             continue
         locked = user.level < w["min_level"]
         lines += [SEP, ""]
-        lines.append(f"🔒 {w['name']} (قفل)" if locked else f"🔫 {w['name']}")
+        lines.append(f"🔒 {w['name']} (قفل)" if locked else _item_head(sc["emoji"], w["name"]))
         lines.append(f"💥 دمیج {fa_num(w['attack'])}")
         lines.append(f"🪙 هزینه: ⛏️ {fa_num(w['iron'])} آهن + 💰 {money(w['price'])}")
         if locked:
@@ -69,7 +84,7 @@ def _wsec_text(user, sec: str) -> str:
 
 
 def _arm_text(user) -> str:
-    lines = ["<b>🛒 فروشگاه</b>", "", "🛡 زره‌ها", "", "برای خرید روی آیتم موردنظر بزن", ""]
+    lines = ["<b>🛒 فروشگاه</b>", _status_line(user), "", "🛡 زره‌ها", "", "برای خرید روی آیتم موردنظر بزن", ""]
     for a in config.ARMORS.values():
         locked = user.level < a["min_level"]
         lines += [SEP, ""]
@@ -83,9 +98,9 @@ def _arm_text(user) -> str:
     return "\n".join(lines)
 
 
-def _dog_text() -> str:
+def _dog_text(user) -> str:
     """فقط ویژگی اصلی هر نژاد، بدون توضیح طولانی، قیمت با تی‌پوینت کامل"""
-    lines = ["<b>🛒 فروشگاه</b>", "", "🐕 سگ‌ها", "", "برای خرید روی سگ موردنظر بزن", ""]
+    lines = ["<b>🛒 فروشگاه</b>", _status_line(user), "", "🐕 سگ‌ها", "", "برای خرید روی سگ موردنظر بزن", ""]
     for key, d in config.DOGS.items():
         crown = "👑 " if d.get("rare") else ""
         lines += [SEP, ""]
@@ -94,19 +109,29 @@ def _dog_text() -> str:
         lines.append(f"💰 {money(d['price'])}")
         lines.append("")
     lines.append(SEP)
-    lines.append("")
-    lines.append(f"هر نژاد فقط شخصیت‌های مخصوص خودش رو می‌گیره")
-    lines.append("سگ‌ها از نبرد تجربه می‌گیرن و با لول قوی‌تر میشن")
     return "\n".join(lines)
 
 
+def _arti_pct(a: dict) -> str:
+    """درصد اثر آرتیفکت که جلو متنش نوشته میشه، ضریب اعشاری (مثل شانس ×۱٫۵) گِرد نمیشه"""
+    for k in ("atk_mult", "def_mult", "xp_mult", "steal_bonus"):
+        if k in a:
+            return f"(+{fa_num(int(a[k] * 100))}%)"
+    if "luck" in a:
+        v = float(a["luck"])
+        vtxt = fa_num(int(v)) if v.is_integer() else f"{v:g}"
+        return f"(×{vtxt})"
+    return ""
+
+
 def _arti_text(user) -> str:
-    lines = ["<b>🛒 فروشگاه</b>", "", "🧿 آرتیفکت‌ها", "", "آیتم‌های کمیاب آخر بازی", ""]
+    lines = ["<b>🛒 فروشگاه</b>", _status_line(user), "", "🧿 آرتیفکت‌ها", "", "آیتم‌های کمیاب آخر بازی", ""]
     for key, a in config.ARTIFACTS.items():
         locked = user.level < config.ARTIFACT_MIN_LEVEL
         lines += [SEP, ""]
         lines.append(f"🔒 {a['emoji']} {a['name']} (قفل)" if locked else f"{a['emoji']} {a['name']}")
-        lines.append(a["line"])
+        pct = _arti_pct(a)
+        lines.append(f"{a['line']} {pct}".rstrip())
         lines.append(f"💰 {money(a['price'])}")
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(config.ARTIFACT_MIN_LEVEL)}")
@@ -119,6 +144,7 @@ def _res_text(user) -> str:
     from services import resources as res_svc
     return "\n".join([
         "<b>🛒 فروشگاه</b>",
+        _status_line(user),
         "",
         "🎒 منابع",
         "",
@@ -138,7 +164,7 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
     stat_emoji = "💥" if kind == "weap" else "🛡"
     stat_name = "دمیج" if kind == "weap" else "دفاع"
     items = [(k, lv) for k, lv in owned_lvls.items() if k in catalog]
-    lines = [f"<b>⬆️ ارتقای {'سلاح' if kind == 'weap' else 'زره'}</b>", ""]
+    lines = [f"<b>⬆️ ارتقای {'سلاح' if kind == 'weap' else 'زره'}</b>", _status_line(user), ""]
     if not items:
         lines.append(f"اول یه {'سلاح' if kind == 'weap' else 'زره'} بخر")
         lines.append("هر آیتم تا لول 5 ارتقا داره و هر لول استتش بیشتر میشه")
@@ -149,7 +175,7 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
         item = catalog[key]
         lines.append(SEP)
         lines.append("")
-        lines.append(f"{emoji} {item['name']} | لول {fa_num(lv)}")
+        lines.append(f"{_item_head(emoji, item['name'])} | لول {fa_num(lv)}")
         lines.append(f"{stat_emoji} {stat_name} {fa_num(economy.gear_stat(kind, key, lv))}")
         if lv >= config.GEAR_UPG_MAX:
             lines.append("👑 لول مکس")
@@ -191,15 +217,17 @@ async def _section_text(session, user, kind: str) -> str:
             for k, v in stock.items() if v > 0
         )
         return (
-            "<b>🌱 بذرها</b>\n\n"
+            "<b>🌱 بذرها</b>\n"
+            f"{_status_line(user)}\n\n"
             "صبر کن تا بذرها رشد کنن، بعدش برداشت کن\n\n"
             f"📦 انبارت:\n{have or '▫️ خالیه'}"
         )
     if kind == "dog":
-        return _dog_text()
+        return _dog_text(user)
     if kind == "food":
         return (
-            "<b>🍖 غذای سگ</b>\n\n"
+            "<b>🍖 غذای سگ</b>\n"
+            f"{_status_line(user)}\n\n"
             "غذا همون لحظه خریده و خورده میشه\n"
             "بنویس «تریاکی سگ‌های من» و دکمه 🍖 زیر سگت رو بزن"
         )
@@ -310,7 +338,7 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     text = (
         "<b>🧾 فاکتور خرید</b>\n\n"
-        f"{emoji} {esc(item['name'])}\n"
+        f"{esc(_item_head(emoji, item['name']))}\n"
         f"{stat_lines}"
         f"💸 قیمت {money(item['price'])}\n"
         f"💵 بعد خرید {money(max(0, cash - item['price']))} برات میمونه\n\n"

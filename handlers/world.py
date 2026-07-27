@@ -13,7 +13,7 @@ from database import session_scope
 from handlers.common import parts, respond
 from keyboards import keyboards as kb
 from models import GroupActivity
-from services import combat, dogs as dog_svc, users
+from services import combat, dogs as dog_svc, farming, users
 from services import world as world_svc
 from utils import bar, esc, fa_dur, fa_num, money, money_tp, now_utc
 
@@ -108,15 +108,16 @@ async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await respond(update, world_svc.market_view_text(pcts, left), kb.home_kb())
 
 
-# ═════════ پناهگاه 🏚 ═════════
+# ═════════ انبار و مخفیگاه 🏚 ═════════
 
-async def _shelter_text(user) -> str:
+async def _shelter_text(session, user) -> str:
     cut = world_svc.shelter_raid_cut(user.shelter_level)
     dodge = world_svc.shelter_dodge_chance(user.shelter_level)
     cap = world_svc.seed_storage_cap(user)
     wcap, icap = res_svc.wood_cap(user), res_svc.iron_cap(user)
+    stock = await farming.get_stock(session, user.id)
     lines = [
-        "<b>🏚 انبار و پناهگاه</b>",
+        "<b>🏚 انبار و مخفیگاه</b>",
         "",
         f"⭐ لول {fa_num(user.shelter_level)}" + (f" از {fa_num(config.SHELTER_MAX_LEVEL)}" if user.shelter_level else "، هنوز نداری"),
         "",
@@ -126,6 +127,14 @@ async def _shelter_text(user) -> str:
         "",
         f"🪵 چوب {bar(user.wood, wcap)} {fa_num(user.wood)}/{fa_num(wcap)}",
         f"⛏️ آهن {bar(user.iron, icap)} {fa_num(user.iron)}/{fa_num(icap)}",
+    ]
+    # بذرهای انبار هم مثل چوب و آهن با نوار پرشوندگی نشون داده میشن (۵ بذر پایه، افسانه‌ای‌ها نه)
+    for key, sd in config.SEEDS.items():
+        if sd.get("legendary"):
+            continue
+        cnt = stock.get(key, 0)
+        lines.append(f"{sd['emoji']} {sd['name']} {bar(cnt, cap)} {fa_num(cnt)}/{fa_num(cap)}")
+    lines += [
         "",
         "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30% محصولات انبار رو نابود می‌کنه، پناهگاه جلوته",
         "با ارتقا، ظرفیت بذر و چوب و آهن هم بیشتر میشه",
@@ -194,7 +203,7 @@ async def sellres_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def shelter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        text = await _shelter_text(user)
+        text = await _shelter_text(s, user)
         markup = kb.shelter_kb(user)
         await s.commit()
     await respond(update, text, markup)
@@ -212,7 +221,7 @@ async def shelter_up_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await s.commit()
 
     text = (
-        f"<b>🏚 ارتقای پناهگاه، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
+        f"<b>🏚 ارتقای انبار و مخفیگاه، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
         f"💸 هزینه {money(price)}\n"
         f"💵 الان {money(cash)} داری\n\n"
         "انجامش بدیم؟"
@@ -224,7 +233,7 @@ async def shelter_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE)
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         ok, msg = await world_svc.upgrade_shelter(s, user)
-        text = await _shelter_text(user)
+        text = await _shelter_text(s, user)
         markup = kb.shelter_kb(user)
         cash = user.cash
         await s.commit()
@@ -232,7 +241,7 @@ async def shelter_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return await respond(
             update,
             text + f"\n\n{esc(msg)}\n💵 نقدینگی {fa_num(cash)}TP",
-            markup, alert="🏚 پناهگاه ارتقا پیدا کرد",
+            markup, alert="🏚 انبار و مخفیگاه ارتقا پیدا کرد",
         )
     await respond(update, text, markup, alert=msg)
 

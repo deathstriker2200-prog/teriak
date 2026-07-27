@@ -1356,7 +1356,7 @@ async def main() -> None:
             kb.shop_seed_kb(u1, stock), kb.shop_dog_kb(u1, {d.dog_key for d in dogs}, len(dogs)),
             kb.shop_food_kb(),
             kb.my_dogs_kb(dogs),
-            kb.heal_kb(), kb.rank_kb("week", "all", "🌍 کلی"),
+            kb.heal_kb(), kb.rank_kb("week"), kb.team_top_kb("week"), kb.mine_kb(),
             kb.tx_confirm_kb("weap", "knife", 123),
             kb.bank_kb(u1), kb.team_bld_kb(SimpleNamespace(atk_bld=1, def_bld=2), True, u1.telegram_id),
             kb.team_bld_confirm_kb("atk", u1.telegram_id),
@@ -1748,9 +1748,9 @@ async def main() -> None:
 
     from handlers import jobs as jobs_h  # noqa: E402
     jobs_h.register_jobs(app)
-    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|پلیس|نبض انرژی)",
-          app.job_queue is not None and len(app.job_queue.jobs()) == 6
-          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "police", "energy-pulse"},
+    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|پلیس|نبض انرژی|پاکسازی عضویت)",
+          app.job_queue is not None and len(app.job_queue.jobs()) == 7
+          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "police", "energy-pulse", "fj-wipe"},
           str([j.name for j in (app.job_queue.jobs() if app.job_queue else [])]))
 
     # regex دستورهای متنی، از خود TEXT_HANDLERS رجیستری — پیشوند «تریاکی » اجباریه
@@ -2511,6 +2511,11 @@ async def main() -> None:
     check("دکمه غیرعضو تو گروه هم آزاده", not q_grp.answers and not gate_h.PENDING.get(8860))
 
     bot_g.member_flag = False
+    fj_svc.member_cache_drop(8860)  # کش قدیمی عضویتش رو می‌پرونیم، وضعیت تازه (مثل بعد انقضا/رویداد)
+    async with session_scope() as s:  # ردیفش هم تازه‌چک‌شده‌ست، خالیش می‌کنیم تا باز چک واقعی بخوره
+        gu = await users.get_by_tg(s, 8860)
+        gu.fj_member_status = gu.fj_checked_at = gu.fj_left_at = None
+        await s.commit()
     qc = _FjQ(8860)
     updc = _fj_upd()
     updc.callback_query = qc
@@ -4516,7 +4521,7 @@ async def main() -> None:
           and all(b.style == "danger" for b in lock_btns), str([t.text for t in lock_btns]))
     check("دکمه خرید سبزه", all(b.style == "success" for b in cbtns if b.callback_data.startswith("shop:buy:weap:")))
 
-    # ── بخش سگ شاپ: ویژگی درصدی هر نژاد + تی‌پوینت کامل ──
+    # ── بخش سگ شاپ: ویژگی درصدی هر نژاد + تی‌پوینت کامل + خط وضعیت زیر تیتر ──
     upd_d = _fake_update("shop:sec:dog", uid=9606)
     await shop_h2.render_section(upd_d, "dog")
     dtxt = next((c[1] for c in upd_d.callback_query.calls if c[0] == "edit"), "")
@@ -4525,10 +4530,17 @@ async def main() -> None:
                                   "دوبرمن", "🛡 دفاع بیشتر تا 10%",
                                   "ژرمن شپرد", "🎁 تجربه بیشتر از نبرد تا 15%",
                                   "کانگال", "💥 قدرت حمله بیشتر تا 10%",
-                                  "گرگ سیاه", "☠ غارت بیشتر"])
+                                  "گرگ سیاه", "☠ غارت بیشتر تا 10%", "تا 30%"])
           and "توصیف" not in dtxt, dtxt[:200])
-    check("قیمت سگ‌ها با تی‌پوینت کامله نه TP",
-          "تی‌پوینت" in dtxt and " TP" not in dtxt, dtxt[:200])
+    dlines = dtxt.splitlines()
+    check("خط وضعیت سطح و موجودی زیر تیتر بخش سگه",
+          len(dlines) > 1 and dlines[1].startswith("🌟 سطح:") and "💵 موجودی:" in dlines[1]
+          and "TP" in dlines[1], dlines[1] if len(dlines) > 1 else "-")
+    drest = "\n".join(dlines[2:])
+    check("قیمت سگ‌ها با تی‌پوینت کامله و TP فقط تو خط وضعیته",
+          "تی‌پوینت" in drest and " TP" not in drest, drest[:200])
+    check("دو خط آخر قدیمی بخش سگ حذف شدن",
+          "هر نژاد فقط شخصیت" not in dtxt and "از نبرد تجربه می‌گیرن" not in dtxt)
 
     # ── ویژگی درصدی نژادها + تجربه سگ از نبرد + تغییر اسم ──
     async with session_scope() as s:
@@ -4850,12 +4862,23 @@ async def main() -> None:
           upd_pv.message.calls[-1][2].get("reply_markup") is not None)
     upd_mu = _text_update("تی آپگرید کنده کاری", uid=9659, uname="pvminer", fname="ماینرپی‌وی")
     await mine_h.mine_tools_cb(upd_mu, None)
-    check("«تی آپگرید کنده کاری» صفحه وضعیت و ارتقای ابزار رو میاره",
-          "وضعیت ابزار" in upd_mu.message.calls[-1][1], upd_mu.message.calls[-1][1][:80])
+    check("«تی آپگرید کنده کاری» صفحه اصلی کنده‌کاری با هزینه ارتقای ابزار رو میاره",
+          "⛏ کنده کاری" in upd_mu.message.calls[-1][1]
+          and "🪓 تبر لول" in upd_mu.message.calls[-1][1]
+          and "⬆️ هزینه ارتقا:" in upd_mu.message.calls[-1][1]
+          and "وضعیت ابزار" not in upd_mu.message.calls[-1][1],
+          upd_mu.message.calls[-1][1][:120])
     upd_mu2 = _text_update("تی کنده کاری آپگرید", uid=9659, uname="pvminer", fname="ماینرپی‌وی")
     await mine_h.mine_tools_cb(upd_mu2, None)
-    check("«تی کنده کاری آپگرید» هم همون صفحه ابزار رو میاره",
-          "وضعیت ابزار" in upd_mu2.message.calls[-1][1], upd_mu2.message.calls[-1][1][:80])
+    check("«تی کنده کاری آپگرید» هم همون صفحه اصلی رو میاره",
+          "🪓 تبر لول" in upd_mu2.message.calls[-1][1]
+          and "⛏️ کلنگ لول" in upd_mu2.message.calls[-1][1],
+          upd_mu2.message.calls[-1][1][:120])
+    mk_home = [(b.text, b.callback_data) for r in kb.mine_kb().inline_keyboard for b in r]
+    check("دکمه وضعیت ابزار از کیبورد کنده‌کاری حذف شده",
+          not any(c == "mine:tools" for _, c in mk_home)
+          and any(c == "mine:upg:axe" for _, c in mk_home)
+          and any(c == "mine:upg:pick" for _, c in mk_home), str(mk_home))
 
     # ── «تی بکاپ» / «تی کپی»، فایل با اسم تریاکی ──
     from handlers import backup as backup_h
@@ -5027,15 +5050,23 @@ async def main() -> None:
           and "مدال‌هاتون از روی تجربه‌اتون حساب میشه" in ed_rk[1],
           ed_rk[1][-140:] if ed_rk else "-")
     mk_rk = ed_rk[2].get("reply_markup") if ed_rk else None
-    btn_rk = mk_rk.inline_keyboard[0][0] if mk_rk else None
-    check("دکمه چرخش به تب بعدی لیدربرد",
-          btn_rk is not None and btn_rk.callback_data == "rank:tab:all" and btn_rk.text.startswith("🔁"),
-          str(btn_rk))
-    upd_rk2 = _fake_update("rank:tab:day", uid=1001)
+    row_rk = [(b.text, b.callback_data) for b in mk_rk.inline_keyboard[0]] if mk_rk else []
+    check("سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو لیدربرد",
+          row_rk == [("📅 روزانه", "rank:tab:week:day"),
+                     ("🗓 هفتگی", "rank:tab:week:week"),
+                     ("🌍 کلی", "rank:tab:week:all")],
+          str(row_rk))
+    upd_rk2 = _fake_update("rank:tab:week:day", uid=1001)
     await rank_h2.rank_tab_cb(upd_rk2, None)
     ed_rk2 = next((c for c in upd_rk2.callback_query.calls if c[0] == "edit"), None)
     check("سوئیچ به تب روزانه لیدربرد",
           ed_rk2 is not None and "<b>🏆 لیدربرد 📅 روزانه</b>" in ed_rk2[1])
+    upd_rk3 = _fake_update("rank:tab:week:week", uid=1001)
+    await rank_h2.rank_tab_cb(upd_rk3, None)
+    check("زدن رو دکمه تب فعلی لیدربرد هیچ واکنشی نداره",
+          not any(c[0] == "edit" for c in upd_rk3.callback_query.calls)
+          and any(c[0] == "answer" for c in upd_rk3.callback_query.calls),
+          str(upd_rk3.callback_query.calls))
 
     # ── لیدربرد تیم: تب‌دار با جمع مدال اعضا ──
     upd_tt = _fake_update("ttop:x", uid=1001)
@@ -5045,13 +5076,23 @@ async def main() -> None:
           ed_tt is not None and "🏆 لیدربرد تیم‌ها 📅 هفتگی" in ed_tt[1] and "🎖️" in ed_tt[1],
           ed_tt[1][:110] if ed_tt else "-")
     mk_tt = ed_tt[2].get("reply_markup") if ed_tt else None
-    check("دکمه چرخش تب لیدربرد تیم",
-          mk_tt is not None and mk_tt.inline_keyboard[0][0].callback_data == "ttop:tab:all")
-    upd_tt2 = _fake_update("ttop:tab:day", uid=1001)
+    row_tt = [(b.text, b.callback_data) for b in mk_tt.inline_keyboard[0]] if mk_tt else []
+    check("سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو لیدربرد تیم",
+          row_tt == [("☀️ روزانه", "ttop:tab:week:day"),
+                     ("📅 هفتگی", "ttop:tab:week:week"),
+                     ("🌍 کلی", "ttop:tab:week:all")],
+          str(row_tt))
+    upd_tt2 = _fake_update("ttop:tab:week:day", uid=1001)
     await team_h.top_teams_tab_cb(upd_tt2, None)
     ed_tt2 = next((c for c in upd_tt2.callback_query.calls if c[0] == "edit"), None)
     check("سوئیچ به تب روزانه لیدربرد تیم",
           ed_tt2 is not None and "🏆 لیدربرد تیم‌ها ☀️ روزانه" in ed_tt2[1])
+    upd_tt3 = _fake_update("ttop:tab:week:week", uid=1001)
+    await team_h.top_teams_tab_cb(upd_tt3, None)
+    check("زدن رو دکمه تب فعلی لیدربرد تیم هیچ واکنشی نداره",
+          not any(c[0] == "edit" for c in upd_tt3.callback_query.calls)
+          and any(c[0] == "answer" for c in upd_tt3.callback_query.calls),
+          str(upd_tt3.callback_query.calls))
 
     # ── دکمه آپدیت مزرعه + حذف رفرش پروفایل ──
     from keyboards import keyboards as kb3
@@ -5079,6 +5120,7 @@ async def main() -> None:
     async def _dummy_cmd(u, c):
         ran_sp["n"] += 1
 
+    check("کولدان ضدتکرار دستورها نیم ثانیه‌ست", config.TEXT_DEDUP_SECONDS == 0.5)
     upd_sp1 = _text_update("اسپم تستی", uid=555010)
     await _dummy_cmd(upd_sp1, None)
     upd_sp2 = _text_update("اسپم تستی", uid=555010)
@@ -5087,15 +5129,15 @@ async def main() -> None:
         await _dummy_cmd(upd_sp2, None)
     except ApplicationHandlerStop:
         stopped_sp = True
-    check("دستور متنی تکراری زیر ۲ ثانیه اجرا نمیشه", ran_sp["n"] == 1 and stopped_sp)
-    check("اولین تکرار پیام «آروم‌تر» می‌گیره",
-          any("آروم‌تر" in str(c[1]) for c in upd_sp2.message.calls), str(upd_sp2.message.calls))
+    check("دستور متنی تکراری زیر نیم ثانیه اجرا نمیشه", ran_sp["n"] == 1 and stopped_sp)
+    check("تکرار دستور هیچ پیامی نمی‌گیره، کاملا سایلنته",
+          not upd_sp2.message.calls, str(upd_sp2.message.calls))
     upd_sp3 = _text_update("اسپم تستی", uid=555010)
     try:
         await _dummy_cmd(upd_sp3, None)
     except ApplicationHandlerStop:
         pass
-    check("تکرارهای بعدی سایلنت میشن", not upd_sp3.message.calls)
+    check("تکرارهای پشت‌هم هم سایلنت میشن", not upd_sp3.message.calls)
     upd_sp4 = _text_update("یه دستور دیگه", uid=555010)
     await _dummy_cmd(upd_sp4, None)
     check("متن فرق‌کرده محدودیت نداره", ran_sp["n"] == 2)
@@ -5417,21 +5459,29 @@ async def main() -> None:
           and f"⚙️ سرعت تولید: {fa_num(per_hour)} چوب در ساعت" in ctx_company2,
           ctx_company2.replace("\n", " | ")[:200])
 
-    # ── متن ابزار با تی‌پوینت کامل ──
-    tt = mine_h.tools_text(SimpleNamespace(axe_level=1, pick_level=1))
-    check("هزینه ارتقای ابزار تی‌پوینت کامله نه TP",
-          "تی‌پوینت" in tt and " TP" not in tt, tt.replace("\n", " | ")[:160])
+    # ── متن ابزار (ادغام‌شده تو صفحه اصلی کنده‌کاری) با تی‌پوینت کامل ──
+    tt = mine_h.mine_home_text(SimpleNamespace(axe_level=1, pick_level=1, wood=0, iron=0))
+    check("متن کنده‌کاری وضعیت ابزار رو هم داره و تی‌پوینت کامله نه TP",
+          "⬆️ هزینه ارتقا:" in tt and "🪓 تبر لول 1" in tt and "تی‌پوینت" in tt and " TP" not in tt,
+          tt.replace("\n", " | ")[:200])
 
-    # ── مخفیگاه → مخفیگاه و انبار ──
+    # ── نام یکدست «انبار و مخفیگاه» همه‌جا ──
     world_h2 = None
     from handlers import world as world_h2
-    sht = await world_h2._shelter_text(SimpleNamespace(shelter_level=0, wood=0, iron=0, level=1))
-    check("تیتر صفحه پناهگاه «انبار و پناهگاه» ـه",
-          sht.startswith("<b>🏚 انبار و پناهگاه</b>"), sht[:40])
+    async with session_scope() as s:
+        sht = await world_h2._shelter_text(s, SimpleNamespace(shelter_level=0, wood=0, iron=0, level=1, id=999999))
+    check("تیتر صفحه انبار «انبار و مخفیگاه» ـه",
+          sht.startswith("<b>🏚 انبار و مخفیگاه</b>"), sht[:40])
+    check("نوار پرشوندگی بذرها هم توی انبار هست مثل چوب و آهن",
+          all(x in sht for x in ["🌿 ماری‌جوانا ▱", "🍄 قارچ ▱", "🌵 پیوت ▱", "🌱 تریاک ▱", "⚪ کوکائین ▱"])
+          and sht.count("▰") + sht.count("▱") >= 70,
+          sht.replace("\n", " | ")[:220])
+    check("بذر افسانه‌ای توی لیست انبار نمیاد",
+          "جهنم" not in sht and "ابلیس" not in sht)
     mm_flat = [b.text for r in kb3.main_menu_kb().inline_keyboard for b in r]
-    check("دکمه منوی اصلی «مخفیگاه» ـه", "🏚 مخفیگاه" in mm_flat, str(mm_flat))
-    check("بخش هلپ مخفیگاه اسم جدید رو داره",
-          start_h3.HELP_SECTIONS["shelter"].startswith("<b>🏚 مخفیگاه</b>"))
+    check("دکمه منوی اصلی «انبار و مخفیگاه» ـه", "🏚 انبار و مخفیگاه" in mm_flat, str(mm_flat))
+    check("بخش هلپ انبار و مخفیگاه اسم جدید رو داره",
+          start_h3.HELP_SECTIONS["shelter"].startswith("<b>🏚 انبار و مخفیگاه</b>"))
     check("هلپ نبرد سلامت گفته نه HP",
           "سلامت" in start_h3.HELP_SECTIONS["battle"] and "HP" not in start_h3.HELP_SECTIONS["battle"])
 
@@ -5510,6 +5560,331 @@ async def main() -> None:
           str(dq_texts))
     check("تبریک لول‌آپ کوئست پیام جدا اومد",
           any(t.startswith("🎉 تبریک، لول‌آپ شدی") for t in dq_texts[1:]), str(dq_texts))
+
+    # ═══ این دور: خط وضعیت زیر تیتر شاپ | ایموجی دوبل نشه | درصد آرتیفکت و سگ | بذر با نوار | لیدربرد ۳ دکمه‌ای | ریست ۱۲ شب ═══
+    from utils import bar
+
+    # ── خط «🌟 سطح | 💵 موجودی» زیر سرتیتر همه بخش‌های شاپ ──
+    sh_ns = SimpleNamespace(cash=57879, level=20, wood=10, iron=20, shelter_level=0)
+    async with session_scope() as s:
+        sh_real, _ = await users.get_or_create(s, tg(9701, "shopstat", "شاپستات"))
+        sh_real.cash, sh_real.level = 57879, 20
+        seed_txt_st = await shop_h2._section_text(s, sh_real, "seed")
+        food_txt_st = await shop_h2._section_text(s, sh_real, "food")
+        res_txt_st = await shop_h2._section_text(s, sh_real, "res")
+        wup_txt_st = await shop_h2._section_text(s, sh_real, "wup")
+        await s.commit()
+    st_pages = {
+        "خانه سلاح": shop_h2._weap_home_text(sh_ns),
+        "سلاح گرم": shop_h2._wsec_text(sh_ns, "hot"),
+        "سلاح سرد": shop_h2._wsec_text(sh_ns, "cold"),
+        "زره": shop_h2._arm_text(sh_ns),
+        "سگ": shop_h2._dog_text(sh_ns),
+        "آرتیفکت": shop_h2._arti_text(sh_ns),
+        "منابع": res_txt_st,
+        "بذر": seed_txt_st,
+        "غذا": food_txt_st,
+        "ارتقای سلاح": wup_txt_st,
+    }
+    bad_st = [n for n, t in st_pages.items()
+              if not (t.splitlines()[1].startswith("🌟 سطح:")
+                      and "💵 موجودی:" in t.splitlines()[1] and "TP" in t.splitlines()[1])]
+    check("خط «سطح + موجودی» زیر سرتیتر هر ۱۰ صفحه شاپ هست", not bad_st, str(bad_st))
+    check("قالب خط وضعیت «🌟 سطح: 20 | 💵 موجودی: 57,879 TP»",
+          st_pages["خانه سلاح"].splitlines()[1] == f"🌟 سطح: 20 | 💵 موجودی: {fa_num(57879)} TP",
+          st_pages["خانه سلاح"].splitlines()[1])
+
+    # ── ایموجی سلاح دوبل نمیشه، اسم تفنگ خودش 🔫 داره ──
+    hot_txt = st_pages["سلاح گرم"]
+    hot_heads = [l for l in hot_txt.splitlines() if "کلت کمری" in l]
+    check("هد سلاح گرم بدون پیشوند دوبل 🔫",
+          hot_heads and hot_heads[0] == "کلت کمری 🔫" and "🔫 کلت کمری 🔫" not in hot_txt,
+          str(hot_heads))
+    cold_txt = st_pages["سلاح سرد"]
+    check("سلاح سرد بی‌ایموجی پیشوند بخش رو می‌گیره",
+          any(l == "🔪 چاقو" for l in cold_txt.splitlines()), cold_txt[:160])
+    gu_txt = shop_h2._gear_up_text("weap", {"colt": 2}, sh_ns)
+    check("صفحه ارتقا هم اسم تفنگ رو دوبل نمی‌کنه",
+          "کلت کمری 🔫 | لول 2" in gu_txt and "🔫 کلت کمری 🔫" not in gu_txt,
+          gu_txt.replace("\n", " | ")[:200])
+    upd_fc = _fake_update("shop:buy:weap:colt", uid=9701)
+    await shop_h2.buy_confirm(upd_fc, None)
+    fc_txt = next((c[1] for c in upd_fc.callback_query.calls if c[0] == "edit"), "")
+    check("فاکتور خرید هم هد دوبل نداره",
+          "کلت کمری 🔫" in fc_txt and "🔫 کلت کمری 🔫" not in fc_txt, fc_txt.replace("\n", " | ")[:160])
+
+    # ── درصد اثر آرتیفکت جلوی متنش ──
+    atxt2 = st_pages["آرتیفکت"]
+    check("درصد اثر هر آرتیفکت جلوی لاینشه",
+          all(x in atxt2 for x in ["(+10%)", "(+15%)", "(×1.5)"]) and atxt2.count("(+") >= 4,
+          atxt2.replace("\n", " | ")[:260])
+
+    # ── صفحه انبار: نوار بذرها با موجودی واقعی ──
+    async with session_scope() as s:
+        stu, _ = await users.get_or_create(s, tg(9702, "seedbar", "بذربار"))
+        stu.shelter_level = 1
+        await farming.add_seed_stock(s, stu.id, "marijuana", 7)
+        await farming.add_seed_stock(s, stu.id, "jahannam", 3)
+        await s.commit()
+    upd_sb = _text_update("تریاکی انبار", uid=9702)
+    await world_h2.shelter_cmd(upd_sb, None)
+    sb_txt = upd_sb.message.calls[-1][1]
+    cap_sb = config.SHELTER_SEED_CAP_BASE + config.SHELTER_SEED_CAP_PER_LEVEL * 1
+    check("نوار بذر با موجودی واقعی انبار پر میشه",
+          f"🌿 ماری‌جوانا {bar(7, cap_sb)} 7/{fa_num(cap_sb)}" in sb_txt, sb_txt.replace("\n", " | ")[:260])
+    check("بذر جهنم (افسانه‌ای) تو انبار نشون داده نمیشه",
+          "جهنم" not in sb_txt)
+    check("تیتر انبار و صفحه ارتقاش یکدست «انبار و مخفیگاه» ـه",
+          sb_txt.startswith("<b>🏚 انبار و مخفیگاه</b>"))
+    upd_shu = _fake_update("shelter:up", uid=9702)
+    await world_h2.shelter_up_confirm(upd_shu, None)
+    shu_txt = next((c[1] for c in upd_shu.callback_query.calls if c[0] == "edit"), "")
+    check("تیتر تایید ارتقا هم «انبار و مخفیگاه» ـه",
+          "<b>🏚 ارتقای انبار و مخفیگاه" in shu_txt, shu_txt[:60])
+
+    # ── ریست آمار دقیقا ۱۲ شب به وقت ایرانه ──
+    from utils import iran_day_start_utc, iran_week_key, iran_week_start_utc, now_iran  # now_utc از بالای فایل ایمپورت شده
+    ds = iran_day_start_utc()
+    check("ریست روزانه ۱۲ شب به وقت ایرانه (۲۰:۳۰ UTC)",
+          (ds.hour, ds.minute, ds.second) == (20, 30, 0) and ds <= now_utc() < ds + timedelta(hours=24),
+          str(ds))
+    check("تاریخ امروز هم از ساعت ایران حساب میشه",
+          iran_today() == now_iran().date().isoformat())
+    ds_ir = ds + timedelta(hours=3, minutes=30)
+    check("شروع روز ایران دقیقا ۰۰:۰۰ به وقت تهرانه",
+          (ds_ir.hour, ds_ir.minute) == (0, 0) and ds_ir.date().isoformat() == iran_today(), str(ds_ir))
+    ws = iran_week_start_utc()
+    check("ریست هفتگی دوشنبه ۱۲ شب به وقت ایرانه (یکشنبه ۲۰:۳۰ UTC)",
+          (ws.hour, ws.minute, ws.second) == (20, 30, 0) and ws.weekday() == 6
+          and ws <= now_utc() < ws + timedelta(days=7), str(ws))
+    check("کلید هفته به‌وقت ایرانه",
+          iran_week_key() == f"{now_iran().isocalendar()[0]}-W{now_iran().isocalendar()[1]:02d}",
+          iran_week_key())
+    mdz = SimpleNamespace(medals=99, medals_day=12, medals_day_date=iran_today(),
+                          medals_week=34, medals_week_id=iran_week_key())
+    check("مدال روز و هفته قبل از ریست همون مقداره",
+          users.medal_value(mdz, "day") == 12 and users.medal_value(mdz, "week") == 34
+          and users.medal_value(mdz, "all") == 99)
+
+    # ═══ این دور: بازطراحی عضویت اجباری، کش ستینگ + کش عضویت + recheck رویدادمحور + پاکسازی با مهلت ═══
+
+    check("کانفیگ‌های جدید گیت (کش/ری‌چک/مهلت پاکسازی/اسکن)",
+          config.FORCE_JOIN_CACHE_SECONDS == 30 and config.FORCE_JOIN_RECHECK_SECONDS == 900
+          and config.FORCE_JOIN_WIPE_AFTER_HOURS == 48 and config.FORCE_JOIN_WIPE_SCAN_SECONDS == 3600)
+    from database import _NEW_COLUMNS as _nc
+    fj_cols = {c for c, _ in _nc["users"]}
+    check("سه ستون fj روی الگوی خودکار _NEW_COLUMNS‌ان (مایگریشن دستی لازم نیس)",
+          {"fj_member_status", "fj_checked_at", "fj_left_at"} <= fj_cols, str(sorted(fj_cols)[-5:]))
+    check("تشخیص کانال با آیدی عددی و یوزرنیم",
+          fj_svc.same_channel("-100123456789", -100123456789, None)
+          and not fj_svc.same_channel("-100123456789", -100999999999, None)
+          and fj_svc.same_channel("@TeriakyTest", 5, "teriakytest")
+          and not fj_svc.same_channel("@teriakytest", 5, None))
+
+    # ── کش ستینگ: ۵ بار پشت‌سر فقط ۱ کوئری، invalidate هم فوری اعمال میشه ──
+    gs_calls = {"n": 0}
+    _orig_gs = fj_svc.get_settings
+
+    async def _gs_count(s2):
+        gs_calls["n"] += 1
+        return await _orig_gs(s2)
+    fj_svc.get_settings = _gs_count
+    try:
+        fj_svc.invalidate_settings()
+        for _ in range(5):
+            await fj_svc.get_settings_cached()
+        check("کش ستینگ: ۵ خوانش پشت‌سر فقط ۱ کوئری دیتابیس", gs_calls["n"] == 1, str(gs_calls["n"]))
+    finally:
+        fj_svc.get_settings = _orig_gs
+
+    async with session_scope() as s:
+        await fj_svc._set(s, "fj_channel", "@gheydi")   # تغییر مستقیم دی‌بی بدون invalidate
+        await s.commit()
+    still = (await fj_svc.get_settings_cached())["channel"]
+    async with session_scope() as s:
+        await fj_svc.set_channel(s, "@teriakytest", "https://t.me/teriakytest")   # مسیر رسمی = invalidate
+        await s.commit()
+    fresh = (await fj_svc.get_settings_cached())["channel"]
+    check("کش TTL داره ولی تغییر ادمین فوری invalidate میشه",
+          still != "@gheydi" and fresh == "@teriakytest", f"{still!r}→{fresh!r}")
+
+    # ── resolve_member: عضو تازه‌چک تلگرام نمی‌خوره | منقضی یه بار می‌خوره | غیرعضوی شناخته‌شده هرگز ──
+    fj_svc._MEMBER_CACHE.clear()
+    tg_calls = {"n": 0}
+
+    class _TgCount:
+        def __init__(self, member):
+            self.member = member
+
+        async def get_chat_member(self, chat, uid):
+            tg_calls["n"] += 1
+            if self.member:
+                return SimpleNamespace(status="member")
+            raise _BR("User not found")
+
+    async with session_scope() as s:
+        ru, _ = await users.get_or_create(s, tg(8866, "reslv", "ریزالو"))
+        ru.fj_member_status, ru.fj_checked_at, ru.fj_left_at = 1, now_utc(), None
+        await s.commit()
+    m1 = await fj_svc.resolve_member(_TgCount(True), "@teriakytest", 8866)
+    m2 = await fj_svc.resolve_member(_TgCount(True), "@teriakytest", 8866)
+    check("عضوی تازه‌چک بدون هیچ تلگرامی رد میشه (دی‌بی + کش)", m1 and m2 and tg_calls["n"] == 0, str(tg_calls["n"]))
+
+    fj_svc._MEMBER_CACHE.clear()
+    async with session_scope() as s:
+        ru = await users.get_by_tg(s, 8866)
+        ru.fj_checked_at = now_utc() - timedelta(seconds=config.FORCE_JOIN_RECHECK_SECONDS + 30)
+        await s.commit()
+    m3 = await fj_svc.resolve_member(_TgCount(True), "@teriakytest", 8866)
+    m4 = await fj_svc.resolve_member(_TgCount(True), "@teriakytest", 8866)
+    check("چک منقضی فقط یه بار تلگرام می‌خوره و دوباره کش میشه",
+          m3 and m4 and tg_calls["n"] == 1, str(tg_calls["n"]))
+
+    async with session_scope() as s:  # ری‌چک قبلی ردیفو تازه کرده، دوباره کهنتش می‌کنیم تا باز چک بخوره
+        ru = await users.get_by_tg(s, 8866)
+        ru.fj_checked_at = now_utc() - timedelta(seconds=config.FORCE_JOIN_RECHECK_SECONDS + 30)
+        await s.commit()
+    fj_svc._MEMBER_CACHE.clear()
+    tg_calls["n"] = 0
+    m5 = await fj_svc.resolve_member(_TgCount(False), "@teriakytest", 8866)
+    m6 = await fj_svc.resolve_member(_TgCount(False), "@teriakytest", 8866)
+    check("لفت موقع ری‌چک فوراً بلاکه و بعدش تلگرام نمی‌خوره",
+          not m5 and not m6 and tg_calls["n"] == 1, str(tg_calls["n"]))
+    fj_svc._MEMBER_CACHE.clear()
+    m7 = await fj_svc.resolve_member(_TgCount(False), "@teriakytest", 8866)
+    check("غیرعضوی ثبت‌شده رو دی‌بی هم بدون هیچ تلگرامی بلاک میمونه",
+          not m7 and tg_calls["n"] == 1, str(tg_calls["n"]))
+
+    # ── رویداد chat_member: لفت فوری قطعه (حتی بدون پیام کاربر)، جوین فوری وصله ──
+    async with session_scope() as s:
+        evu = await users.get_by_tg(s, 8866)
+        left0 = evu.fj_left_at
+        await s.commit()
+    fe_left = SimpleNamespace(chat_member=SimpleNamespace(
+        chat=SimpleNamespace(id=-100777, username="teriakytest"),
+        new_chat_member=SimpleNamespace(user=SimpleNamespace(id=8866, is_bot=False), status="left")))
+    await gate_h.fj_member_event(fe_left, None)
+    async with session_scope() as s:
+        evu = await users.get_by_tg(s, 8866)
+        st_left = (evu.fj_member_status, evu.fj_left_at is not None)
+        await s.commit()
+    check("رویداد لفت: وضعیت فوراً غیرعضو و مهلت پاکسازی شروع شد",
+          st_left == (0, True), f"{st_left} با left_at قبلی {left0 is not None}")
+    check("کش حافظه هم غیرعضو شد (بلاک فوری روی پیام بعدی)",
+          fj_svc.member_cache_get(8866) is False)
+
+    fe_join = SimpleNamespace(chat_member=SimpleNamespace(
+        chat=SimpleNamespace(id=-100777, username="teriakytest"),
+        new_chat_member=SimpleNamespace(user=SimpleNamespace(id=8866, is_bot=False), status="member")))
+    await gate_h.fj_member_event(fe_join, None)
+    async with session_scope() as s:
+        evu = await users.get_by_tg(s, 8866)
+        st_join = (evu.fj_member_status, evu.fj_left_at)
+        await s.commit()
+    check("رویداد جوین: عضو شد و مهلت پاکسازی‌اش صفر شد", st_join == (1, None), str(st_join))
+
+    fe_other = SimpleNamespace(chat_member=SimpleNamespace(
+        chat=SimpleNamespace(id=-100999, username="hamedan"),
+        new_chat_member=SimpleNamespace(user=SimpleNamespace(id=8866, is_bot=False), status="left")))
+    await gate_h.fj_member_event(fe_other, None)
+    async with session_scope() as s:
+        evu = await users.get_by_tg(s, 8866)
+        st_other = evu.fj_member_status
+        await s.commit()
+    check("آپدیت کانال دیگه اثری نداره", st_other == 1, str(st_other))
+
+    # ── گیت خاموش: مسیر پیام صفر session و صفر تلگرام (با کش گرم) ──
+    async with session_scope() as s:
+        await fj_svc.set_enabled(s, False)
+        await s.commit()
+    fj_svc.invalidate_settings()
+    await fj_svc.get_settings_cached()  # کش گرم میشه
+    ss_touched = {"n": 0}
+    _orig_ss = fj_svc.session_scope
+    from contextlib import asynccontextmanager as _acm
+
+    @_acm
+    async def _rec_ss():
+        ss_touched["n"] += 1
+        async with _orig_ss() as s3:
+            yield s3
+    fj_svc.session_scope = _rec_ss
+    try:
+        for _ in range(4):
+            upd_off = _text_update("تریاکی شاپ", uid=8860, uname="gate1", fname="گیت‌خور")
+            await gate_h.gate_messages(upd_off, SimpleNamespace(bot=SimpleNamespace(), application=SimpleNamespace()))
+        check("گیت خاموش: ۴ پیام پی‌وی، صفر session و صفر getChatMember", ss_touched["n"] == 0)
+    finally:
+        fj_svc.session_scope = _orig_ss
+
+    # ── جاب پاکسازی با مهلت: ۴۸ساعت لفت = ریست، لفت تازه و عضو و ادمین سالم ──
+    from handlers import jobs as jobs_h2
+    async with session_scope() as s:
+        await fj_svc.set_channel(s, "@wipechan", "https://t.me/wipechan")
+        wu, _ = await users.get_or_create(s, tg(8870, "wipee", "وایپی"))
+        wu.level, wu.cash = 9, 123456
+        wu.fj_member_status, wu.fj_checked_at = 0, now_utc()
+        wu.fj_left_at = now_utc() - timedelta(hours=config.FORCE_JOIN_WIPE_AFTER_HOURS + 1)
+        ku, _ = await users.get_or_create(s, tg(8871, "keeper", "نگهدار"))
+        ku.level = 7
+        ku.fj_member_status, ku.fj_left_at = 0, now_utc() - timedelta(hours=1)
+        mu, _ = await users.get_or_create(s, tg(8872, "memberok", "عضوخوب"))
+        mu.level, mu.fj_member_status = 7, 1
+        adm = await users.get_by_tg(s, 1001)
+        adm.fj_member_status = 0
+        adm.fj_left_at = now_utc() - timedelta(hours=config.FORCE_JOIN_WIPE_AFTER_HOURS + 5)
+        await s.commit()
+
+    class _WipeBot:
+        def __init__(self):
+            self.sent = []
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            self.sent.append((chat_id, text))
+            return SimpleNamespace(message_id=len(self.sent))
+
+    bot_wp = _WipeBot()
+    await jobs_h2.fj_wipe_job(SimpleNamespace(bot=bot_wp))
+    async with session_scope() as s:
+        wu = await users.get_by_tg(s, 8870)
+        ku = await users.get_by_tg(s, 8871)
+        mu = await users.get_by_tg(s, 8872)
+        adm = await users.get_by_tg(s, 1001)
+        wipe_ok = (wu.level == 1 and wu.cash == config.START_CASH
+                   and wu.fj_member_status is None and wu.fj_left_at is None)
+        keep_ok = ku.level == 7 and ku.fj_left_at is not None
+        member_ok = mu.level == 7 and mu.fj_member_status == 1
+        adm_safe = adm.level != 1 and adm.fj_member_status == 0
+        adm.fj_member_status = adm.fj_checked_at = adm.fj_left_at = None
+        await s.commit()
+    check("غیرعضوی 48ساعته ریست شد و پیامشم گرفت",
+          wipe_ok and any(cid == 8870 for cid, _ in bot_wp.sent), f"level={wu.level}, dms={len(bot_wp.sent)}")
+    check("لفت تازه‌کار و عضو و ادمین دست‌نخورده موندن",
+          keep_ok and member_ok and adm_safe and len(bot_wp.sent) == 1, f"{keep_ok} {member_ok} {adm_safe}")
+
+    async with session_scope() as s:
+        await fj_svc.set_enabled(s, False)
+        await s.commit()
+    bot_wp2 = _WipeBot()
+    await jobs_h2.fj_wipe_job(SimpleNamespace(bot=bot_wp2))
+    async with session_scope() as s:
+        ku = await users.get_by_tg(s, 8871)
+        off_ok = ku.level == 7
+        await s.commit()
+    check("گیت خاموش باشه جاب پاکسازی هیچ کاری نمی‌کنه", off_ok and not bot_wp2.sent)
+
+    # ── کش عضویت حافظه‌ای سقف داره، لیک نمی‌سازه ──
+    fj_svc._MEMBER_CACHE.clear()
+    for i in range(fj_svc._MEMBER_CAP + 500):
+        fj_svc.member_cache_put(990000 + i, True, 60)
+    check("کش عضویت کاربر سقفش رعایت میشه (GC مثل بقیه کش‌ها)",
+          len(fj_svc._MEMBER_CACHE) <= fj_svc._MEMBER_CAP, str(len(fj_svc._MEMBER_CACHE)))
+
+    # ── تمیزکاری ته تست‌ها ──
+    fj_svc._MEMBER_CACHE.clear()
+    async with session_scope() as s:
+        await fj_svc.clear_channel(s)
+        await s.commit()
 
     print(f"\n🎉 همه تست‌ها سبز شدن، {PASS} مورد")
 

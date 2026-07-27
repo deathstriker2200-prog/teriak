@@ -63,7 +63,7 @@ def main_menu_kb() -> InlineKeyboardMarkup:
          _btn("🏴 تیم من", "menu:team", PRIMARY)],
         [_btn("⛏ کنده کاری", "menu:mine", PRIMARY),
          _btn("🏭 شرکت", "menu:company", PRIMARY)],
-        [_btn("🏚 مخفیگاه", "menu:shelter", PRIMARY),
+        [_btn("🏚 انبار و مخفیگاه", "menu:shelter", PRIMARY),
          _btn("🏦 بانک", "menu:bank", PRIMARY)],
         [_btn("📊 رتبه‌بندی", "menu:rank", PRIMARY),
          _btn("📅 کوئست‌های روزانه", "menu:dquests", PRIMARY)],
@@ -190,7 +190,7 @@ HELP_MENU = [
     ("farm",      "🌱 مزرعه"),
     ("dogs",      "🐕 سگ‌ها"),
     ("company",   "🏭 شرکت"),
-    ("shelter",   "🏚 مخفیگاه"),
+    ("shelter",   "🏚 انبار و مخفیگاه"),
     ("team",      "👥 تیم"),
     ("resources", "🎒 منابع"),
     ("shop",      "🛒 فروشگاه"),
@@ -581,10 +581,13 @@ def heal_kb() -> InlineKeyboardMarkup:
 
 # ───────── رتبه‌بندی ─────────
 
-def rank_kb(tab: str, next_tab: str, next_title: str) -> InlineKeyboardMarkup:
-    """کیبورد لیدربرد، دکمه چرخش بین تب روزانه/هفتگی/کلی"""
+def rank_kb(tab: str) -> InlineKeyboardMarkup:
+    """کیبورد لیدربرد، سه دکمه ثابت روزانه/هفتگی/کلی، هرکدوم مستقیم تب خودشو میارن
+    کالبک هر دکمه تب فعلی رو هم داره تا زدن رو تب جاری هیچ واکنشی نده"""
     return InlineKeyboardMarkup([
-        [_btn(f"🔁 {next_title}", f"rank:tab:{next_tab}", PRIMARY)],
+        [_btn("📅 روزانه", f"rank:tab:{tab}:day", PRIMARY),
+         _btn("🗓 هفتگی", f"rank:tab:{tab}:week", PRIMARY),
+         _btn("🌍 کلی", f"rank:tab:{tab}:all", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -736,10 +739,13 @@ def team_back_kb(home: bool = True) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def team_top_kb(next_tab: str, next_title: str) -> InlineKeyboardMarkup:
-    """کیبورد لیدربرد تیم‌ها، چرخش بین تب روزانه/هفتگی/کلی + برگشت"""
+def team_top_kb(tab: str) -> InlineKeyboardMarkup:
+    """کیبورد لیدربرد تیم‌ها، سه دکمه ثابت روزانه/هفتگی/کلی، هرکدوم مستقیم تب خودشو میارن
+    کالبک هر دکمه تب فعلی رو هم داره تا زدن رو تب جاری هیچ واکنشی نده"""
     return InlineKeyboardMarkup([
-        [_btn(f"🔁 {next_title}", f"ttop:tab:{next_tab}", PRIMARY)],
+        [_btn("☀️ روزانه", f"ttop:tab:{tab}:day", PRIMARY),
+         _btn("📅 هفتگی", f"ttop:tab:{tab}:week", PRIMARY),
+         _btn("🌍 کلی", f"ttop:tab:{tab}:all", PRIMARY)],
         [_btn("🔙 تیم من", "menu:team", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
@@ -765,11 +771,11 @@ def team_bank_kb() -> InlineKeyboardMarkup:
 # ───────── پناهگاه 🏚 ─────────
 
 def mine_kb() -> InlineKeyboardMarkup:
+    """دکمه‌های کنده‌کاری، وضعیت ابزار دیگه صفحه جدا نداره و همون صفحه اصلی نشون داده میشه"""
     return InlineKeyboardMarkup([
         [_btn("⛏ بکَن", "mine:roll", SUCCESS)],
         [_btn("🪓 ارتقای تبر", "mine:upg:axe", PRIMARY),
          _btn("⛏️ ارتقای کلنگ", "mine:upg:pick", PRIMARY)],
-        [_btn("🎒 وضعیت ابزار", "mine:tools", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -830,7 +836,7 @@ def shelter_kb(user: User) -> InlineKeyboardMarkup:
 def sell_menu_kb() -> InlineKeyboardMarkup:
     """کیبورد ساده بخش فروش منابع، کار اصلی با دستور متنی انجام میشه"""
     return InlineKeyboardMarkup([
-        [_btn("🏚 مخفیگاه", "menu:shelter", PRIMARY)],
+        [_btn("🏚 انبار و مخفیگاه", "menu:shelter", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 

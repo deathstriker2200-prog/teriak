@@ -18,15 +18,30 @@ from utils import esc, fa_dur, fa_num, money, money_tp, now_utc
 # ───────── متن‌ها ─────────
 
 def mine_home_text(user) -> str:
-    return "\n".join([
+    """صفحه اصلی کنده‌کاری، وضعیت ابزار و هزینه ارتقاشون هم همینجاست (بخش جدا نداره)"""
+    lines = [
         "<b>⛏ کنده کاری</b>",
         "",
         "تی‌پوینت و تجربه می‌گیری",
         "شانسی چوب و آهن هم پیدا می‌کنی",
         "",
-        f"🪓 تبر لول {fa_num(user.axe_level)} | ⛏️ کلنگ لول {fa_num(user.pick_level)}",
         f"🪵 چوب {fa_num(user.wood)} | ⛏️ آهن {fa_num(user.iron)}",
-    ])
+        "",
+    ]
+    for key, cfg in config.TOOLS.items():
+        lv = user.axe_level if key == "axe" else user.pick_level
+        lines.append(f"{cfg['emoji']} {cfg['name']} لول {fa_num(lv)}")
+        if lv >= config.TOOL_MAX_LEVEL:
+            lines.append("👑 لول مکس")
+        else:
+            tp, iron = res_svc.tool_upgrade_cost(key, lv)
+            lines.append(f"⬆️ هزینه ارتقا: 💰 {money(tp)} + ⛏️ {fa_num(iron)} آهن")
+    lines += [
+        "",
+        "هر لول ابزار چوب و آهن و تی‌پوینت بیشتری میده",
+        "شانس پیدا کردن منابع کمیاب هم بیشتر میشه",
+    ]
+    return "\n".join(lines)
 
 
 def _loot_text(loot: dict, user) -> str:
@@ -53,22 +68,6 @@ def _tired_text(left: float) -> str:
         "<b>⛏ کنده‌کاری</b>\n\n"
         f"خستت شده نیاز به {fa_dur(left)} استراحت داری برای کنده کاری بعدی"
     )
-
-
-def tools_text(user) -> str:
-    lines = ["<b>🎒 وضعیت ابزار</b>", ""]
-    for key, cfg in config.TOOLS.items():
-        lv = user.axe_level if key == "axe" else user.pick_level
-        lines.append(f"{cfg['emoji']} {cfg['name']} | لول {fa_num(lv)}")
-        if lv >= config.TOOL_MAX_LEVEL:
-            lines.append("👑 لول مکس")
-        else:
-            tp, iron = res_svc.tool_upgrade_cost(key, lv)
-            lines.append(f"⬆️ بعدی: 💰 {money(tp)} + ⛏️ {fa_num(iron)} آهن")
-        lines.append("")
-    lines.append("هر لول ابزار چوب و آهن و تی‌پوینت بیشتری میده")
-    lines.append("شانس پیدا کردن منابع کمیاب هم بیشتر میشه")
-    return "\n".join(lines)
 
 
 # ───────── ضربه ─────────
@@ -120,12 +119,12 @@ async def mine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _do_roll(update)
 
 
-async def mine_home_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def mine_home_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: str | None = None) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         text = mine_home_text(user)
         await s.commit()
-    await respond(update, text, kb.mine_kb())
+    await respond(update, text, kb.mine_kb(), alert=alert)
 
 
 async def mine_roll_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -133,11 +132,8 @@ async def mine_roll_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def mine_tools_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: str | None = None) -> None:
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        text = tools_text(user)
-        await s.commit()
-    await respond(update, text, kb.mine_kb(), alert=alert)
+    """بخش وضعیت ابزار حذف شده، دکمه‌های قدیمی و دستور متنی آپگرید میان رو صفحه اصلی کنده‌کاری"""
+    await mine_home_cb(update, context, alert=alert)
 
 
 async def mine_upg_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -187,8 +183,8 @@ async def mine_upg_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     user.pick_level += 1
                 alert = f"⬆️ {config.TOOLS[tool_key]['name']} رفت رو لول {fa_num(lv + 1)}"
         await s.commit()
-    await mine_tools_cb(update, context, alert=alert)
+    await mine_home_cb(update, context, alert=alert)
 
 
 async def mine_upg_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await mine_tools_cb(update, context)
+    await mine_home_cb(update, context)

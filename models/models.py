@@ -89,6 +89,12 @@ class User(Base):
     medals_week: Mapped[int] = mapped_column(Integer, default=0)
     medals_week_id: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
+    # عضویت اجباری — وضعیت کش‌شده چک واقعی تلگرام: NULL یعنی هنوز چک نشده | ۱ عضو | ۰ غیرعضو
+    fj_member_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fj_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # لحظه اولین تشخیص لفت — مبنای مهلت پاکسازی اکانت (برگشت عضویت NULLش می‌کنه)
+    fj_left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     plots: Mapped[list["Plot"]] = relationship(back_populates="user", cascade="all, delete-orphan")

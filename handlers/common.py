@@ -165,10 +165,9 @@ def parts(update: Update) -> list[str]:
 
 # ───────── آنتی‌اسپم ⏳ ─────────
 # اگه یه کاربر همون دستور رو پشت سر هم بفرسته فقط اولیش اجرا میشه
-# پیام «آروم‌تر» هم خودش سقف تکرار داره که قفل‌شکن نشه
+# تکرارها کاملا بی‌صدا نادیده گرفته میشن، هیچ پیامی هم نمی‌فرستیم
 
 _TEXT_LAST: dict[tuple[int, str], float] = {}
-_ALERT_LAST: dict[int, float] = {}
 _THROTTLE: dict[tuple[int, str], float] = {}
 _SPAM_CAP = 3000
 
@@ -197,8 +196,8 @@ def throttle(key: str, user_id: int, seconds: float) -> float:
 
 def text_dedup(func):
     """
-    رَپر دستورهای متنی: همون متن از همون کاربر زیر TEXT_DEDUP_SECONDS نادیده گرفته میشه
-    اولین تکرار یه پیام «آروم‌تر» می‌گیره (با سقف تکرار خودش) و بقیه سکوت محض
+    رَپر دستورهای متنی: همون متن از همون کاربر زیر TEXT_DEDUP_SECONDS (نیم ثانیه)
+    کاملا بی‌صدا نادیده گرفته میشه، فقط برای جلوگیری از اجرای همزمان اسپم
     """
 
     async def _wrapped(update: Update, context, *a, **k):
@@ -208,15 +207,6 @@ def text_dedup(func):
         key = (uid, " ".join(text.split()))
         now = time.monotonic()
         if key in _TEXT_LAST and now - _TEXT_LAST[key] < config.TEXT_DEDUP_SECONDS:
-            last_alert = _ALERT_LAST.get(uid, 0.0)
-            if now - last_alert >= config.SPAM_ALERT_SECONDS and update.effective_message:
-                _ALERT_LAST[uid] = now
-                try:
-                    await update.effective_message.reply_html(
-                        "⏳ یخورده آروم‌تر 😅 دستورت داشت اجرا می‌شد"
-                    )
-                except Exception:
-                    pass
             raise ApplicationHandlerStop()
         _TEXT_LAST[key] = now
         _dict_gc(_TEXT_LAST)

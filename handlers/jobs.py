@@ -4,12 +4,14 @@
 بازار سیاه هر ۴ ساعت 📈 | کاروان برای گروه‌های فعال ۲۴ ساعت اخیر 🚛 (بردش هر ۲ دقیقه رفرش میشه)
 یورش پلیس هر ۲ ساعت به بازیکنان فعال ۲۴ ساعت اخیر 🚔
 نبض انرژی هر ۵ دقیقه به همه کاربرا (یه کوئری دسته‌جمعی، بدون حلقه تک‌تک) ⚡
+پاکسازی اکانت غیرعضوهای عضویت اجباری (بعد از مهلت مثلاً ۴۸ ساعته) هر ساعت 🧹
 """
 
 import logging
 import random
 from datetime import timedelta
 
+from sqlalchemy import select
 from sqlalchemy import update as sql_update
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import ContextTypes
@@ -165,6 +167,43 @@ async def police_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         await _send(context, tg, world_svc.police_report_text(rec))
 
 
+# ───────── پاکسازی اکانت غیرعضوهای مهلت‌گذشته 🧹 (عضویت اجباری) ─────────
+
+async def fj_wipe_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    هر ساعت: غیرعضوهایی که بیشتر از FORCE_JOIN_WIPE_AFTER_HOURS لفت‌ان ریست میشن
+    لفت لحظه‌ای فقط دسترسی پی‌وی رو می‌بره (گیت)، ریست واقعی با مهلت انجام میشه
+    تا کسی که تصادفی لفت داده و برمی‌گرده اذیت نشه و کلاهبردارِ جوین-و-لفت هم نتونه سوءاستفاده کنه
+    """
+    from services import forcejoin as fj, users as users_svc
+    st = await fj.get_settings_cached()
+    if not (st["on"] and st["channel"]):
+        return
+    cutoff = now_utc() - timedelta(hours=config.FORCE_JOIN_WIPE_AFTER_HOURS)
+    wiped: list[int] = []
+    async with session_scope() as s:
+        q = select(User).where(
+            User.fj_member_status == 0,
+            User.fj_left_at.isnot(None),
+            User.fj_left_at <= cutoff,
+        )
+        for u in (await s.execute(q)).scalars():
+            if u.telegram_id in config.ADMIN_IDS:
+                continue  # ادمین‌ها از پاکسازی خارجن
+            await users_svc.wipe_account(s, u)
+            u.fj_member_status = u.fj_checked_at = u.fj_left_at = None
+            wiped.append(u.telegram_id)
+        await s.commit()
+    for tg_id in wiped:
+        fj.member_cache_drop(tg_id)
+        await _send(context, tg_id,
+                    "⚠️ حساب بازی‌ات ریست شد\n\n"
+                    "چون خیلی وقته عضو کانال نیسی بازی از نو شروع میشه\n"
+                    "برای برگشتن کافیه دوباره عضو بشی و /start رو بزنی")
+    if wiped:
+        logger.info("پاکسازی عضویت اجباری: %d اکانت غیرعضو ریست شد", len(wiped))
+
+
 # ───────── ثبت جاب‌ها ─────────
 
 def register_jobs(app) -> None:
@@ -180,4 +219,5 @@ def register_jobs(app) -> None:
     jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
     jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
     jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
-    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس | نبض انرژی")
+    jq.run_repeating(fj_wipe_job, interval=config.FORCE_JOIN_WIPE_SCAN_SECONDS, first=300, name="fj-wipe")
+    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس | نبض انرژی | پاکسازی غیرعضو")

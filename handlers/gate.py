@@ -4,6 +4,10 @@
 داخل گروه همه‌چی مثل قبل عادی کار می‌کنه و چک عضویت انجام نمیشه
 کاربر عضو کانال نباشه دستور پی‌وی‌اش بلاک میشه و پیام گیت با دکمه‌های عضویت/تایید می‌گیره
 آپدیت بلاک‌شده توی حافظه نگه داشته میشه تا بعد «تایید عضویت» خودشش ادامه پیدا کنه
+
+پرفورمنس: خاموش = صفر کوئری و صفر تلگرام | روشن = کش ستینگ (TTL کوتاه) + کش عضویت کاربر
+recheck رویدادمحوره (ChatMemberHandler) و فولبکش چک تنبل فقط موقع پیام خود کاربره
+لفت رویدادی فوراً دسترسی رو قطع می‌کنه، پاکسازی اکانت با مهلت (جاب ساعتی) انجام میشه
 """
 
 import logging
@@ -13,7 +17,6 @@ from telegram import Update
 from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 import config
-from database import session_scope
 from keyboards import keyboards as kb
 from services import forcejoin as fj
 
@@ -37,13 +40,16 @@ def _in_pv(update: Update) -> bool:
 
 
 async def _settings_and_member(context, user_id: int) -> tuple[dict, bool]:
-    """ستینگ فعال + عضویت، غیرفعال باشه (False, {}) نیس همیشه pass"""
-    async with session_scope() as s:
-        st = await fj.get_settings(s)
-        await s.commit()
+    """
+    اجازه عبور از گیت، پرترددترین مسیر رباته
+    خاموش یا بدون کانال: هیچ session و تلگرامی نداره (ستینگ کش‌شده)
+    روشن: جواب از کش حافظه عضویت یا ردیف تازه کاربره، تلگرام فقط بار اول/انقضا
+    خروجی: (ستینگ، عضو؟)، ستینگ برای لینک دکمه پیام گیت لازمه
+    """
+    st = await fj.get_settings_cached()
     if not (st["on"] and st["channel"]):
         return st, True
-    return st, await fj.is_member(context.bot, st["channel"], user_id)
+    return st, await fj.resolve_member(context.bot, st["channel"], user_id)
 
 
 async def gate_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -90,9 +96,7 @@ async def gate_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def gate_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """«✅ تایید عضویت»، اگه عضو شده باشه ادامه همون دستور بلاک‌شده اجرا میشه"""
     q = update.callback_query
-    async with session_scope() as s:
-        st = await fj.get_settings(s)
-        await s.commit()
+    st = await fj.get_settings_cached()
 
     if not st["channel"]:
         await q.answer("عضویت اجباری غیرفعاله ✅")
@@ -104,7 +108,8 @@ async def gate_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     member = True
     if st["on"]:
-        member = await fj.is_member(context.bot, st["channel"], update.effective_user.id)
+        # چک واقعی + ثبت وضعیت، تنها راه برگشت غیرعضوی بلاک‌شده‌ست
+        member = await fj.membership_check(context.bot, st["channel"], update.effective_user.id)
 
     if not member:
         await q.answer("❌ هنوز عضو کانال نشدی، اول عضو شو بعد دوباره تایید رو بزن", show_alert=True)
@@ -125,3 +130,32 @@ async def gate_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await context.application.process_update(pending_update)
     except Exception as e:
         logger.warning("ادامه دستور بلاک‌شده %s خطا: %s", uid, e)
+
+
+# ───────── رویداد chat_member کانال (recheck رویدادمحور) ─────────
+
+async def fj_member_event(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    خود تلگرام این آپدیت رو می‌فرسته وقتی وضعیت عضویت یه نفر تو کانال عوض بشه
+    (ربات باید ادمین کانال باشه و run_polling با Update.ALL_TYPES اجرا بشه)
+    لفت/کیک = فوراً غیرعضو و قطع دسترسی، حتی قبل از اینکه خودش پیام بده
+    جوین = فوراً عضو و رفع گیت، polling اضافه‌ای رو هیچ پیامی نداریم
+    """
+    cm = update.chat_member
+    if cm is None or cm.new_chat_member is None:
+        return
+    st = await fj.get_settings_cached()
+    if not (st["on"] and st["channel"]):
+        return
+    if not fj.same_channel(st["channel"], cm.chat.id, getattr(cm.chat, "username", None)):
+        return
+    user = cm.new_chat_member.user
+    if user is None or getattr(user, "is_bot", False):
+        return
+    status = getattr(cm.new_chat_member, "status", "")
+    if status in ("member", "administrator", "creator"):
+        await fj.mark_joined(user.id)
+        logger.debug("عضویت اجباری: %s جوین شد، گیتش باز شد", user.id)
+    else:  # left | kicked | restricted، دسترسی همین لحظه بسته میشه
+        await fj.mark_left(user.id)
+        logger.info("عضویت اجباری: %s لفت/کیک شد (%s)، دسترسیش قطع شد", user.id, status)

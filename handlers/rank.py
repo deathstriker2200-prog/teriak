@@ -1,4 +1,4 @@
-"""رتبه‌بندی بازیکن‌ها بر اساس مدال 🎖️، تب روزانه و هفتگی و کلی با یه دکمه چرخشی"""
+"""رتبه‌بندی بازیکن‌ها بر اساس مدال 🎖️، سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو"""
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -14,13 +14,6 @@ _MEDALS = ["🥇", "🥈", "🥉"]
 
 TAB_TITLES = {"day": "📅 روزانه", "week": "🗓 هفتگی", "all": "🌍 کلی"}
 TAB_ORDER = ["day", "week", "all"]
-
-
-def _next_tab(tab: str) -> str:
-    try:
-        return TAB_ORDER[(TAB_ORDER.index(tab) + 1) % len(TAB_ORDER)]
-    except ValueError:
-        return TAB_ORDER[0]
 
 
 async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str | None = None) -> None:
@@ -55,10 +48,13 @@ async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str |
         )
         await s.commit()
 
-    await respond(update, text, kb.rank_kb(tab, _next_tab(tab), TAB_TITLES[_next_tab(tab)]))
+    await respond(update, text, kb.rank_kb(tab))
 
 
 async def rank_tab_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """تعویض تب لیدربرد"""
-    tab = update.callback_query.data.split(":")[-1]
-    await rank_cb(update, context, tab=tab)
+    """تعویض تب لیدربرد، زدن رو دکمه تب فعلی هیچ واکنشی نداره (فقط لودینگ قطع میشه)"""
+    _p, _t, cur, tgt = update.callback_query.data.split(":")
+    if cur == tgt:
+        await update.callback_query.answer()
+        return
+    await rank_cb(update, context, tab=tgt)

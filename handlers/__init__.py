@@ -91,6 +91,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(MessageHandler(filters.TEXT | filters.COMMAND, gate.gate_messages), group=-3)
     app.add_handler(CallbackQueryHandler(gate.gate_confirm, pattern=r"^fj:check$"), group=-3)
     app.add_handler(CallbackQueryHandler(gate.gate_callbacks), group=-3)
+    # recheck رویدادمحور: لفت/کیک از کانال فوراً دسترسی رو قطع می‌کنه (بدون اینکه کاربر پیام بده)
+    app.add_handler(ChatMemberHandler(gate.fj_member_event, ChatMemberHandler.CHAT_MEMBER), group=-3)
 
     # ── گارد مالکیت دکمه‌ها، قبل از همه کالبک‌ها (غریبه هیچ واکنشی نمی‌بینه) ──
     app.add_handler(CallbackQueryHandler(common.owner_guard), group=-2)
@@ -149,7 +151,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(attack.ownshield_hit_cb, pattern=r"^patt:shcf:\d+$"))
     app.add_handler(CallbackQueryHandler(attack.ownshield_break_cb, pattern=r"^patt:shbr:\d+$"))
     app.add_handler(CallbackQueryHandler(rank.rank_cb, pattern=r"^menu:rank$"))
-    app.add_handler(CallbackQueryHandler(rank.rank_tab_cb, pattern=r"^rank:tab:\w+$"))
+    app.add_handler(CallbackQueryHandler(rank.rank_tab_cb, pattern=r"^rank:tab:\w+:\w+$"))
     app.add_handler(CallbackQueryHandler(dogs.dogs_cb, pattern=r"^menu:dogs$"))
     app.add_handler(CallbackQueryHandler(team.team_cb, pattern=r"^menu:team$"))
     app.add_handler(CallbackQueryHandler(dquests.daily_quests_cb, pattern=r"^menu:dquests$"))
@@ -199,7 +201,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.quests_text, pattern=r"^team:quests$"))
     app.add_handler(CallbackQueryHandler(team.team_mine_text, pattern=r"^team:mine$"))  # دکمه جمعی
     app.add_handler(CallbackQueryHandler(team.top_teams_text, pattern=r"^team:top$"))
-    app.add_handler(CallbackQueryHandler(team.top_teams_tab_cb, pattern=r"^ttop:tab:\w+$"))
+    app.add_handler(CallbackQueryHandler(team.top_teams_tab_cb, pattern=r"^ttop:tab:\w+:\w+$"))
     app.add_handler(CallbackQueryHandler(team.leave_confirm, pattern=r"^team:leave$"))
     app.add_handler(CallbackQueryHandler(team.disband_confirm, pattern=r"^team:disband$"))
     app.add_handler(CallbackQueryHandler(team.team_confirm_cb, pattern=r"^tmcf:(?:leave|disband):\d+$"))

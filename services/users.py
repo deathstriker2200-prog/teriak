@@ -271,10 +271,13 @@ def add_xp(user: User, amount: int) -> list[str]:
         if user.level == config.MAX_LEVEL:
             note += "\n👑 لولت مکس شد، از این به بعد فقط تجربه جمع میشه"
 
-        # چیزایی که با این لول باز میشن
+        # چیزایی که با این لول باز میشن (اسمی که خودش ایموجی داره، مثل «کلت کمری 🔫»، پیشوند نمی‌گیره که جفت نشه)
+        def _whead(name: str) -> str:
+            return name if any(ord(c) >= 0x2500 for c in name) else f"🔪 {name}"
+
         unlocks: list[str] = []
         unlocks += [f"🌾 {c['name']}" for c in config.SEEDS.values() if c["min_level"] == user.level]
-        unlocks += [f"🔪 {w['name']}" for w in config.WEAPONS.values() if w["min_level"] == user.level]
+        unlocks += [_whead(w["name"]) for w in config.WEAPONS.values() if w["min_level"] == user.level]
         unlocks += [f"🛡 {a['name']}" for a in config.ARMORS.values() if a["min_level"] == user.level]
         unlocks += [f"🐕 {d['name']}" for d in config.DOGS.values() if d["min_level"] == user.level]
         unlocks += [
