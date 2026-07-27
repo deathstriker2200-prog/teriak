@@ -2672,16 +2672,24 @@ async def main() -> None:
           config.MARKET_MIN_PCT == -30 and config.MARKET_MAX_PCT == 50
           and config.MARKET_UP_COMMON == 20 and config.MARKET_DOWN_COMMON == 10)
 
-    # ── متن وضعیت بازار با علامت‌های 🟢🔴 ──
+    # ── متن وضعیت بازار، هر محصول چهار خطی با درصد و تی‌پوینت کامل ──
     mtxt = world_svc.market_view_text(
         {"marijuana": 46, "gharch": -12, "peyote": 9, "teriak": 34, "cocaine": -30}, 14340)
     check("متن بازار هدر و راهنمای 🟢🔴 رو داره",
-          "📈 وضعیت بازار سیاه" in mtxt and "ارزش خرید" in mtxt and "🔴" in mtxt and "🟢" in mtxt
-          and "نشان می‌ده" in mtxt)
-    check("خط محصول با قیمت فروش و پایه",
-          "🟢46% | قیمت فروش: 438 | قیمت پایه: 300" in mtxt, mtxt.splitlines()[6][:90])
-    check("محصول افت کرده 🔴 می‌گیره", "🔴12%" in mtxt and "📉 قارچ" in mtxt)
-    check("تایمر ری‌رول بازار", "⏳ بازار 3 ساعت و 59 دقیقه دیگه ری‌رول میشه" in mtxt)
+          "<b>📈 وضعیت بازار سیاه</b>" in mtxt
+          and "قیمت فروش محصولات با توجه به بازار تغییر می‌کنه" in mtxt
+          and "🟢 یعنی الان قیمت فروش از حالت عادی بیشتره" in mtxt
+          and "🔴 یعنی الان قیمت فروش از حالت عادی کمتره" in mtxt
+          and "درصد کنار هر محصول مقدار افزایش یا کاهش قیمت رو نشون میده" in mtxt)
+    check("محصول چهار خطی با درصد و قیمت فروش و پایه کامل",
+          "🌿 ماری‌جوانا\n🟢 +46%\n💰 قیمت فروش: 438 تی‌پوینت\n📦 قیمت پایه: 300 تی‌پوینت" in mtxt,
+          mtxt.replace("\n", " | ")[:130])
+    check("محصول افت کرده 🔴 با علامت منفی می‌گیره",
+          "🍄 قارچ\n🔴 -12%\n💰 قیمت فروش: 704 تی‌پوینت\n📦 قیمت پایه: 800 تی‌پوینت" in mtxt)
+    check("تایمر تغییر بعدی بازار دو خطی",
+          "⏳ تغییر بعدی بازار\n3 ساعت و 59 دقیقه دیگه" in mtxt)
+    check("درصد صفر ⚪ می‌گیره نه 🟢 و نه 🔴",
+          "⚪ 0%" in world_svc.market_view_text({"marijuana": 0}, 60))
 
     # ── قفل کاشت با لول ناکافی، متن دقیق ──
     async with session_scope() as s:
@@ -5593,6 +5601,16 @@ async def main() -> None:
     check("قالب خط وضعیت «🌟 سطح: 20 | 💵 موجودی: 57,879 TP»",
           st_pages["خانه سلاح"].splitlines()[1] == f"🌟 سطح: 20 | 💵 موجودی: {fa_num(57879)} TP",
           st_pages["خانه سلاح"].splitlines()[1])
+    shome = shop_h2._sections_text(47495, 5)
+    check("صفحه اولیه فروشگاه هم خط وضعیت یکدست زیر تیتر داره",
+          shome.splitlines()[0] == "<b>🛒 فروشگاه</b>"
+          and shome.splitlines()[1] == "🌟 سطح: 5 | 💵 موجودی: 47,495 TP"
+          and "🔫 سلاح‌ها، زره‌ها و ⬆️ ارتقاشون" in shome
+          and "🎒 چوب و آهن" in shome
+          and "🌱 بذر برای کشت توی زمینتون" in shome
+          and "🐕 سگ‌ها و 🍖 غذاشون" in shome
+          and "🧿 آرتیفکت‌های آخر بازی که بعد از لول 10 باز میشن" in shome
+          and "نقدینگی" not in shome, shome.replace("\n", " | ")[:160])
 
     # ── ایموجی سلاح دوبل نمیشه، اسم تفنگ خودش 🔫 داره ──
     hot_txt = st_pages["سلاح گرم"]

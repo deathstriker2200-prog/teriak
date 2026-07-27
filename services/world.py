@@ -261,24 +261,35 @@ def market_mult(pcts: dict[str, int], seed_key: str) -> float:
 
 
 def market_view_text(pcts: dict[str, int], left: int) -> str:
-    """متن بخش «وضعیت بازار سیاه»، 🟢 ارزش خرید بالا | 🔴 ارزش خرید نداره"""
+    """متن بخش «وضعیت بازار سیاه»، 🟢 قیمت فروش از عادی بیشتره | 🔴 کمتره"""
     lines = [
         "<b>📈 وضعیت بازار سیاه</b>",
         "",
-        "اونایی که با 🔴 علامت گذاری شدن ارزش خرید ندارن چون الان ارزشش توی بازار پایین اومده اما، برعکس اونایی که با 🟢 علامت گذاری شدن ارزش خرید بالایی دارن چون ارزششون توی بازار بالا رفته",
-        "درصد کنارشم مقدار افزایش یا کاهش رو نشان می‌ده",
+        "قیمت فروش محصولات با توجه به بازار تغییر می‌کنه",
         "",
+        "🟢 یعنی الان قیمت فروش از حالت عادی بیشتره",
+        "🔴 یعنی الان قیمت فروش از حالت عادی کمتره",
+        "",
+        "درصد کنار هر محصول مقدار افزایش یا کاهش قیمت رو نشون میده",
     ]
     for key in normal_seed_keys():
         sd = config.SEEDS[key]
         pct = pcts.get(key, 0)
-        trend = "📈" if pct >= 0 else "📉"
-        dot = "🟢" if pct >= 0 else "🔴"
         cur = int(sd["sell"] * (1 + pct / 100))
-        lines.append(f"{trend} {sd['name']}")
-        lines.append(f"{dot}{fa_num(abs(pct))}% | قیمت فروش: {fa_num(cur)} | قیمت پایه: {fa_num(sd['sell'])}")
-    lines.append("")
-    lines.append(f"⏳ بازار {fa_dur(left)} دیگه ری‌رول میشه")
+        dot = "🟢" if pct > 0 else ("🔴" if pct < 0 else "⚪")  # صفر یعنی دقیقا قیمت عادی
+        sign = f"+{pct}" if pct > 0 else str(pct)
+        lines += [
+            "",
+            f"{sd['emoji']} {sd['name']}",
+            f"{dot} {sign}%",
+            f"💰 قیمت فروش: {fa_num(cur)} تی‌پوینت",
+            f"📦 قیمت پایه: {fa_num(sd['sell'])} تی‌پوینت",
+        ]
+    lines += [
+        "",
+        "⏳ تغییر بعدی بازار",
+        f"{fa_dur(left)} دیگه",
+    ]
     return "\n".join(lines)
 
 
