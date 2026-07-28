@@ -90,16 +90,35 @@ _NEW_COLUMNS = {
 _LEGACY_SEEDS = {"koka": "peyote", "ghat": "teriak"}
 
 
+def _pg_type(coltype: str) -> str:
+    """
+    ترجمه نوع ستون برای پستگرس، فقط DATETIME به TIMESTAMP تبدیل میشه
+    بقیه انواعی که تو _NEW_COLUMNS استفاده شدن (INTEGER، BIGINT، VARCHAR(n)) روی پستگرس هم معتبرن
+    """
+    head, _sep, tail = coltype.partition(" ")
+    if head.upper() == "DATETIME":
+        return f"TIMESTAMP {tail}".strip()
+    return coltype
+
+
 def _ensure_columns(sync_conn) -> None:
-    """اگه دیتابیس قدیمی ستون جدید نداشت، با ALTER TABLE اضافه‌ش کن"""
+    """اگه دیتابیس قدیمی ستون جدید نداشت، با ALTER TABLE اضافه‌ش کن (SQLite و PostgreSQL)"""
     from sqlalchemy import text
 
+    dialect = sync_conn.dialect.name
     for table, cols in _NEW_COLUMNS.items():
-        rows = sync_conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
-        existing = {r[1] for r in rows}
-        for name, coltype in cols:
-            if name not in existing:
-                sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
+        if dialect == "postgresql":
+            # پستگرس ADD COLUMN IF NOT EXISTS داره، پس چک دستی لازم نیس
+            for name, coltype in cols:
+                sync_conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {_pg_type(coltype)}")
+                )
+        else:
+            rows = sync_conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+            existing = {r[1] for r in rows}
+            for name, coltype in cols:
+                if name not in existing:
+                    sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
 
 
 def _migrate_data(sync_conn) -> None:

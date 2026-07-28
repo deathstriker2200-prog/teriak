@@ -9,6 +9,22 @@ import os
 BOT_TOKEN = os.getenv("TERIAKY_TOKEN", "")
 
 
+def _normalize_db_url(url: str) -> str:
+    """
+    آدرس خام دیتابیس رو به فرم درایور async درست می‌رسونه
+    ریلوی پستگرس رو با postgres:// یا postgresql:// میده ولی ما با asyncpg وصل میشیم
+    sqlite ساده هم به نسخه aiosqlite تبدیل میشه، آدرس آماده دست‌نخورده برمی‌گرده
+    """
+    u = url.strip()
+    if u.startswith("postgres://"):
+        return "postgresql+asyncpg://" + u[len("postgres://"):]
+    if u.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + u[len("postgresql://"):]
+    if u.startswith("sqlite:///"):
+        return "sqlite+aiosqlite:///" + u[len("sqlite:///"):]
+    return u
+
+
 def _default_db() -> str:
     """
     اولویت با TERIAKY_DB، اگه ست نشده باشه و ولوم ریلوی سوار باشه
@@ -17,7 +33,7 @@ def _default_db() -> str:
     """
     env = os.getenv("TERIAKY_DB")
     if env:
-        return env
+        return _normalize_db_url(env)
     vol = os.getenv("RAILWAY_VOLUME_MOUNT_PATH") or ("/data" if os.path.isdir("/data") else "")
     if vol:
         return f"sqlite+aiosqlite:///{vol.rstrip('/')}/teriaky.db"

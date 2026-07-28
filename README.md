@@ -21,7 +21,7 @@ python bot.py
 تست آفلاین منطق بازی (بدون تلگرام):
 
 ```bash
-python tests_smoke.py    # 1020 تست
+python tests_smoke.py    # 1035 تست
 ```
 
 ---
@@ -364,8 +364,9 @@ HP فول که باشه خرید انجام نمیشه («سلامتت کامل�
 ```
 teriaky/
 ├── bot.py                 # نقطه ورود + ساخت خودکار پوشه دی‌بی + ست منوی «/»: start/profile/help/heal/shop و تهش botoff/boton (با ایموزی توضیح) — /menu حذف شده
-├── config.py              # کاتالوگ آیتم‌ها + تیما + زمین‌ها + همه قیمت‌ها و فرمول‌ها
-├── database.py            # session + مایگریشن سبک + reload برای ری‌استور
+├── config.py              # کاتالوگ آیتم‌ها + تیما + زمین‌ها + همه قیمت‌ها و فرمول‌ها + نرمالایز TERIAKY_DB به درایور async
+├── database.py            # session + مایگریشن سبک (دو دیالکت SQLite/PostgreSQL) + reload برای ری‌استور
+├── migrate_to_postgres.py # انتقال امن دیتا از SQLite به PostgreSQL (idempotent + راستی‌آزمایی دونه‌به‌دونه)
 ├── utils.py               # اعداد/زمان لاتین | پردازش اسم فارسی | واحد پول
 ├── models/models.py       # User(+چوب/آهن/ابزار/کارخانه/🎖️ مدال) | Plot | InventoryItem(+لول ارتقا) | SeedStock | Dog | Team | TeamMember(+بِیس‌لاین مدال جوین) | TeamRequest | TeamDaily | GameMeta | SeenUser | MessageOwner
 ├── services/
@@ -405,7 +406,7 @@ teriaky/
 │   ├── pending.py         # گرفتن اسم سگ/تیم و مبلغ واریز/برداشت + کانال فورس جوین + ثبت فعالیت گروه
 │   ├── backup.py          # /backup و /upload_backup (بی‌صدا برای غریبه)
 │   └── بقیه هندلرها
-└── tests_smoke.py         # 1020 تست آفلاین
+└── tests_smoke.py         # 1035 تست آفلاین
 ```
 
 ## توسعه

@@ -6009,6 +6009,153 @@ async def main() -> None:
     check("کش عضویت کاربر سقفش رعایت میشه (GC مثل بقیه کش‌ها)",
           len(fj_svc._MEMBER_CACHE) <= fj_svc._MEMBER_CAP, str(len(fj_svc._MEMBER_CACHE)))
 
+    # ── مهاجرت دیتابیس: نرمالایز آدرس + ترجمه نوع + کپی کامل و idempotent ──
+    import migrate_to_postgres as m2p
+    import database as db_mod
+    from datetime import datetime as _dt
+    from database import Base
+    from models.models import (GameMeta, InventoryItem, MessageOwner, SeedStock,
+                               SeenUser, TeamMember, TeamRequest)
+    from sqlalchemy.ext.asyncio import create_async_engine as _cae
+
+    _n = config._normalize_db_url
+    check("آدرس‌های خام پستگرس به postgresql+asyncpg وصل میشن",
+          _n("postgres://u:p@h:5432/db") == "postgresql+asyncpg://u:p@h:5432/db"
+          and _n("postgresql://u:p@h/db") == "postgresql+asyncpg://u:p@h/db"
+          and _n("postgresql+asyncpg://u:p@h/db") == "postgresql+asyncpg://u:p@h/db"
+          and _n("sqlite:///x.db") == "sqlite+aiosqlite:///x.db"
+          and _n("sqlite+aiosqlite:///x.db") == "sqlite+aiosqlite:///x.db")
+    check("ترجمه نوع ستون برای پستگرس فقط DATETIME رو عوض می‌کنه",
+          db_mod._pg_type("DATETIME") == "TIMESTAMP"
+          and db_mod._pg_type("VARCHAR(10)") == "VARCHAR(10)"
+          and db_mod._pg_type("INTEGER NOT NULL DEFAULT 0") == "INTEGER NOT NULL DEFAULT 0"
+          and db_mod._pg_type("DATETIME NOT NULL") == "TIMESTAMP NOT NULL")
+    check("norm_dt رشته تاریخ SQLite رو datetime می‌کنه و بقیه رو دست نمی‌زنه",
+          m2p.norm_dt("2026-07-28 12:34:56") == _dt(2026, 7, 28, 12, 34, 56)
+          and m2p.norm_dt("peyote") == "peyote" and m2p.norm_dt(42) == 42 and m2p.norm_dt(None) is None)
+
+    mig_src, mig_dst, mig_src2, mig_dst2 = ("/tmp/mig_src.db", "/tmp/mig_dst.db",
+                                            "/tmp/mig_src2.db", "/tmp/mig_dst2.db")
+    for _p in (mig_src, mig_dst, mig_src2, mig_dst2):
+        for _sfx in ("", "-wal", "-journal"):
+            if os.path.exists(_p + _sfx):
+                os.remove(_p + _sfx)
+    mig_src_url, mig_dst_url = f"sqlite+aiosqlite:///{mig_src}", f"sqlite+aiosqlite:///{mig_dst}"
+
+    check("مهاجرت به خودی گرفته میشه (مبدا=مقصد) و مقصد غیرپستگرس رد میشه",
+          (await m2p.migrate(mig_src_url, mig_src_url, log=lambda *a: None))["ok"] is False
+          and (await m2p.migrate(mig_src_url, mig_dst_url, log=lambda *a: None))["ok"] is False)
+
+    se = _cae(mig_src_url)
+    async with se.begin() as c:
+        await c.run_sync(Base.metadata.create_all)
+    dt0 = now_utc().replace(microsecond=123456)
+    async with se.begin() as c:
+        await c.execute(User.__table__.insert(), [
+            dict(telegram_id=777001, username="mig1", first_name="مهاجرت‌یک", level=9, cash=4321,
+                 energy=55, wood=3, iron=1, hp=180, last_mine_at=dt0, fj_left_at=dt0,
+                 energy_updated_at=dt0, created_at=dt0)])
+        await c.execute(User.__table__.insert(), [
+            dict(telegram_id=777002, username="mig2", first_name="مهاجرت‌دو", level=1,
+                 cash=123, energy_updated_at=dt0, created_at=dt0)])
+        await c.execute(Team.__table__.insert(),
+                        [dict(name="تیم مهاجرت", name_norm="تیم مهاجرت", owner_id=1, bank=77, created_at=dt0)])
+        await c.execute(Plot.__table__.insert(),
+                        [dict(user_id=1, level=2, status="growing", crop="jahannam",
+                              planted_at=dt0, ready_at=dt0, created_at=dt0)])
+        await c.execute(InventoryItem.__table__.insert(), [dict(user_id=1, item_key="tommy", level=3, bought_at=dt0)])
+        await c.execute(SeedStock.__table__.insert(), [dict(user_id=1, seed_key="jahannam", count=2)])
+        await c.execute(Dog.__table__.insert(),
+                        [dict(user_id=1, dog_key="pitbull", name="هکله", breed="پیتبول",
+                              level=4, xp=9, personality="جنگجو", feeds_today=1, feed_day="2026-07-27", created_at=dt0)])
+        await c.execute(TeamMember.__table__.insert(),
+                        [dict(team_id=1, user_id=1, role="owner", joined_at=dt0)])
+        await c.execute(TeamRequest.__table__.insert(), [dict(team_id=1, user_id=2, created_at=dt0)])
+        await c.execute(TeamDaily.__table__.insert(), [dict(team_id=1, day="2026-07-28", kills=5, harvests=9)])
+        await c.execute(GroupActivity.__table__.insert(),
+                        [dict(chat_id=-100999, last_active_at=dt0, last_caravan_at=dt0)])
+        await c.execute(GameMeta.__table__.insert(), [dict(key="weather_key", value="sunny")])
+        await c.execute(SeenUser.__table__.insert(),
+                        [dict(telegram_id=777003, username="mig3", first_name="سومی", updated_at=dt0)])
+        await c.execute(MessageOwner.__table__.insert(),
+                        [dict(chat_id=-100999, message_id=4242, owner_tg=777001, created_at=dt0)])
+    await se.dispose()
+
+    mig_logs: list[str] = []
+    rep1 = await m2p.migrate(mig_src_url, mig_dst_url, allow_any_target=True, log=mig_logs.append)
+    check("مهاجرت کامل روی هدف تستی سبز شد",
+          rep1["ok"] is True and len(rep1["tables"]) == 13,
+          next((l for l in mig_logs if "❌" in l), " | ".join(mig_logs[-3:])))
+    check("شمارش مبدا و مقصد همه ۱۳ جدول یکیه",
+          all(t["source"] == t["target"] and t["inserted"] >= 1 for t in rep1["tables"]),
+          str([(t["table"], t["source"], t["target"]) for t in rep1["tables"] if t["source"] != t["target"] or t["inserted"] < 1]))
+
+    de = _cae(mig_dst_url)
+    from sqlalchemy import select as _sel
+    async with de.connect() as c:
+        ru = (await c.execute(_sel(User.__table__).where(User.__table__.c.telegram_id == 777001))).mappings().one()
+        check("مقادیر کاربر بعد مهاجرت دست‌نخورده‌ان (پول، لول، تاریخ، None)",
+              ru["cash"] == 4321 and ru["level"] == 9 and ru["last_mine_at"] == dt0
+              and ru["fj_left_at"] == dt0 and ru["wood"] == 3 and ru["dead_until"] is None,
+              f"{ru['cash']} {ru['level']} {ru['last_mine_at']!r}")
+        rd = (await c.execute(_sel(Dog.__table__).where(Dog.__table__.c.user_id == 1))).mappings().one()
+        check("سگ با شخصیت و روز غذا کامل منتقل شده",
+              rd["name"] == "هکله" and rd["personality"] == "جنگجو" and rd["feed_day"] == "2026-07-27")
+        rtd = (await c.execute(_sel(TeamDaily.__table__).where(TeamDaily.__table__.c.team_id == 1))).mappings().one()
+        check("جدول با کلید اصلی ترکیبی سالم کپی شد",
+              rtd["day"] == "2026-07-28" and rtd["kills"] == 5 and rtd["harvests"] == 9)
+    await de.dispose()
+
+    logs2: list[str] = []
+    rep2 = await m2p.migrate(mig_src_url, mig_dst_url, allow_any_target=True, log=logs2.append)
+    check("اجرای دوم مهاجرت idempotent عه، هیچ ردیفی دوباره کپی نمیشه",
+          rep2["ok"] is True and sum(t["inserted"] for t in rep2["tables"]) == 0
+          and sum(t["skipped"] for t in rep2["tables"]) == 14,
+          f"inserted={sum(t['inserted'] for t in rep2['tables'])} skipped={sum(t['skipped'] for t in rep2['tables'])}")
+
+    de2 = _cae(mig_dst_url)
+    async with de2.begin() as c:
+        await c.execute(User.__table__.update().where(User.telegram_id == 777001).values(cash=1))
+    logs3: list[str] = []
+    rep3 = await m2p.migrate(mig_src_url, mig_dst_url, verify_only=True, allow_any_target=True, log=logs3.append)
+    check("راستی‌آزمایی اختلاف محتوا رو گیر میندازه",
+          rep3["ok"] is False and any("⚠️" in l and "cash" in l for l in logs3),
+          " | ".join(l for l in logs3 if "⚠️" in l)[:150])
+    async with de2.begin() as c:
+        await c.execute(User.__table__.update().where(User.telegram_id == 777001).values(cash=4321))
+    rep4 = await m2p.migrate(mig_src_url, mig_dst_url, verify_only=True, allow_any_target=True, log=lambda *a: None)
+    check("بعد برگشت مقدار، راستی‌آزمایی دوباره سبزه", rep4["ok"] is True)
+    await de2.dispose()
+
+    se2 = _cae(f"sqlite+aiosqlite:///{mig_src2}")
+    async with se2.begin() as c:
+        await c.exec_driver_sql(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, telegram_id BIGINT, cash INTEGER, level INTEGER)")
+        await c.exec_driver_sql(
+            "INSERT INTO users (telegram_id, cash, level) VALUES (777004, 999, 4)")
+    await se2.dispose()
+    logs4: list[str] = []
+    rep5 = await m2p.migrate(f"sqlite+aiosqlite:///{mig_src2}", f"sqlite+aiosqlite:///{mig_dst2}",
+                             allow_any_target=True, log=logs4.append)
+    check("بک‌آپ خیلی قدیمی (ستون‌کم و جدول‌گم) هم مهاجرت می‌کنه",
+          rep5["ok"] is True and any("با مقدار پیش‌فرض" in l for l in logs4)
+          and any("تو مبدا نیس" in l for l in logs4),
+          " | ".join(logs4[:4])[:200])
+    de3 = _cae(f"sqlite+aiosqlite:///{mig_dst2}")
+    async with de3.connect() as c:
+        ro = (await c.execute(_sel(User.__table__).where(User.__table__.c.telegram_id == 777004))).mappings().one()
+        check("ستون‌های جدید تو مقصد با دیفالت مدل پر شدن",
+              ro["cash"] == 999 and ro["level"] == 4 and ro["energy"] == config.MAX_ENERGY
+              and ro["bank_level"] == 1 and ro["wood"] == 0 and ro["created_at"] is not None,
+              f"cash={ro['cash']} energy={ro['energy']} bank={ro['bank_level']}")
+        cnt = (await c.execute(_sel(db_mod.Base.metadata.tables["teams"]))).all()
+        check("جدول گم‌شده تو مبدا، مقصدش خالی و سالم مونده", len(cnt) == 0)
+    await de3.dispose()
+    for _p in (mig_src, mig_dst, mig_src2, mig_dst2):
+        for _sfx in ("", "-wal", "-journal"):
+            if os.path.exists(_p + _sfx):
+                os.remove(_p + _sfx)
+
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()
     async with session_scope() as s:
