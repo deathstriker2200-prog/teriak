@@ -187,6 +187,7 @@ def admin_user_kb(tg_id: int) -> InlineKeyboardMarkup:
 HELP_MENU = [
     ("start",     "📖 شروع بازی"),
     ("battle",    "⚔️ نبرد"),
+    ("mine",      "⛏ کنده‌کاری"),
     ("farm",      "🌱 مزرعه"),
     ("dogs",      "🐕 سگ‌ها"),
     ("company",   "🏭 شرکت"),
@@ -194,6 +195,10 @@ HELP_MENU = [
     ("team",      "👥 تیم"),
     ("resources", "🎒 منابع"),
     ("shop",      "🛒 فروشگاه"),
+    ("casino",    "🎰 قمارخانه"),
+    ("bank",      "🏦 بانک"),
+    ("quests",    "📋 ماموریت روزانه"),
+    ("misc",      "🧭 متفرقه"),
 ]
 
 

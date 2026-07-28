@@ -98,7 +98,8 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
 
     from services import battle as battle_svc
     session.add(Plot(user_id=user.id))  # زمین اول هدیه خونه‌بختگی دوباره 🎁
-    battle_svc.ensure_hp(user)
+    # HP هم باید به مکس روز اول برگرده، ensure_hp فقط وقتی hp برابر None باشه ست می‌کنه و مقدار قدیمی رو نگه می‌داشت
+    battle_svc.full_heal(user)
 
 
 async def search_users(session: AsyncSession, query: str) -> list[User]:

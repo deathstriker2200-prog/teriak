@@ -118,14 +118,16 @@ SEEDS = {
     "cocaine":   {"name": "کوکائین",      "emoji": "⚪", "price": 5200, "grow_min": 25, "sell": 14000, "xp": 70, "min_level": 10, "desc": "پودر سفید قیمتی"},
     # ── بذرهای افسانه‌ای، قابل خرید نیستن (فقط جستجو/کاروان/ایونت) و تو بازار سیاه دیده نمیشن ──
     "jahannam": {
-        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 60, "sell": 84000, "xp": 150,
+        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 60, "sell": 50000, "xp": 150,
         "min_level": 12, "legendary": True, "desc": "از عمق جهنم رسیده",
     },
     "eblis": {
-        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 120, "sell": 280000, "xp": 300,
+        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 120, "sell": 30000, "xp": 300,
         "min_level": 18, "legendary": True, "desc": "نایاب‌ترین بذر محله",
     },
 }
+# سقف فروش نهایی بذر افسانه‌ای بعد از کیفیت/آب‌وهوا/بونس لول: درخواست کارفرما، هیچ‌وقت بالای ۶۰,۰۰۰ نشه
+LEGENDARY_SELL_CAP = 60000
 
 # 🪵⛏ منابع: چوب و آهن، از سه راه به دست میان: کنده کاری | شاپ | کارخانه
 RES_WOOD_CAP_BASE = 200        # ظرفیت چوب بدون مخفیگاه
@@ -208,9 +210,9 @@ HARVEST_COOLDOWN_SECONDS = 120  # هر ۲ دقیقه فقط یه بار بردا
 # نبرد فقط تو گروه با ریپلای یا آیدی انجام میشه
 # HP دائمیه و تو دیتابیس میمونه، تجربه و غارت همون لحظه هر ضربه پرداخت میشه
 MAX_LEVEL = 20                # بعد از این لول کاراکتر مکسه و فقط تجربه‌اش جمع میشه
-# جدول HP هر لول (۲۰ تا)، لول ۱ شروع با ۲۰۰ و هر لول ۲۰ تا بیشتر
-HP_TABLE = [200, 220, 240, 260, 280, 300, 320, 340, 360, 380,
-            400, 420, 440, 460, 480, 500, 520, 540, 560, 580]
+# جدول HP هر لول (۲۰ تا)، لول ۱ شروع با ۲۰۰ | هر لول +۲۰، رفتن به لول‌های ۱۰ و ۲۰ مایلستونه و +۳۰ میده | لول ۲۰ → ۶۰۰
+HP_TABLE = [200, 220, 240, 260, 280, 300, 320, 340, 360, 390,
+            410, 430, 450, 470, 490, 510, 530, 550, 570, 600]
 BATTLE_COOLDOWN_SECONDS = 30  # بعد هر حمله فقط مهاجم اینقدر کولدان می‌گیره
 ATTACK_ENERGY_COST = 12       # هزینه انرژی هر ضربه
 # فرمول دمیج: (پایه + حمله×ضریب) × (۱ - دفاع/(دفاع + K))
@@ -288,9 +290,9 @@ WEAPONS = {
     "deagle":  {"name": "کلت نقره‌ای 🔫",      "price": 15000, "iron": 20, "attack": 60,  "min_level": 8,  "desc": "خشن و پرسرعت", "gun": True, "sec": "hot"},
     "ak47":    {"name": "کلاشنیکف 🔫",           "price": 24000, "iron": 28, "attack": 85,  "min_level": 10, "desc": "کلاش افسانه‌ای محله", "gun": True, "sec": "hot"},
     "svd":     {"name": "دراگونوف 🔫",        "price": 33000, "iron": 34, "attack": 105, "min_level": 11, "desc": "تک‌تیرانداز از پشت بوم", "gun": True, "sec": "hot"},
-    "plasma":  {"name": "شلیک‌کن پلاسما",     "price": 45000, "iron": 42, "attack": 130, "min_level": 12, "desc": "آینده‌گرایانه و کشنده", "gun": True, "sec": "special"},
-    "minigun": {"name": "گاتلینگ 🔫",         "price": 67000, "iron": 55, "attack": 175, "min_level": 14, "desc": "رگبار تموم‌نشدنی", "gun": True, "sec": "special"},
-    "rpg":     {"name": "آرپی‌جی 🔫",          "price": 90000, "iron": 70, "attack": 230, "min_level": 16, "desc": "باهاش نصف محله دود میشه", "gun": True, "sec": "special"},
+    "plasma":  {"name": "شلیک‌کن پلاسما",     "price": 60000, "iron": 42, "attack": 130, "min_level": 12, "desc": "آینده‌گرایانه و کشنده", "gun": True, "sec": "special"},
+    "minigun": {"name": "گاتلینگ 🔫",         "price": 95000, "iron": 55, "attack": 175, "min_level": 14, "desc": "رگبار تموم‌نشدنی", "gun": True, "sec": "special"},
+    "rpg":     {"name": "آرپی‌جی 🔫",          "price": 130000, "iron": 70, "attack": 230, "min_level": 16, "desc": "باهاش نصف محله دود میشه", "gun": True, "sec": "special"},
 }
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────
@@ -317,14 +319,14 @@ ARTIFACTS = {
 # legendary=True یعنی سکه دزدیده‌شده از صاحبش نصف میشه
 ARMORS = {
     "jacket": {"name": "کت چرمی",        "price": 350,   "defense": 4,   "min_level": 1,  "desc": "سبک و شیک"},
-    "vest":   {"name": "جلیقه سنگین",    "price": 1500,  "defense": 12,  "min_level": 3,  "desc": "ضربه رو جذب می‌کنه"},
-    "kevlar": {"name": "جلیقه کِولار",   "price": 2800,  "defense": 20,  "min_level": 5,  "desc": "استاندارد پلیس‌ها"},
-    "steel":  {"name": "زره فولادی",     "price": 4500,  "defense": 28,  "min_level": 6,  "desc": "محکم مثل در بانک"},
-    "swat":   {"name": "جلیقه تاکتیکی",  "price": 9000,  "defense": 42,  "min_level": 8,  "desc": "مخصوص یگه‌های ویژه"},
-    "nano":   {"name": "زره نانو",       "price": 20000, "defense": 65,  "min_level": 10, "desc": "تکنولوژی فضایی"},
-    "titan":  {"name": "زره تیتانیومی",  "price": 40000, "defense": 82,  "min_level": 12, "desc": "سبک ولی شکست‌ناپذیر"},
+    "vest":   {"name": "جلیقه سنگین",    "price": 1500,  "defense": 14,  "min_level": 3,  "desc": "ضربه رو جذب می‌کنه"},
+    "kevlar": {"name": "جلیقه کِولار",   "price": 2800,  "defense": 24,  "min_level": 5,  "desc": "استاندارد پلیس‌ها"},
+    "steel":  {"name": "زره فولادی",     "price": 4500,  "defense": 34,  "min_level": 6,  "desc": "محکم مثل در بانک"},
+    "swat":   {"name": "جلیقه تاکتیکی",  "price": 9000,  "defense": 52,  "min_level": 8,  "desc": "مخصوص یگه‌های ویژه"},
+    "nano":   {"name": "زره نانو",       "price": 30000, "defense": 80,  "min_level": 10, "desc": "تکنولوژی فضایی"},
+    "titan":  {"name": "زره تیتانیومی",  "price": 60000, "defense": 105, "min_level": 12, "desc": "سبک ولی شکست‌ناپذیر"},
     "legend": {
-        "name": "زره افسانه‌ای 👑", "price": 75000, "defense": 100, "min_level": 14,
+        "name": "زره افسانه‌ای 👑", "price": 100000, "defense": 130, "min_level": 14,
         "legendary": True,
         "desc": "این زره افسانه‌ای باعث می‌شود نصف مقدار سکه‌ای که دشمن از شما دریافت می‌کند از بین برود",
     },
@@ -547,8 +549,8 @@ SHELTER_MAX_LEVEL = 10
 SHELTER_PRICES = [3000, 7500, 16000, 30000, 52000, 85000, 130000, 190000, 265000, 360000]
 SHELTER_RAID_CUT_PER_LEVEL = 0.05  # هر لول ۵% از خسارت یورش کم می‌کنه
 SHELTER_DODGE_PER_LEVEL = 0.04     # هر لول ۴% شانس فرار کامل از یورش
-SHELTER_SEED_CAP_BASE = 15         # ظرفیت انبار هر بذر بدون پناهگاه
-SHELTER_SEED_CAP_PER_LEVEL = 10    # هر لول پناهگاه +۱۰ ظرفیت هر بذر
+SHELTER_SEED_CAP_BASE = 5          # ظرفیت انبار هر بذر بدون پناهگاه
+SHELTER_SEED_CAP_PER_LEVEL = 5     # هر لول پناهگاه +۵ ظرفیت هر بذر
 # لول بازیکن لازم برای ارتقای پناهگاه به لول ۱..۱۰
 SHELTER_UPGRADE_MIN_LEVELS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
 

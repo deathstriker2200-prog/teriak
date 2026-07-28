@@ -321,13 +321,16 @@ async def hold_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[boo
 async def cancel_pending(session: AsyncSession, user: User) -> str:
     """لغو کار معلق، هیچکدوم هنوز پولی جابه‌جا نکردن و فقط اکشن پاک میشه"""
     action = user.pending_action
-    if action not in ("dogname", "teamname", "teamcf", "bankdep", "bankwd", "admtp", "admxp"):
+    if action not in ("dogname", "teamname", "teamcf", "bankdep", "bankwd", "admtp", "admxp",
+                      "ressell", "teamkick", "fjchan"):
         return "🤷 کاری در جریان نیس که"
 
     user.pending_action = None
     user.pending_value = None
     if action == "dogname":
         return "😅 خرید سگ لغو شد"
+    if action == "ressell":
+        return "باشه بیخیال فروش منابع شدیم"
     return "😅 بی‌خیال شدیم"
 
 

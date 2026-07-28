@@ -83,12 +83,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
         return False, f"🔨 زمینت هنوز داره ساخته میشه، {fa_dur(left)} مونده"
     if state != "empty":
         return False, "❌ این زمین الان خالی نیس"
-    if not economy.is_seed_unlocked(seed_key, user.level):
-        return False, (
-            f"🔒 این محصول در لول ({fa_num(seed['min_level'])}) قابل دسترسه و تو لولت ({fa_num(user.level)})، "
-            "هنوز برات باز نشده بیشتر کنده کاری کن"
-        )
-
+    # کاشت هیچ گیت لولی نداره، هر بذری تو هر لولی کاشته میشه (قفل لول فقط روی خرید بذر از شاپه)
     stock = await get_stock(session, user.id)
     if stock.get(seed_key, 0) <= 0:
         return False, f"🌾 بذر {seed['name']} نداری، از بخش بذرهای شاپ بخرش"
@@ -108,6 +103,12 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
 
 # ───────── برداشت (همه آماده‌ها، هر ۲ دقیقه یه بار) ─────────
+
+def apply_legendary_cap(seed_key: str, gain: int) -> int:
+    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها (کیفیت/آب‌وهوا/بونس لول)، درخواست کارفرما: بالای ۶۰,۰۰۰ نره"""
+    if config.SEEDS[seed_key].get("legendary") and gain > config.LEGENDARY_SELL_CAP:
+        return config.LEGENDARY_SELL_CAP
+    return gain
 
 def harvest_cooldown_left(user: User) -> int:
     """ثانیه مونده از کولدان برداشت، زمان‌بندی برای هر کاربر جدا ذخیره میشه"""
@@ -153,7 +154,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         tier = world_svc.roll_quality(q5_bonus + economy.plot_quality_bonus(p.level))
         base = economy.crop_yield(p.crop, p.level, user.level)
         mkt = world_svc.market_mult(pcts, p.crop)
-        gain = int(base * tier["mult"] * sell_mult * mkt)
+        gain = apply_legendary_cap(p.crop, int(base * tier["mult"] * sell_mult * mkt))
         total_gain += gain
         total_xp += config.SEEDS[p.crop]["xp"]
         item_lines.append(

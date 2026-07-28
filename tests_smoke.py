@@ -68,6 +68,51 @@ async def main() -> None:
           and config.SEEDS["jahannam"]["price"] == 0 and config.SEEDS["eblis"]["price"] == 0)
     check("بذر افسانه‌ای تو لیست شاپ نمیاد",
           "jahannam" not in shop_svc.shop_seeds() and "eblis" not in shop_svc.shop_seeds())
+    check("قیمت فروش بذر ابلیس 30,000 و بذر جهنم 50,000ـه",
+          config.SEEDS["eblis"]["sell"] == 30000 and config.SEEDS["jahannam"]["sell"] == 50000)
+    check("سقف فروش نهایی بذر افسانه‌ای 60,000ـه", config.LEGENDARY_SELL_CAP == 60000)
+
+    # ── برداشت افسانه‌ای: با بهترین کیفیت و لول مکس هم از 60,000 رد نمیشه ──
+    _orig_quality = world_svc.roll_quality
+    world_svc.roll_quality = lambda bonus=0.0: config.QUALITY_TIERS[-1]  # ⭐⭐⭐⭐⭐ ×3
+    async with session_scope() as s:
+        lgu, _ = await users.get_or_create(s, tg(8842, "legcap", "سقفی"))
+        lgu.level = 20
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in world_svc.normal_seed_keys()))
+        await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
+        lgp = (await farming.get_user_plots(s, lgu.id))[0]
+        lgp.status, lgp.crop = "growing", "jahannam"
+        lgp.planted_at = now_utc() - timedelta(hours=2)
+        lgp.ready_at = now_utc() - timedelta(seconds=1)
+        lg_cash = lgu.cash
+        ok_lg, _a, _ex, _dq, _nn = await farming.harvest_all(s, lgu)
+        check("فروش جهنم با بهترین کیفیت و لول مکس روی سقف 60,000 می‌ایسته",
+              ok_lg and lgu.cash - lg_cash == 60000, str(lgu.cash - lg_cash))
+        lgu.last_harvest_at = None
+        lgp.status, lgp.crop = "growing", "cocaine"
+        lgp.planted_at = now_utc() - timedelta(hours=1)
+        lgp.ready_at = now_utc() - timedelta(seconds=1)
+        lg_cash = lgu.cash
+        ok_lg2, _a2, _ex2, _dq2, _nn2 = await farming.harvest_all(s, lgu)
+        check("بذر غیرافسانه‌ای سقف نمی‌خوره (کوکائین ⭐5 لول 20 = 57,960)",
+              ok_lg2 and lgu.cash - lg_cash == 57960, str(lgu.cash - lg_cash))
+        await s.commit()
+    world_svc.roll_quality = _orig_quality
+
+    # ── بالانس آیتم‌های آخر بازی و زره‌ها ──
+    check("زره‌های آخر بازی دفاعشون باف شده",
+          config.ARMORS["legend"]["defense"] == 130 and config.ARMORS["titan"]["defense"] == 105
+          and config.ARMORS["nano"]["defense"] == 80 and config.ARMORS["swat"]["defense"] == 52)
+    check("قیمت سلاح‌ها و زره‌های آخر بازی بالاتر رفته",
+          config.WEAPONS["rpg"]["price"] == 130000 and config.WEAPONS["minigun"]["price"] == 95000
+          and config.WEAPONS["plasma"]["price"] == 60000
+          and config.ARMORS["legend"]["price"] == 100000 and config.ARMORS["titan"]["price"] == 60000
+          and config.ARMORS["nano"]["price"] == 30000)
+    check("ترتیب قیمت و قدرت سلاح‌ها بعد از گرونی محفوظه",
+          config.WEAPONS["plasma"]["price"] < config.WEAPONS["minigun"]["price"] < config.WEAPONS["rpg"]["price"]
+          and config.WEAPONS["plasma"]["attack"] < config.WEAPONS["minigun"]["attack"] < config.WEAPONS["rpg"]["attack"])
 
     legends = [k for k, a in config.ARMORS.items() if a.get("legendary")]
     check("فقط یه زره افسانه‌ای هست", legends == ["legend"])
@@ -398,11 +443,12 @@ async def main() -> None:
               meta_cap["bonus"] > 0 and st_cap <= int(10000 * config.BATTLE_STEAL_MAX_PCT), str(st_cap))
         check("کانفیگ سقف غارت ضربه 5%", config.BATTLE_STEAL_MAX_PCT == 0.05)
 
-        # ── HP: شروع ۲۰۰، هر لول +۲۰، لول ۲۰ → ۵۸۰ ──
+        # ── HP: شروع ۲۰۰، هر لول +۲۰، لول‌های ۱۰ و ۲۰ مایلستون +۳۰، لول ۲۰ → ۶۰۰ ──
         check("لول 1 با 200 HP شروع می‌کنه", battle_svc.max_hp(1) == 200)
-        check("هر لول 20 HP بیشتر و لول 20 مکس 580ه",
-              battle_svc.max_hp(20) == 580
-              and all(battle_svc.max_hp(i) - battle_svc.max_hp(i - 1) == 20 for i in range(2, 21)))
+        check("هر لول 20 HP بیشتر (لول‌های 10 و 20 +30) و لول 20 مکس 600ه",
+              battle_svc.max_hp(20) == 600 and battle_svc.max_hp(10) == 390
+              and all(battle_svc.max_hp(i) - battle_svc.max_hp(i - 1) == (30 if i in (10, 20) else 20)
+                      for i in range(2, 21)))
         check("جدول HP تو کانفیگ ۲۰ رده داره", len(config.HP_TABLE) == 20)
         check("سقف لول بازی ۲۰ه", config.MAX_LEVEL == 20)
 
@@ -1601,7 +1647,7 @@ async def main() -> None:
     check("کانفیگ نبرد HP",
           config.BATTLE_COOLDOWN_SECONDS == 30 and config.BATTLE_DMG_VARIANCE == 0.30
           and config.BATTLE_STEAL_MAX_PCT == 0.05 and config.BATTLE_DEAD_SECONDS == 600
-          and config.MAX_LEVEL == 20 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 580)
+          and config.MAX_LEVEL == 20 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 600)
     check("۶ کوئست روزانه با عنوان و عدد هدف",
           set(config.DAILY_QUESTS) == {"attack", "harvest", "mine", "plant", "search", "feed"}
           and config.DAILY_QUESTS["attack"]["target"] == 5
@@ -2081,12 +2127,12 @@ async def main() -> None:
     async with session_scope() as s:
         sh, _ = await users.get_or_create(s, tg(8804, "shel", "پناهنده"))
         sh.cash = 100000
-        check("ظرفیت پایه هر بذر ۱۵ تاست", world_svc.seed_storage_cap(sh) == 15)
+        check("ظرفیت پایه هر بذر ۵ تاست", world_svc.seed_storage_cap(sh) == 5)
         cash_b = sh.cash
         ok, msg = await world_svc.upgrade_shelter(s, sh)
         check("ارتقای پناهگاه انجام شد",
               ok and sh.shelter_level == 1 and sh.cash == cash_b - config.SHELTER_PRICES[0], msg)
-        check("هر لول +۱۰ ظرفیت بذر", world_svc.seed_storage_cap(sh) == 25)
+        check("هر لول +۵ ظرفیت بذر", world_svc.seed_storage_cap(sh) == 10)
         sh.cash = 0
         ok, msg = await world_svc.upgrade_shelter(s, sh)
         check("ارتقا بدون پول رد", not ok)
@@ -2691,24 +2737,32 @@ async def main() -> None:
     check("درصد صفر ⚪ می‌گیره نه 🟢 و نه 🔴",
           "⚪ 0%" in world_svc.market_view_text({"marijuana": 0}, 60))
 
-    # ── قفل کاشت با لول ناکافی، متن دقیق ──
+    # ── کاشت آزاد تو هر لول: هر بذری که داری رو می‌تونی بکاری، قفل لول فقط روی خرید از شاپه ──
     async with session_scope() as s:
         lk, _ = await users.get_or_create(s, tg(8810, "lockp", "قفلی"))
         lk.level = 2
+        await farming.add_seed_stock(s, lk.id, "cocaine", 1)
         lplots = await farming.get_user_plots(s, lk.id)
         ok, msg = await farming.plant(s, lk, lplots[0], "cocaine")
-        check("کاشت محصول قفل رد میشه با متن جدید",
-              not ok and "قابل دسترسه" in msg and "لول (10)" in msg and "لولت (2)" in msg and "کنده کاری کن" in msg,
-          msg)
+        check("کاشت کوکائین تو لول 2 موفقه (قفل لول فقط برای خریده)",
+              ok and "کاشته شد" in msg, msg)
+        ok2, msg2 = await shop_svc.purchase(s, lk, "seed", "cocaine")
+        check("ولی خرید همون بذر از شاپ تو لول 2 رد میشه",
+              not ok2 and "لول" in msg2, msg2)
         await s.commit()
 
-    # ── متن کاشت قفل از خود هندلر متنی (هدر 🌱 کاشت) ──
+    # ── کاشت بذر افسانه‌ای (از جستجو/کاروان/کوئست) تو لول 1 هم از هندلر متنی میشه ──
     from handlers import textcmd as textcmd_h2
-    upd = _text_update("تریاکی کاشت کوکائین", uid=8810, uname="lockp", fname="قفلی")
+    async with session_scope() as s:
+        au, _ = await users.get_or_create(s, tg(8815, "anylvl", "آزاد"))
+        au.level = 1
+        await farming.add_seed_stock(s, au.id, "jahannam", 1)
+        await s.commit()
+    upd = _text_update("تریاکی کاشت جهنم", uid=8815, uname="anylvl", fname="آزاد")
     await textcmd_h2.plant_text(upd, None)
     ptxt = upd.message.calls[-1][1]
-    check("هندلر کاشت متنی متن قفل رو با هدر جدا می‌فرسته",
-          "<b>🌱 کاشت</b>" in ptxt and "قابل دسترسه" in ptxt and "بیشتر کنده کاری کن" in ptxt,
+    check("هندلر کاشت متنی بذر جهنم رو تو لول 1 می‌کاره",
+          "<b>🌱 کاشت</b>" in ptxt and "کاشته شد" in ptxt and "قابل دسترسه" not in ptxt,
           ptxt[:120])
 
 
@@ -2734,7 +2788,8 @@ async def main() -> None:
     check("دکمه 🔙 آموزشات هست",
           "help:menu" in b_datas and any("آموزشات" in t for t in b_texts), str(b_texts))
     check("کیبورد برگشت هومم داره (تو گروه strip میشه)", "menu:home" in b_datas)  # تو گروه strip میشه
-    for must in ("تیم", "نبرد", "سگ", "مزرعه", "شرکت", "مخفیگاه", "منابع", "فروشگاه", "شروع بازی"):
+    for must in ("تیم", "نبرد", "سگ", "مزرعه", "شرکت", "مخفیگاه", "منابع", "فروشگاه", "شروع بازی",
+                 "کنده‌کاری", "قمارخانه", "بانک", "ماموریت", "متفرقه"):
         check(f"بخش «{must}» تو منوی هلپ هست", any(must in title for _, title in kb2.HELP_MENU))
 
     # بخش سگ‌ها — ویژگی اصلی هر نژاد بدون اعداد دقیق (بالانس‌پذیر)
@@ -2987,8 +3042,21 @@ async def main() -> None:
     check("ارقام هلپ همه لاتینن",
           not any(_re.search(r"[۰-۹]", v) for v in start_h2.HELP_SECTIONS.values()))
     HS = start_h2.HELP_SECTIONS
-    check("هلپ ۹ بخش داره و همه بخش‌های منو کلیدشون پوشش داده شده",
-          set(HS) == {"start", "battle", "farm", "dogs", "company", "shelter", "team", "resources", "shop"})
+    check("هلپ ۱۴ بخش داره و همه بخش‌های منو کلیدشون پوشش داده شده",
+          set(HS) == {"start", "battle", "farm", "dogs", "company", "shelter", "team", "resources", "shop",
+                      "mine", "casino", "bank", "quests", "misc"})
+    check("هلپ کنده‌کاری (بخش جدید)",
+          all(x in HS["mine"] for x in ["⛏ کنده‌کاری", "«تریاکی کنده کاری»", "«کنده کاری»", "30 ثانیه",
+                                        "🪓 تبر", "⛏️ کلنگ", "لول 5", "«شکار کمیاب»"]))
+    check("هلپ قمارخانه (بخش جدید)",
+          all(x in HS["casino"] for x in ["🎰 قمارخانه", "«تریاکی قمارخانه»", "لول 7", "12 ساعت", "1.8 برابر"]))
+    check("هلپ بانک (بخش جدید)",
+          all(x in HS["bank"] for x in ["🏦 بانک", "«تریاکی بانک»", "ظرفیت", "حداقل لول کاراکتر"]))
+    check("هلپ ماموریت روزانه (بخش جدید)",
+          all(x in HS["quests"] for x in ["📋 ماموریت روزانه", "نیمه‌شب", "2 تا 3", "جایزه"]))
+    check("هلپ متفرقه (بخش جدید)",
+          all(x in HS["misc"] for x in ["🧭 متفرقه", "🔍 جستجو", "«تریاکی جستجو»", "📈 بازار سیاه",
+                                        "🌦 آب‌وهوا", "👮 پلیس", "⚡️ انرژی", "🌧 باران", "🌕 شب مهتابی"]))
     check("هلپ شروع بازی",
           all(x in HS["start"] for x in ["«تریاکی پروفایل»", "کنده کاری", "«تریاکی شاپ»", "لول‌آپ"]))
     check("هلپ نبرد",
@@ -3004,8 +3072,8 @@ async def main() -> None:
     check("هلپ تیم",
           all(x in HS["team"] for x in ["ساخت تیم", "جوین تیم [نام تیم]", "تیم من",
                                         "تیم درخواست @یوزر قبول", "تیم کیک @یوزر", "تیم ادمین @یوزر"]))
-    check("هلپ منابع (سه راه)",
-          all(x in HS["resources"] for x in ["چوب و آهن", "کنده‌کاری", "فروشگاه", "چوب‌بری", "تبر", "کلنگ"]))
+    check("هلپ منابع (سه راه + ارجاع به بخش کنده‌کاری)",
+          all(x in HS["resources"] for x in ["چوب و آهن", "کنده‌کاری", "فروشگاه", "چوب‌بری", "⛏ کنده‌کاری"]))
     check("هلپ فروشگاه",
           all(x in HS["shop"] for x in ["🔫 سلاح", "🛡 زره", "⬆️ ارتقای سلاح و زره", "🧿 آرتیفکت",
                                         "🎒 پک چوب و آهن", "🐕 سگ", "سبز", "قرمز", "«تریاکی خرید [نام آیتم]»"]))
@@ -3168,7 +3236,8 @@ async def main() -> None:
           str(seed_names[-3:]))
 
     # ── کوتیشن‌های هلپ: یا پیشوند تریاکی دارن یا دستور بدون‌پیشوند مجازن (تیمی/حمله/کنده کاری) ──
-    BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی", "شلیک", "اسم سگ [اسم فعلی] [اسم جدید]")
+    BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی", "شلیک", "اسم سگ [اسم فعلی] [اسم جدید]",
+               "شکار کمیاب")
     for key, body in start_h2.HELP_SECTIONS.items():
         for snip in re.findall("«(.+?)»", body):
             check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره یا بدون‌پیشوند مجازه",
@@ -4799,11 +4868,13 @@ async def main() -> None:
     upd_rs = _fake_update("shelter:sell", uid=9657)
     await world_h2.resource_sell_cb(upd_rs, None)
     rscall = next((c for c in upd_rs.callback_query.calls if c[0] == "edit"), None)
-    check("منوی فروش منابع قیمت دونه‌ای و نمونه دستور رو نشون میده",
+    check("منوی فروش منابع قالب جدید «تا داری: دونه‌ای» رو با یادآوری فقط چوب و آهن داره",
           rscall is not None
-          and all(x in rscall[1] for x in ["💰 فروش منابع", "دونه‌ای", "این همه قیمت فروششونه",
-                                           "آهن 300", "چوب 200"]),
-          (rscall[1][:160] if rscall else "-"))
+          and all(x in rscall[1] for x in ["💰 فروش منابع", "🪵 چوب 100 تا داری: دونه‌ای 60 تی‌پوینت",
+                                           "⛏️ آهن 500 تا داری: دونه‌ای 150 تی‌پوینت",
+                                           "فقط چوب و آهن قابل فروش‌اند", "آهن 300", "چوب 200"])
+          and "این همه قیمت فروششونه" not in rscall[1],
+          (rscall[1][:200] if rscall else "-"))
     async with session_scope() as s:
         rs2 = await users.get_by_tg(s, 9657)
         check("بعد دکمه فروش pending روی ressell ست شد", rs2.pending_action == "ressell", str(rs2.pending_action))
@@ -4855,6 +4926,44 @@ async def main() -> None:
     cf_text = next((c[1] for c in upd_cf.callback_query.calls if c[0] == "edit"), "")
     check("متن پایان فروش مبلغ و نقدینگی رو نشون میده",
           all(x in cf_text for x in ["💰", "فروخته شد", "💵 نقدینگی"]), cf_text[:150])
+
+    # ── رگرسیون: «لغو» وسط فروش منابع کار می‌کنه (ressell توی لیست لغو نبود) ──
+    async with session_scope() as s:
+        rc, _ = await users.get_or_create(s, tg(9646, "rcancel", "لغوچی"))
+        rc.iron = 50
+        await s.commit()
+    upd_rc = _fake_update("shelter:sell", uid=9646)
+    await world_h2.resource_sell_cb(upd_rc, None)
+    upd_lv = _text_update("لغو", uid=9646, uname="rcancel", fname="لغوچی")
+    stopped_lv = False
+    try:
+        await pending_h3.capture(upd_lv, None)
+    except Exception as e:
+        stopped_lv = type(e).__name__ == "ApplicationHandlerStop"
+    lv_txt = upd_lv.message.calls[-1][1]
+    async with session_scope() as s:
+        rc2 = await users.get_by_tg(s, 9646)
+        check("«لغو» وسط فروش منابع pending رو پاک می‌کنه و «کاری در جریان نیس» نمیگه",
+              stopped_lv and rc2.pending_action is None
+              and "باشه بیخیال فروش منابع شدیم" in lv_txt and "در جریان نیس" not in lv_txt,
+              f"{rc2.pending_action} | {lv_txt[:60]}")
+        await s.commit()
+
+    # بقیه اکشن‌های فراموش‌شده تو لیست لغو (سرچ اخراج عضو و ست کانال عضویت اجباری)
+    for act in ("ressell", "teamkick", "fjchan", "dogname", "bankdep"):
+        async with session_scope() as s:
+            rc3 = await users.get_by_tg(s, 9646)
+            rc3.pending_action = act
+            msg_c = await dog_svc.cancel_pending(s, rc3)
+            check(f"لغو اکشن {act} توی cancel_pending پشتیبانی میشه",
+                  rc3.pending_action is None and "در جریان نیس" not in msg_c, msg_c[:40])
+            await s.commit()
+    async with session_scope() as s:
+        rc4 = await users.get_by_tg(s, 9646)
+        rc4.pending_action = None
+        msg_c = await dog_svc.cancel_pending(s, rc4)
+        check("بدون کار معلق، هنوز «کاری در جریان نیس که» میگه", "در جریان نیس" in msg_c, msg_c[:40])
+        await s.commit()
 
     # ── «کنده کاری» تو گروه منو باز نمی‌کنه و آپگرید دستور جداست ──
     upd_gm = _text_update("کنده کاری", uid=9658, uname="gminer", fname="ماینرگروهی")
@@ -5315,6 +5424,7 @@ async def main() -> None:
         tgt.wood = 50
         tgt.medals = 77
         tgt.wins = 4
+        tgt.hp = battle_svc.max_hp(tgt.level)  # HP واقعی یه بازیکن فعال، باگ ensure_hp فقط None رو ریست می‌کرد
         s.add(Plot(user_id=tgt.id))
         await s.commit()
 
@@ -5357,7 +5467,8 @@ async def main() -> None:
               f"lvl {w.level} cash {w.cash} medals {w.medals}")
         wplots = await farming.get_user_plots(s, w.id)
         check("بعد ریست یه زمین رایگان داره", len(wplots) == 1, str(len(wplots)))
-        check("سلامت بعد ریست فوله", w.hp == battle_svc.max_hp(1))
+        check("سلامت بعد ریست به مکس روز اول 200 برمی‌گرده (نه HP قدیمی)",
+              w.hp == battle_svc.max_hp(1) == 200, str(w.hp))
         await s.commit()
     ed_cok = next((c for c in upd_cok.callback_query.calls if c[0] == "edit"), None)
     check("پیام موفقیت ریست", ed_cok is not None and "ریست شد" in ed_cok[1])
