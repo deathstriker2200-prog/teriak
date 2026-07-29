@@ -17,12 +17,13 @@ SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=
 
 
 async def init_db() -> None:
-    """ساخت جداول + مایگریشن سبک ستون‌های جدید روی دیتابیس قدیمی"""
+    """ساخت جداول و ایندکس‌ها + مایگریشن سبک ستون‌های جدید روی دیتابیس قدیمی"""
     from models import models as _models  # noqa: F401  (ثبت مدل‌ها روی metadata)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_columns)
+        await conn.run_sync(_ensure_indexes)
         await conn.run_sync(_migrate_data)
 
 
@@ -90,35 +91,39 @@ _NEW_COLUMNS = {
 _LEGACY_SEEDS = {"koka": "peyote", "ghat": "teriak"}
 
 
-def _pg_type(coltype: str) -> str:
-    """
-    ترجمه نوع ستون برای پستگرس، فقط DATETIME به TIMESTAMP تبدیل میشه
-    بقیه انواعی که تو _NEW_COLUMNS استفاده شدن (INTEGER، BIGINT، VARCHAR(n)) روی پستگرس هم معتبرن
-    """
-    head, _sep, tail = coltype.partition(" ")
-    if head.upper() == "DATETIME":
-        return f"TIMESTAMP {tail}".strip()
-    return coltype
-
-
 def _ensure_columns(sync_conn) -> None:
-    """اگه دیتابیس قدیمی ستون جدید نداشت، با ALTER TABLE اضافه‌ش کن (SQLite و PostgreSQL)"""
+    """اگه دیتابیس قدیمی ستون جدید نداشت، با ALTER TABLE اضافه‌ش کن"""
     from sqlalchemy import text
 
-    dialect = sync_conn.dialect.name
     for table, cols in _NEW_COLUMNS.items():
-        if dialect == "postgresql":
-            # پستگرس ADD COLUMN IF NOT EXISTS داره، پس چک دستی لازم نیس
-            for name, coltype in cols:
-                sync_conn.execute(
-                    text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {_pg_type(coltype)}")
-                )
-        else:
-            rows = sync_conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
-            existing = {r[1] for r in rows}
-            for name, coltype in cols:
-                if name not in existing:
-                    sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
+        rows = sync_conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        existing = {r[1] for r in rows}
+        for name, coltype in cols:
+            if name not in existing:
+                sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
+
+
+# ایندکس‌هایی که بعداً برای سرعت کوئری‌های آمار پنل ادمین اضافه شدن
+# روی جدول‌های دیتابیس قدیمی create_all ساخته نمیشن، پس اینجا یدونه‌ی IF NOT EXISTS دارن
+_NEW_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS ix_users_created_at ON users (created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_users_last_seen_at ON users (last_seen_at)",
+    "CREATE INDEX IF NOT EXISTS ix_plots_status ON plots (status)",
+    "CREATE INDEX IF NOT EXISTS ix_action_events_action ON action_events (action)",
+    "CREATE INDEX IF NOT EXISTS ix_action_events_at ON action_events (at)",
+    "CREATE INDEX IF NOT EXISTS ix_action_events_action_at ON action_events (action, at)",
+)
+
+
+def _ensure_indexes(sync_conn) -> None:
+    """ایندکس‌های جدید رو اگه روی دیتابیس قدیمی نیس بساز"""
+    from sqlalchemy import text
+
+    for ddl in _NEW_INDEXES:
+        try:
+            sync_conn.execute(text(ddl))
+        except Exception:
+            pass  # جدول هنوز ساخته نشده باشه دفعه بعد ساخته میشه
 
 
 def _migrate_data(sync_conn) -> None:

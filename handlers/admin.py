@@ -5,6 +5,8 @@
 به غریبه‌ها کاملاً بی‌صداس
 """
 
+import time
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -326,7 +328,7 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # ── 📊 آمار ربات ──
     if kind == "stats":
-        text = await _stats_text()
+        text = await _stats_text(context.bot)
         return await respond(update, text, kb.admin_stats_kb())
 
     # ── 📢 عضویت اجباری ──
@@ -424,13 +426,14 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ───────── 📊 آمار ربات ─────────
 
-async def _stats_text() -> str:
+async def _stats_text(bot=None) -> str:
     """آمار کلی ربات برای ادمین"""
     from datetime import timedelta
 
     from sqlalchemy import func, select
 
-    from models import Dog, GroupActivity, Plot, Team, User
+    from handlers.common import proc_avg_ms, proc_light
+    from models import ActionEvent, Dog, GroupActivity, Plot, Team, User
     from utils import now_utc
 
     async with session_scope() as s:
@@ -446,7 +449,71 @@ async def _stats_text() -> str:
         dogs_n = (await s.execute(select(func.count(Dog.id)))).scalar() or 0
         plots_n = (await s.execute(select(func.count(Plot.id)))).scalar() or 0
         groups_n = (await s.execute(select(func.count(GroupActivity.chat_id)))).scalar() or 0
+
+        # ── اقتصاد و اقلام، همه با SUM/COUNT مستقیم توی SQL ──
+        res_row = (await s.execute(select(
+            func.coalesce(func.sum(User.wood), 0),
+            func.coalesce(func.sum(User.iron), 0),
+        ))).one()
+        wood_sum, iron_sum = int(res_row[0]), int(res_row[1])
+        # فقط پلات‌هایی که واقعاً در حال رشدن (ready_at نگذشته)، فیلتر روی status ایندکس‌دار
+        growing_n = (await s.execute(
+            select(func.count(Plot.id)).where(
+                Plot.status == "growing", Plot.ready_at > now_utc())
+        )).scalar() or 0
+        # پول بانک‌ها جدا از نقد، تا نسبت پول امن و در معرض خطر معلوم بشه
+        bank_sum = (await s.execute(
+            select(func.coalesce(func.sum(User.bank_balance), 0))
+        )).scalar() or 0
+        stay_sum = cash_sum - bank_sum
+
+        # ── فعالیت ۲۴ ساعت اخیر، COUNT گروه‌بندی‌شده روی ایندکس (action, at) ──
+        ev_rows = (await s.execute(
+            select(ActionEvent.action, func.count(ActionEvent.id))
+            .where(ActionEvent.at >= day_ago)
+            .group_by(ActionEvent.action)
+        )).all()
+        ev = {action: n for action, n in ev_rows}
+        battle_n = int(ev.get("battle", 0))
+        pv_n = int(ev.get("pvattack", 0))
+        mine_n = int(ev.get("mine", 0))
+        casino_n = int(ev.get("casino", 0))
+        # تازه‌واردها نه فقط فعال‌ها، فیلتر روی created_at ایندکس‌دار
+        new_n = (await s.execute(
+            select(func.count(User.id)).where(User.created_at >= day_ago)
+        )).scalar() or 0
+
+        # ── لول و پیشرفت، AVG و MAX مستقیم توی SQL ──
+        avg_lvl = (await s.execute(
+            select(func.avg(User.level)).where(User.last_seen_at >= day_ago)
+        )).scalar()
+        max_lvl = (await s.execute(select(func.max(User.level)))).scalar() or 0
         await s.commit()
+
+    # ── فنی، پینگ API تلگرام با یه فراخوانی سبک (بدون bot، نامعلومه) ──
+    ping_ms = None
+    if bot is not None:
+        try:
+            t0 = time.monotonic()
+            await bot.get_me()
+            ping_ms = int((time.monotonic() - t0) * 1000)
+        except Exception:
+            ping_ms = None
+    avg_proc_ms, proc_count = proc_avg_ms()
+
+    # ── متن فنی ──
+    if ping_ms is None:
+        ping_line = "📡 پینگ API تلگرام: ➖ نامعلوم"
+    else:
+        ping_line = f"📡 پینگ API تلگرام: {fa_num(ping_ms)}ms {proc_light(ping_ms)}"
+    if avg_proc_ms is None:
+        proc_line = "⚙️ پردازش داخلی: هنوز نمونه‌ای نیس"
+    else:
+        proc_line = (
+            f"⚙️ پردازش داخلی: {fa_num(avg_proc_ms)}ms {proc_light(avg_proc_ms)} "
+            f"(میانگین آخرین {fa_num(proc_count)} دستور)"
+        )
+    avg_lvl_txt = f"{avg_lvl:.1f}" if avg_lvl is not None else "➖ نامعلوم"
 
     return (
         "<b>📊 آمار ربات</b>\n\n"
@@ -458,6 +525,22 @@ async def _stats_text() -> str:
         f"🗺 زمین‌ها: {fa_num(plots_n)}\n"
         f"💰 مجموع تی‌پوینت کل بازیکنا: {money(cash_sum)}\n"
         f"🚛 کاروان زنده الان: {fa_num(len(world_svc.CARAVANS))}\n\n"
+        "<b>📦 اقتصاد و اقلام</b>\n\n"
+        f"🎒 مجموع انبار کل بازیکنا: {fa_num(wood_sum + iron_sum)} (چوب {fa_num(wood_sum)} | آهن {fa_num(iron_sum)})\n"
+        f"🌱 بذر کاشته‌شده فعال: {fa_num(growing_n)} پلات\n"
+        f"🏦 پول داخل بانک‌ها: {money(bank_sum)}\n"
+        f"💵 نقد بیرون بانک (در معرض خطر): {money(stay_sum)}\n\n"
+        "<b>🔥 فعالیت 24 ساعت اخیر</b>\n\n"
+        f"⚔️ نبردها: {fa_num(battle_n + pv_n)} (گروهی {fa_num(battle_n)} | پی‌وی {fa_num(pv_n)})\n"
+        f"⛏ کنده‌کاری: {fa_num(mine_n)}\n"
+        f"🎰 دست‌های قمارخانه: {fa_num(casino_n)}\n"
+        f"🆕 کاربر جدید: {fa_num(new_n)} نفر\n\n"
+        "<b>📈 لول و پیشرفت</b>\n\n"
+        f"⭐ میانگین لول فعال‌های 24 ساعت اخیر: {avg_lvl_txt}\n"
+        f"🏆 بالاترین لول ثبت‌شده: {fa_num(max_lvl)}\n\n"
+        "<b>🛠 فنی</b>\n\n"
+        f"{ping_line}\n"
+        f"{proc_line}\n\n"
         "⏱ آمار زنده‌ست، با 🔃 رفرش میشه"
     )
 

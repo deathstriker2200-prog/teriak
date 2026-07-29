@@ -2624,6 +2624,214 @@ async def main() -> None:
                                        "تیم‌ها:", "سگ‌ها:", "کاروان زنده الان",
                                        "مجموع تی‌پوینت"]), stats_txt[:60])
 
+    # ── 📊 بخش‌های جدید آمار پنل ادمین ──
+    import re as _re
+
+    from sqlalchemy import func as _func
+    from sqlalchemy import text as _sa_text
+
+    from handlers import common as common_h
+    from models import ActionEvent
+    from services import actionlog as alog
+
+    def _stat_ints(text: str, key: str) -> list[int]:
+        """عددهای خطی که key توشه (کاما حذف میشه)، پیدا نشد لیست خالی"""
+        for line in text.splitlines():
+            if key in line:
+                return [int(x.replace(",", "")) for x in _re.findall(r"[\d,]+", line)]
+        return []
+
+    def _stat_int(text: str, key: str):
+        nums = _stat_ints(text, key)
+        return nums[0] if nums else None
+
+    st_all = await admin_h._stats_text()
+    check("بخش‌های چهارگانه جدید آمار (اقتصاد/فعالیت/لول/فنی) همه تو پیامن",
+          all(x in st_all for x in [
+              "📦 اقتصاد و اقلام", "مجموع انبار", "بذر کاشته‌شده فعال:",
+              "پول داخل بانک‌ها:", "نقد بیرون بانک",
+              "🔥 فعالیت 24 ساعت اخیر", "نبردها:", "کنده‌کاری:",
+              "دست‌های قمارخانه:", "کاربر جدید:",
+              "📈 لول و پیشرفت", "میانگین لول", "بالاترین لول",
+              "🛠 فنی", "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
+          ]) and st_all.endswith("⏱ آمار زنده‌ست، با 🔃 رفرش میشه"))
+    check("بدون بات، پینگ نامعلومه و کرش نمی‌ده", "پینگ API تلگرام: ➖ نامعلوم" in st_all)
+
+    class _FakeBot:
+        async def get_me(self):
+            await asyncio.sleep(0.001)
+            return SimpleNamespace(id=1)
+
+    st_ping = await admin_h._stats_text(_FakeBot())
+    _pl = [l for l in st_ping.splitlines() if "پینگ API تلگرام:" in l][0]
+    check("پینگ API با بات زنده عدد و چراغ سبز می‌گیره",
+          bool(_re.search(r"[\d,]+ms", _pl)) and "🟢 تند" in _pl, _pl)
+
+    # ── هوک‌های لاگ رویداد تو چهار مسیر وصلن ──
+    _base_dir = os.path.dirname(os.path.abspath(__file__))
+    _src = {p: open(os.path.join(_base_dir, *p.split("/")), encoding="utf-8").read()
+            for p in ["services/battle.py", "services/pvattack.py",
+                      "services/world.py", "handlers/mine.py"]}
+    check("هوک لاگ رویداد: نبرد گروهی + حمله پی‌وی + قمارخانه + کنده‌کاری",
+          'actionlog.log(session, "battle")' in _src["services/battle.py"]
+          and 'actionlog.log(session, "pvattack")' in _src["services/pvattack.py"]
+          and 'actionlog.log(session, "casino")' in _src["services/world.py"]
+          and 'actionlog.log(s, "mine")' in _src["handlers/mine.py"])
+
+    # ── شمارش رویدادهای ۲۴ ساعته، فقط COUNT توی SQL ──
+    st_b0 = await admin_h._stats_text()
+    bt0, bg0, bp0 = _stat_ints(st_b0, "نبردها:")
+    mn0, cs0 = _stat_int(st_b0, "کنده‌کاری:"), _stat_int(st_b0, "دست‌های قمارخانه:")
+    async with session_scope() as s:
+        await alog.log(s, "battle")
+        await alog.log(s, "battle")
+        await alog.log(s, "pvattack")
+        await alog.log(s, "mine")
+        await alog.log(s, "mine")
+        await alog.log(s, "mine")
+        await alog.log(s, "casino")
+        s.add(ActionEvent(action="mine", at=now_utc() - timedelta(days=2)))  # قدیمی، نباید شمرده شه
+        await s.commit()
+    st_b1 = await admin_h._stats_text()
+    bt1, bg1, bp1 = _stat_ints(st_b1, "نبردها:")
+    check("نبردهای ۲۴ساعته: گروهی و پی‌وی جدا و جمع‌شون درسته",
+          (bt1, bg1, bp1) == (bt0 + 3, bg0 + 2, bp0 + 1), f"{(bt1, bg1, bp1)} vs {(bt0, bg0, bp0)}")
+    check("کنده‌کاری ۲۴ساعته فقط تازه‌ها رو میشمره، رویداد دیروزی نه",
+          _stat_int(st_b1, "کنده‌کاری:") == mn0 + 3)
+    check("دست‌های قمارخانه ۲۴ساعته", _stat_int(st_b1, "دست‌های قمارخانه:") == cs0 + 1)
+
+    # ── اکشن ناشناس نادیده گرفته میشه ──
+    async with session_scope() as s:
+        n_x0 = (await s.execute(select(_func.count(ActionEvent.id)))).scalar() or 0
+        await alog.log(s, "hack")
+        await s.commit()
+    async with session_scope() as s:
+        n_x1 = (await s.execute(select(_func.count(ActionEvent.id)))).scalar() or 0
+        await s.commit()
+    check("اکشن ناشناس لاگ نمیشه", n_x1 == n_x0, f"{n_x0}->{n_x1}")
+
+    # ── پاکسازی ردیف‌های قدیمی رویداد موقع درج ──
+    async with session_scope() as s:
+        s.add(ActionEvent(action="battle", at=now_utc() - timedelta(hours=49)))
+        s.add(ActionEvent(action="casino", at=now_utc() - timedelta(hours=50)))
+        await s.commit()
+    _ch0 = config.ACTION_LOG_PRUNE_CHANCE
+    config.ACTION_LOG_PRUNE_CHANCE = 1.0
+    try:
+        async with session_scope() as s:
+            await alog.log(s, "battle")  # با شانس ۱ حتماً پاکسازی می‌کنه
+            await s.commit()
+    finally:
+        config.ACTION_LOG_PRUNE_CHANCE = _ch0
+    async with session_scope() as s:
+        left_old = (await s.execute(
+            select(_func.count(ActionEvent.id)).where(
+                ActionEvent.at < now_utc() - timedelta(hours=config.ACTION_LOG_KEEP_HOURS))
+        )).scalar() or 0
+        await s.commit()
+    check("پاکسازی: ردیف‌های قدیمی‌تر از نگه‌داری رویداد حذف میشن", left_old == 0, f"مونده: {left_old}")
+
+    # ── 🆕 تازه‌واردها + ⭐ میانگین لول فعال‌ها + 🏆 مکس لول ──
+    async with session_scope() as s:
+        _day_ago = now_utc() - timedelta(hours=24)
+        s_lvl0 = (await s.execute(
+            select(_func.coalesce(_func.sum(User.level), 0)).where(User.last_seen_at >= _day_ago)
+        )).scalar() or 0
+        c_lvl0 = (await s.execute(
+            select(_func.count(User.id)).where(User.last_seen_at >= _day_ago)
+        )).scalar() or 0
+        await s.commit()
+    new0 = _stat_int(st_b1, "کاربر جدید:")
+    async with session_scope() as s:
+        u_new, _ = await users.get_or_create(s, tg(7309, "newb", "تازه‌وارد"))
+        u_new.level = 10
+        u_old, _ = await users.get_or_create(s, tg(7305, "oldb", "کهنه‌کار"))
+        u_old.level = 40
+        u_old.created_at = now_utc() - timedelta(days=2)
+        u_old.last_seen_at = now_utc() - timedelta(days=2)  # غیرفعال، تو میانگین و تازه‌وارد نمیاد
+        u_f0, _ = await users.get_or_create(s, tg(7301, "farmx", "کشاورز"))  # تازه‌وارد + لول ۱ فعال
+        await s.commit()
+    st_c1 = await admin_h._stats_text()
+    check("کاربر جدید ۲۴ساعته فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
+          _stat_int(st_c1, "کاربر جدید:") == new0 + 2, f"{_stat_int(st_c1, 'کاربر جدید:')} vs {new0}")
+    _avg_exp = (s_lvl0 + 10 + 1) / (c_lvl0 + 2)  # تازه‌وارد (۱۰) + کشاورز (۱)، کهنه‌کار غیرفعاله
+    _avg_line = [l for l in st_c1.splitlines() if "میانگین لول" in l][0]
+    _avg_got = float(_re.search(r"[\d.]+", _avg_line.split(":")[-1]).group(0))
+    check("میانگین لول فقط روی فعال‌های ۲۴ساعته حساب میشه",
+          abs(_avg_got - _avg_exp) < 0.06, f"{_avg_got} vs {_avg_exp:.2f}")
+    check("بالاترین لول ثبت‌شده کاربر غیرفعال رو هم پوشش میده",
+          _stat_int(st_c1, "بالاترین لول") == 40, str(_stat_int(st_c1, "بالاترین لول")))
+
+    # ── 🌱 پلات در حال رشد + 🎒 انبار + 🏦 بانک/نقد ──
+    # مبنا از st_c1 (بعد ساخت کاربرا) خونده میشه، اینجا دیگه کاربر تازه‌ای ساخته نمیشه
+    gr0 = _stat_int(st_c1, "بذر کاشته‌شده فعال:")
+    wd0 = _stat_int(st_c1, "مجموع انبار")
+    bk0 = _stat_int(st_c1, "پول داخل بانک‌ها:")
+    ot0 = _stat_int(st_c1, "نقد بیرون بانک")
+    async with session_scope() as s:
+        u_f = await users.get_by_tg(s, 7301)
+        _now = now_utc()
+        s.add(Plot(user_id=u_f.id, status="growing", crop="marijuana",
+                   planted_at=_now, ready_at=_now + timedelta(hours=2)))  # واقعاً در حال رشد
+        s.add(Plot(user_id=u_f.id, status="growing", crop="marijuana",
+                   planted_at=_now - timedelta(hours=9), ready_at=_now - timedelta(hours=1)))  # آماده‌ست نه رشد
+        s.add(Plot(user_id=u_f.id, status="empty"))
+        u_f.wood = 100
+        u_f.iron = 50
+        u_f.bank_balance += 5000  # فقط واریز به بانک، نقد دست‌نخورده
+        await s.commit()
+    st_d1 = await admin_h._stats_text()
+    check("بذر کاشته‌شده فعال فقط رشد واقعی (ready_at نگذشته) رو میشمره",
+          _stat_int(st_d1, "بذر کاشته‌شده فعال:") == gr0 + 1, f"{_stat_int(st_d1, 'بذر کاشته‌شده فعال:')}")
+    check("انبار، جمع چوب و آهن مستقیم تو SQL",
+          _stat_int(st_d1, "مجموع انبار") == wd0 + 150, f"{_stat_int(st_d1, 'مجموع انبار')} vs {wd0}")
+    check("پول بانک جدا از نقد: بانک زیاد میشه ولی نقد ثابت می‌مونه",
+          _stat_int(st_d1, "پول داخل بانک‌ها:") == bk0 + 5000
+          and _stat_int(st_d1, "نقد بیرون بانک") == ot0,
+          f"ب:{_stat_int(st_d1, 'پول داخل بانک‌ها:')} ن:{_stat_int(st_d1, 'نقد بیرون بانک')}")
+
+    # ── ⚙️ زمان پردازش داخلی + 🚦 چراغ latency ──
+    common_h._PROC_TIMES.clear()
+    st_empty = await admin_h._stats_text()
+    check("بدون نمونه، پردازش داخلی «هنوز نمونه‌ای نیس» می‌خوره",
+          common_h.proc_avg_ms() == (None, 0) and "هنوز نمونه‌ای نیس" in st_empty)
+    for _i in range(21):
+        common_h.note_proc_time(0.002)
+    check("لیست نمونه‌ها از سقف کانفیگ رد نمیشه و قدیمی‌ترین‌ها پاک میشن",
+          len(common_h._PROC_TIMES) == config.PROC_SAMPLE_CAP and config.PROC_SAMPLE_CAP == 20,
+          str(len(common_h._PROC_TIMES)))
+    common_h._PROC_TIMES.clear()
+    for _i in range(25):
+        common_h.note_proc_time(0.001 * (_i + 1))
+    _exp_ms = int(round(sum(common_h._PROC_TIMES) / len(common_h._PROC_TIMES) * 1000.0))
+    st_proc = await admin_h._stats_text()
+    _prl = [l for l in st_proc.splitlines() if "پردازش داخلی:" in l][0]
+    check("میانگین آخرین نمونه‌ها با تعدادشون تو آمار فنی میان",
+          f"{_exp_ms}ms" in _prl and "(میانگین آخرین 20 دستور)" in _prl, _prl)
+    check("چراغ latency آستانه‌هاش درسته (۵۰۰ و ۱۵۰۰ میلی‌ثانیه)",
+          common_h.proc_light(499) == "🟢 تند" and common_h.proc_light(500) == "🟡 وسط"
+          and common_h.proc_light(1500) == "🔴 کند" and common_h.proc_light(None) == "➖ نامعلوم")
+    common_h._PROC_TIMES.clear()
+    _tm = common_h.proc_timer()
+    await asyncio.sleep(0.01)
+    _tm.done()
+    _am, _cm = common_h.proc_avg_ms()
+    check("proc_timer زمان واقعی پردازش رو ثبت می‌کنه",
+          _cm == 1 and _am is not None and _am >= 9, f"{_am}ms")
+    common_h._PROC_TIMES.clear()
+
+    # ── ایندکس‌های لازم برای فیلترهای آمار ──
+    async with session_scope() as s:
+        ix_u = {r[1] for r in (await s.execute(_sa_text("PRAGMA index_list('users')"))).all()}
+        ix_p = {r[1] for r in (await s.execute(_sa_text("PRAGMA index_list('plots')"))).all()}
+        ix_e = {r[1] for r in (await s.execute(_sa_text("PRAGMA index_list('action_events')"))).all()}
+        await s.commit()
+    check("ایندکس‌های آمار ساخته شدن (users.created_at/last_seen_at + plots.status + action_events)",
+          {"ix_users_created_at", "ix_users_last_seen_at"} <= ix_u
+          and "ix_plots_status" in ix_p
+          and {"ix_action_events_action", "ix_action_events_at", "ix_action_events_action_at"} <= ix_e,
+          f"{sorted(ix_e)}")
+
     # ── شخصیت سگ‌ها 💫 ──
     check("شخصیت‌ها تعریف شدن",
           set(config.DOG_PERSONALITIES) == {"loyal", "warrior", "furious", "swift", "hunter",
@@ -6008,153 +6216,6 @@ async def main() -> None:
         fj_svc.member_cache_put(990000 + i, True, 60)
     check("کش عضویت کاربر سقفش رعایت میشه (GC مثل بقیه کش‌ها)",
           len(fj_svc._MEMBER_CACHE) <= fj_svc._MEMBER_CAP, str(len(fj_svc._MEMBER_CACHE)))
-
-    # ── مهاجرت دیتابیس: نرمالایز آدرس + ترجمه نوع + کپی کامل و idempotent ──
-    import migrate_to_postgres as m2p
-    import database as db_mod
-    from datetime import datetime as _dt
-    from database import Base
-    from models.models import (GameMeta, InventoryItem, MessageOwner, SeedStock,
-                               SeenUser, TeamMember, TeamRequest)
-    from sqlalchemy.ext.asyncio import create_async_engine as _cae
-
-    _n = config._normalize_db_url
-    check("آدرس‌های خام پستگرس به postgresql+asyncpg وصل میشن",
-          _n("postgres://u:p@h:5432/db") == "postgresql+asyncpg://u:p@h:5432/db"
-          and _n("postgresql://u:p@h/db") == "postgresql+asyncpg://u:p@h/db"
-          and _n("postgresql+asyncpg://u:p@h/db") == "postgresql+asyncpg://u:p@h/db"
-          and _n("sqlite:///x.db") == "sqlite+aiosqlite:///x.db"
-          and _n("sqlite+aiosqlite:///x.db") == "sqlite+aiosqlite:///x.db")
-    check("ترجمه نوع ستون برای پستگرس فقط DATETIME رو عوض می‌کنه",
-          db_mod._pg_type("DATETIME") == "TIMESTAMP"
-          and db_mod._pg_type("VARCHAR(10)") == "VARCHAR(10)"
-          and db_mod._pg_type("INTEGER NOT NULL DEFAULT 0") == "INTEGER NOT NULL DEFAULT 0"
-          and db_mod._pg_type("DATETIME NOT NULL") == "TIMESTAMP NOT NULL")
-    check("norm_dt رشته تاریخ SQLite رو datetime می‌کنه و بقیه رو دست نمی‌زنه",
-          m2p.norm_dt("2026-07-28 12:34:56") == _dt(2026, 7, 28, 12, 34, 56)
-          and m2p.norm_dt("peyote") == "peyote" and m2p.norm_dt(42) == 42 and m2p.norm_dt(None) is None)
-
-    mig_src, mig_dst, mig_src2, mig_dst2 = ("/tmp/mig_src.db", "/tmp/mig_dst.db",
-                                            "/tmp/mig_src2.db", "/tmp/mig_dst2.db")
-    for _p in (mig_src, mig_dst, mig_src2, mig_dst2):
-        for _sfx in ("", "-wal", "-journal"):
-            if os.path.exists(_p + _sfx):
-                os.remove(_p + _sfx)
-    mig_src_url, mig_dst_url = f"sqlite+aiosqlite:///{mig_src}", f"sqlite+aiosqlite:///{mig_dst}"
-
-    check("مهاجرت به خودی گرفته میشه (مبدا=مقصد) و مقصد غیرپستگرس رد میشه",
-          (await m2p.migrate(mig_src_url, mig_src_url, log=lambda *a: None))["ok"] is False
-          and (await m2p.migrate(mig_src_url, mig_dst_url, log=lambda *a: None))["ok"] is False)
-
-    se = _cae(mig_src_url)
-    async with se.begin() as c:
-        await c.run_sync(Base.metadata.create_all)
-    dt0 = now_utc().replace(microsecond=123456)
-    async with se.begin() as c:
-        await c.execute(User.__table__.insert(), [
-            dict(telegram_id=777001, username="mig1", first_name="مهاجرت‌یک", level=9, cash=4321,
-                 energy=55, wood=3, iron=1, hp=180, last_mine_at=dt0, fj_left_at=dt0,
-                 energy_updated_at=dt0, created_at=dt0)])
-        await c.execute(User.__table__.insert(), [
-            dict(telegram_id=777002, username="mig2", first_name="مهاجرت‌دو", level=1,
-                 cash=123, energy_updated_at=dt0, created_at=dt0)])
-        await c.execute(Team.__table__.insert(),
-                        [dict(name="تیم مهاجرت", name_norm="تیم مهاجرت", owner_id=1, bank=77, created_at=dt0)])
-        await c.execute(Plot.__table__.insert(),
-                        [dict(user_id=1, level=2, status="growing", crop="jahannam",
-                              planted_at=dt0, ready_at=dt0, created_at=dt0)])
-        await c.execute(InventoryItem.__table__.insert(), [dict(user_id=1, item_key="tommy", level=3, bought_at=dt0)])
-        await c.execute(SeedStock.__table__.insert(), [dict(user_id=1, seed_key="jahannam", count=2)])
-        await c.execute(Dog.__table__.insert(),
-                        [dict(user_id=1, dog_key="pitbull", name="هکله", breed="پیتبول",
-                              level=4, xp=9, personality="جنگجو", feeds_today=1, feed_day="2026-07-27", created_at=dt0)])
-        await c.execute(TeamMember.__table__.insert(),
-                        [dict(team_id=1, user_id=1, role="owner", joined_at=dt0)])
-        await c.execute(TeamRequest.__table__.insert(), [dict(team_id=1, user_id=2, created_at=dt0)])
-        await c.execute(TeamDaily.__table__.insert(), [dict(team_id=1, day="2026-07-28", kills=5, harvests=9)])
-        await c.execute(GroupActivity.__table__.insert(),
-                        [dict(chat_id=-100999, last_active_at=dt0, last_caravan_at=dt0)])
-        await c.execute(GameMeta.__table__.insert(), [dict(key="weather_key", value="sunny")])
-        await c.execute(SeenUser.__table__.insert(),
-                        [dict(telegram_id=777003, username="mig3", first_name="سومی", updated_at=dt0)])
-        await c.execute(MessageOwner.__table__.insert(),
-                        [dict(chat_id=-100999, message_id=4242, owner_tg=777001, created_at=dt0)])
-    await se.dispose()
-
-    mig_logs: list[str] = []
-    rep1 = await m2p.migrate(mig_src_url, mig_dst_url, allow_any_target=True, log=mig_logs.append)
-    check("مهاجرت کامل روی هدف تستی سبز شد",
-          rep1["ok"] is True and len(rep1["tables"]) == 13,
-          next((l for l in mig_logs if "❌" in l), " | ".join(mig_logs[-3:])))
-    check("شمارش مبدا و مقصد همه ۱۳ جدول یکیه",
-          all(t["source"] == t["target"] and t["inserted"] >= 1 for t in rep1["tables"]),
-          str([(t["table"], t["source"], t["target"]) for t in rep1["tables"] if t["source"] != t["target"] or t["inserted"] < 1]))
-
-    de = _cae(mig_dst_url)
-    from sqlalchemy import select as _sel
-    async with de.connect() as c:
-        ru = (await c.execute(_sel(User.__table__).where(User.__table__.c.telegram_id == 777001))).mappings().one()
-        check("مقادیر کاربر بعد مهاجرت دست‌نخورده‌ان (پول، لول، تاریخ، None)",
-              ru["cash"] == 4321 and ru["level"] == 9 and ru["last_mine_at"] == dt0
-              and ru["fj_left_at"] == dt0 and ru["wood"] == 3 and ru["dead_until"] is None,
-              f"{ru['cash']} {ru['level']} {ru['last_mine_at']!r}")
-        rd = (await c.execute(_sel(Dog.__table__).where(Dog.__table__.c.user_id == 1))).mappings().one()
-        check("سگ با شخصیت و روز غذا کامل منتقل شده",
-              rd["name"] == "هکله" and rd["personality"] == "جنگجو" and rd["feed_day"] == "2026-07-27")
-        rtd = (await c.execute(_sel(TeamDaily.__table__).where(TeamDaily.__table__.c.team_id == 1))).mappings().one()
-        check("جدول با کلید اصلی ترکیبی سالم کپی شد",
-              rtd["day"] == "2026-07-28" and rtd["kills"] == 5 and rtd["harvests"] == 9)
-    await de.dispose()
-
-    logs2: list[str] = []
-    rep2 = await m2p.migrate(mig_src_url, mig_dst_url, allow_any_target=True, log=logs2.append)
-    check("اجرای دوم مهاجرت idempotent عه، هیچ ردیفی دوباره کپی نمیشه",
-          rep2["ok"] is True and sum(t["inserted"] for t in rep2["tables"]) == 0
-          and sum(t["skipped"] for t in rep2["tables"]) == 14,
-          f"inserted={sum(t['inserted'] for t in rep2['tables'])} skipped={sum(t['skipped'] for t in rep2['tables'])}")
-
-    de2 = _cae(mig_dst_url)
-    async with de2.begin() as c:
-        await c.execute(User.__table__.update().where(User.telegram_id == 777001).values(cash=1))
-    logs3: list[str] = []
-    rep3 = await m2p.migrate(mig_src_url, mig_dst_url, verify_only=True, allow_any_target=True, log=logs3.append)
-    check("راستی‌آزمایی اختلاف محتوا رو گیر میندازه",
-          rep3["ok"] is False and any("⚠️" in l and "cash" in l for l in logs3),
-          " | ".join(l for l in logs3 if "⚠️" in l)[:150])
-    async with de2.begin() as c:
-        await c.execute(User.__table__.update().where(User.telegram_id == 777001).values(cash=4321))
-    rep4 = await m2p.migrate(mig_src_url, mig_dst_url, verify_only=True, allow_any_target=True, log=lambda *a: None)
-    check("بعد برگشت مقدار، راستی‌آزمایی دوباره سبزه", rep4["ok"] is True)
-    await de2.dispose()
-
-    se2 = _cae(f"sqlite+aiosqlite:///{mig_src2}")
-    async with se2.begin() as c:
-        await c.exec_driver_sql(
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, telegram_id BIGINT, cash INTEGER, level INTEGER)")
-        await c.exec_driver_sql(
-            "INSERT INTO users (telegram_id, cash, level) VALUES (777004, 999, 4)")
-    await se2.dispose()
-    logs4: list[str] = []
-    rep5 = await m2p.migrate(f"sqlite+aiosqlite:///{mig_src2}", f"sqlite+aiosqlite:///{mig_dst2}",
-                             allow_any_target=True, log=logs4.append)
-    check("بک‌آپ خیلی قدیمی (ستون‌کم و جدول‌گم) هم مهاجرت می‌کنه",
-          rep5["ok"] is True and any("با مقدار پیش‌فرض" in l for l in logs4)
-          and any("تو مبدا نیس" in l for l in logs4),
-          " | ".join(logs4[:4])[:200])
-    de3 = _cae(f"sqlite+aiosqlite:///{mig_dst2}")
-    async with de3.connect() as c:
-        ro = (await c.execute(_sel(User.__table__).where(User.__table__.c.telegram_id == 777004))).mappings().one()
-        check("ستون‌های جدید تو مقصد با دیفالت مدل پر شدن",
-              ro["cash"] == 999 and ro["level"] == 4 and ro["energy"] == config.MAX_ENERGY
-              and ro["bank_level"] == 1 and ro["wood"] == 0 and ro["created_at"] is not None,
-              f"cash={ro['cash']} energy={ro['energy']} bank={ro['bank_level']}")
-        cnt = (await c.execute(_sel(db_mod.Base.metadata.tables["teams"]))).all()
-        check("جدول گم‌شده تو مبدا، مقصدش خالی و سالم مونده", len(cnt) == 0)
-    await de3.dispose()
-    for _p in (mig_src, mig_dst, mig_src2, mig_dst2):
-        for _sfx in ("", "-wal", "-journal"):
-            if os.path.exists(_p + _sfx):
-                os.remove(_p + _sfx)
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import User
-from services import combat
+from services import actionlog, combat
 from services import dogs as dog_svc
 from services import users as user_svc
 from utils import now_utc
@@ -116,6 +116,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
 
     attacker.energy -= config.PV_ATTACK_ENERGY_COST
     attacker.pv_attack_at = now_utc()
+    await actionlog.log(session, "pvattack")  # آمار حمله‌های پی‌وی پنل ادمین
 
     a_atk, _ = await powers(session, attacker)
     _, t_dfn = await powers(session, victim)

@@ -9,22 +9,6 @@ import os
 BOT_TOKEN = os.getenv("TERIAKY_TOKEN", "")
 
 
-def _normalize_db_url(url: str) -> str:
-    """
-    آدرس خام دیتابیس رو به فرم درایور async درست می‌رسونه
-    ریلوی پستگرس رو با postgres:// یا postgresql:// میده ولی ما با asyncpg وصل میشیم
-    sqlite ساده هم به نسخه aiosqlite تبدیل میشه، آدرس آماده دست‌نخورده برمی‌گرده
-    """
-    u = url.strip()
-    if u.startswith("postgres://"):
-        return "postgresql+asyncpg://" + u[len("postgres://"):]
-    if u.startswith("postgresql://"):
-        return "postgresql+asyncpg://" + u[len("postgresql://"):]
-    if u.startswith("sqlite:///"):
-        return "sqlite+aiosqlite:///" + u[len("sqlite:///"):]
-    return u
-
-
 def _default_db() -> str:
     """
     اولویت با TERIAKY_DB، اگه ست نشده باشه و ولوم ریلوی سوار باشه
@@ -33,7 +17,7 @@ def _default_db() -> str:
     """
     env = os.getenv("TERIAKY_DB")
     if env:
-        return _normalize_db_url(env)
+        return env
     vol = os.getenv("RAILWAY_VOLUME_MOUNT_PATH") or ("/data" if os.path.isdir("/data") else "")
     if vol:
         return f"sqlite+aiosqlite:///{vol.rstrip('/')}/teriaky.db"
@@ -604,6 +588,13 @@ FORCE_JOIN_CACHE_SECONDS = 30    # ستینگ گیت تو کش حافظه چند
 FORCE_JOIN_RECHECK_SECONDS = 900 # وضعیت عضوها هر ۱۵ دقیقه یه بار چک دوباره میشه، فقط موقع پیام خودشون
 FORCE_JOIN_WIPE_AFTER_HOURS = 48 # غیرعضوی که بیشتر از این لفت مونده اکانتش با جاب پاکسازی میشه
 FORCE_JOIN_WIPE_SCAN_SECONDS = 3600  # هر ساعت اسکن غیرعضوهای مهلت‌گذشته
+
+# ───────── لاگ رویداد برای آمار پنل ادمین 📊 ─────────
+ACTION_LOG_KEEP_HOURS = 48       # ردیف‌های قدیمی‌تر رویداد پاک میشن، جدول همیشه سبک
+ACTION_LOG_PRUNE_CHANCE = 0.10   # شانس پاکسازی موقع هر درج تا همیشه اسکن نشه
+PROC_SAMPLE_CAP = 20             # چند نمونه پردازش اخیر تو حافظه برای میانگین سرعت داخلی
+PROC_LIGHT_GOOD_MS = 500         # چراغ آمار: زیر این سبز 🟢
+PROC_LIGHT_WARN_MS = 1500        # بین این و قبلی زرد 🟡، بالاتر قرمز 🔴
 
 # ───────── رتبه‌بندی ─────────
 RANK_LIMIT = 10

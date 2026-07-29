@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 import config
@@ -60,7 +60,7 @@ class User(Base):
     last_casino_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # آخرین فعالیت — یورش پلیس فقط به فعال‌های ۲۴ ساعت اخیر میاد
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
     # اکشن معلق بعدی متن کاربر — «dogname» (اسم سگ بعد خرید) | «teamname» (اسم تیم)
     pending_action: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -95,7 +95,7 @@ class User(Base):
     # لحظه اولین تشخیص لفت — مبنای مهلت پاکسازی اکانت (برگشت عضویت NULLش می‌کنه)
     fj_left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
     plots: Mapped[list["Plot"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     items: Mapped[list["InventoryItem"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -117,7 +117,7 @@ class Plot(Base):
     # زمان تموم شدن ساخت زمین — NULL یعنی ساخته شده و قابل استفاده‌ست
     built_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    status: Mapped[str] = mapped_column(String(16), default="empty")  # empty / growing / ready
+    status: Mapped[str] = mapped_column(String(16), default="empty", index=True)  # empty / growing / ready
     crop: Mapped[str | None] = mapped_column(String(32), nullable=True)
     planted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ready_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -306,6 +306,20 @@ class SeenUser(Base):
     username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class ActionEvent(Base):
+    """
+    رویدادهای شمارشی برای آمار پنل ادمین — نبرد گروهی | حمله پی‌وی | کنده‌کاری | قمارخانه
+    ردیف‌های قدیمی‌تر از ACTION_LOG_KEEP_HOURS موقع درج بعدی پاک میشن تا جدول سبک بمونه
+    شمارش ۲۴ ساعت اخیر با COUNT روی ایندکس ترکیبی (action, at) مستقیم توی SQL حساب میشه
+    """
+    __tablename__ = "action_events"
+    __table_args__ = (Index("ix_action_events_action_at", "action", "at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action: Mapped[str] = mapped_column(String(16), index=True)  # battle / pvattack / mine / casino
+    at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
 
 class MessageOwner(Base):

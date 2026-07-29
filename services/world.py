@@ -388,6 +388,8 @@ async def casino_play(session: AsyncSession, user: User, bet: int) -> dict:
 
     user.cash -= bet
     user.last_casino_at = now_utc()
+    from services import actionlog
+    await actionlog.log(session, "casino")  # آمار دست‌های قمارخانه پنل ادمین
 
     if random.random() < config.CASINO_WIN_CHANCE:
         prize = int(bet * config.CASINO_WIN_MULT)

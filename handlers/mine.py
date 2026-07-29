@@ -95,6 +95,8 @@ async def _do_roll(update: Update) -> None:
             got_i = res_svc.add_res(user, "iron", loot["iron"])
             loot["wood"], loot["iron"] = got_w, got_i
             user.last_mine_at = now
+            from services import actionlog
+            await actionlog.log(s, "mine")  # آمار کنده‌کاری‌های پنل ادمین
             notes = users.add_xp(user, loot["xp"])
             from services import teams as team_svc
             notes += await team_svc.add_team_xp(s, user, loot["xp"])

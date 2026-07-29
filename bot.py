@@ -63,6 +63,10 @@ def main() -> None:
     )
     register_handlers(app)
 
+    # زمان پردازش هر آپدیت (پیام/کالبک) ثبت میشه، برای آمار فنی پنل ادمین
+    from handlers.common import proc_wrapper
+    app.process_update = proc_wrapper(app.process_update)
+
     from handlers import jobs
     jobs.register_jobs(app)
 

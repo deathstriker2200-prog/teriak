@@ -231,3 +231,70 @@ async def announce_notes(update: Update, notes: list[str] | None) -> None:
                 await update.effective_chat.send_message(note, parse_mode=ParseMode.HTML)
         except Exception:
             pass
+
+
+# ───────── نمونه‌های زمان پردازش داخلی ربات ⏱ ─────────
+# مثل _MESSAGE_OWNERS یه لیست کوتاه تو حافظه‌ست، هیچ کوئری‌ای نمی‌زنه
+# رَپر پردازش تکمیل‌شده هر دستور رو اینجا می‌ریزه تا آمار فنی پنل ادمین لایو بمونه
+
+_PROC_TIMES: list[float] = []  # ثانیه، حداکثر PROC_SAMPLE_CAP تا
+
+
+def note_proc_time(seconds: float, cap: int | None = None) -> None:
+    """ثبت یه نمونه پردازش، قدیمی‌تر از سقف (پیش‌فرض PROC_SAMPLE_CAP) پاک میشه"""
+    if cap is None:
+        try:
+            import config
+            cap = config.PROC_SAMPLE_CAP
+        except Exception:
+            cap = 20
+    _PROC_TIMES.append(float(seconds))
+    if len(_PROC_TIMES) > cap:
+        del _PROC_TIMES[0:len(_PROC_TIMES) - cap]
+
+
+def proc_avg_ms() -> tuple[float | None, int]:
+    """میانگین میلی‌ثانیه روی نمونه‌های موجود + چند نمونه داریم"""
+    if not _PROC_TIMES:
+        return None, 0
+    avg = sum(_PROC_TIMES) / len(_PROC_TIMES) * 1000.0
+    return avg, len(_PROC_TIMES)
+
+
+def proc_light(ms: float | None) -> str:
+    """🚦 نشانگر latency: سبز تند، زرد وسط، قرمز کند، نامعلوم خط‌تیره"""
+    if ms is None:
+        return "➖ نامعلوم"
+    import config
+    if ms < config.PROC_LIGHT_GOOD_MS:
+        return "🟢 تند"
+    if ms < config.PROC_LIGHT_WARN_MS:
+        return "🟡 وسط"
+    return "🔴 کند"
+
+
+class proc_timer:
+    """با with دور یه هندلر می‌پیچه و زمانشو ثبت می‌کنه (بدون کوئری)"""
+
+    def __init__(self) -> None:
+        self._t0 = time.monotonic()
+
+    def done(self) -> None:
+        note_proc_time(time.monotonic() - self._t0)
+
+
+def proc_wrapper(process_update):
+    """
+    رَپر Application.process_update
+    زمان کل پردازش هر آپدیت (پیام/کالبک) رو می‌گیره و میره توی لیست نمونه‌ها
+    """
+
+    async def _timed(update) -> None:
+        t0 = time.monotonic()
+        try:
+            await process_update(update)
+        finally:
+            if getattr(update, "message", None) is not None or getattr(update, "callback_query", None) is not None:
+                note_proc_time(time.monotonic() - t0)
+
+    return _timed

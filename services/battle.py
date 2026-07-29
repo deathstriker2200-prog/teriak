@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import User
-from services import combat
+from services import actionlog, combat
 from services import dogs as dog_svc
 from services import users as user_svc
 from utils import now_utc
@@ -222,6 +222,7 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     # هزینه تلاش برای حمله، حتی اگه دمیج نخوره
     attacker.energy -= config.ATTACK_ENERGY_COST
     attacker.last_attack_at = now_utc()
+    await actionlog.log(session, "battle")  # آمار نبردهای گروهی پنل ادمین
 
     atk, dfn, info = await battle_powers(session, attacker, target)
     hp_max = max_hp(target.level)
