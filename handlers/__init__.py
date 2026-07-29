@@ -52,6 +52,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("team_leave", rf"{TP}ترک{S}+تیم!?$", team.leave_confirm),
     ("team_disband", rf"{TP}انحلال{S}+تیم!?$", team.disband_confirm),
     ("team_bio", rf"{TP}تیم{S}+ست{S}+بیو{S}+(.+)$", team.set_bio_text),
+    ("team_rename", rf"{TP}تیم{S}+تغییر{S}+نام{S}+(.+)$", team.rename_text),
     ("team_req", rf"{TP}تیم{S}+درخواست{S}+(\S+)(?:{S}+(قبول|رد|اکسپت|ریجکت))?!?$", team.team_request_text),
     ("team_kick", rf"{TP}تیم{S}+کیک{S}+(.+)$", team.team_kick_text),
     ("team_admin", rf"{TP}تیم{S}+ادمین{S}+(.+)$", team.team_admin_text),
@@ -115,6 +116,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("backup", backup.backup_cmd))
     app.add_handler(CommandHandler("upload_backup", backup.upload_backup_cmd))
     app.add_handler(CommandHandler("user", admin.user_cmd))
+    app.add_handler(CommandHandler("hideboard", admin.hideboard_cmd))
     app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
     app.add_handler(CommandHandler("detp", admin.detp_cmd))

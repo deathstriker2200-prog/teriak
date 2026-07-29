@@ -102,10 +102,10 @@ async def weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        pcts, left = await world_svc.market_pcts(s)
+        mults, left = await world_svc.market_mults(s)
         await s.commit()
 
-    await respond(update, world_svc.market_view_text(pcts, left), kb.home_kb())
+    await respond(update, world_svc.market_view_text(mults, left), kb.home_kb())
 
 
 # ═════════ انبار و مخفیگاه 🏚 ═════════

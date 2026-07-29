@@ -354,12 +354,17 @@ async def buy_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         _, alert = await shop_svc.purchase(s, user, kind, key)
+        from services import onboarding as onb
+        chain = await onb.first_weapon(s, user, kind)  # راهنمای نبرد بعد خرید اولین سلاح
         await s.commit()
     # اسلحه برمی‌گرده به دسته خودش (سرد | گرم | ویژه)
     if kind == "weap" and key in config.WEAPONS:
         kind = f"w{config.WEAPONS[key].get('sec', 'cold')}"
     # توجه: CallbackQuery تلگرام قابل تغییر نیس، به جای دست‌کاری data بخش رو مستقیم رندر می‌کنیم
     await render_section(update, kind, alert=alert)
+    # زنجیره آنبوردینگ پیام جدا میاد تا فاکتور خرید شلوغ نشه
+    from handlers.common import announce_notes
+    await announce_notes(update, [chain] if chain else [])
 
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────

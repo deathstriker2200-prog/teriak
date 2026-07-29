@@ -11,6 +11,13 @@ from services import users
 from utils import esc, fa_num
 
 _MEDALS = ["🥇", "🥈", "🥉"]
+# نشان رتبه: سه تای اول مدال، بعدیشون عدد کی‌کپ
+_RANK_BADGES = {1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣", 6: "6️⃣", 7: "7️⃣", 8: "8️⃣", 9: "9️⃣", 10: "🔟"}
+
+
+def _rank_badge(i: int) -> str:
+    return _RANK_BADGES.get(i, f"▫️ {fa_num(i)}")
+
 
 TAB_TITLES = {"day": "📅 روزانه", "week": "🗓 هفتگی", "all": "🌍 کلی"}
 TAB_ORDER = ["day", "week", "all"]
@@ -28,23 +35,32 @@ async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str |
         top = await users.top_by_medals(s, tab, config.RANK_LIMIT)
         my_rank = await users.medal_rank(s, me, tab)
         my_medals = users.medal_value(me, tab)
-        total = (await s.execute(_select(_func.count(_User.id)))).scalar_one()
+        # نامرئی‌ها نه تو لیستن نه تو جمع کل
+        total = (await s.execute(
+            _select(_func.count(_User.id)).where(_User.lb_hidden == 0)
+        )).scalar_one()
 
         lines: list[str] = []
         for i, u in enumerate(top, 1):
-            medal = _MEDALS[i - 1] if i <= 3 else f"▫️ {fa_num(i)}"
+            badge = _rank_badge(i)
             name = esc(users.display_name(u))
             me_mark = " 👈 تو" if u.id == me.id else ""
-            lines.append(f"{medal} {name} | 🎖️ {fa_num(users.medal_value(u, tab))}{me_mark}")
+            lines.append(f"{badge} [Lv.{u.level:02d}] │ {name} 🎖️ {fa_num(users.medal_value(u, tab))}{me_mark}")
 
         if not lines:
             lines.append("هنوز کسی مدالی نگرفته 🤷")
 
+        if getattr(me, "lb_hidden", 0):
+            footer = "👻 تو نامرئی هستی و تو لیدربرد دیده نمیشی"
+        else:
+            footer = f"رتبه‌ات: {fa_num(my_rank)} از {fa_num(total)} (🎖️ {fa_num(my_medals)})"
+
         text = (
-            f"<b>🏆 لیدربرد {TAB_TITLES[tab]}</b>\n\n"
+            f"<b>🏆 لیدربرد بازیکنا</b>\n{TAB_TITLES[tab]}\n\n"
             + "\n".join(lines)
-            + f"\n\nرتبه‌ات توی جدول: {fa_num(my_rank)} از {fa_num(total)} با (🎖️{fa_num(my_medals)})\n"
-            + "مدال‌هاتون از روی تجربه‌اتون حساب میشه"
+            + "\n\n━━━━━━━━━━━━━━━━\n"
+            + footer + "\n"
+            + "🎖️ مدال‌ها از تجربه‌ای که می‌گیری جمع میشن"
         )
         await s.commit()
 

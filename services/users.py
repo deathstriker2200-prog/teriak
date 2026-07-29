@@ -231,16 +231,17 @@ def _medal_expr(tab: str):
 
 
 async def top_by_medals(session: AsyncSession, tab: str, limit: int) -> list[User]:
-    """تاپ کاربرا بر اساس مدال موثر تب"""
-    q = select(User).order_by(_medal_expr(tab).desc(), User.medals.desc(), User.id).limit(limit)
+    """تاپ کاربرا بر اساس مدال موثر تب، نامرئی‌های لیدربرد (ادمین) تو لیست نمیان"""
+    q = (select(User).where(User.lb_hidden == 0)
+         .order_by(_medal_expr(tab).desc(), User.medals.desc(), User.id).limit(limit))
     return list((await session.execute(q)).scalars())
 
 
 async def medal_rank(session: AsyncSession, user: User, tab: str) -> int:
-    """رتبه کاربر تو تب مدالی، بر اساس مقدار موثر"""
+    """رتبه کاربر تو تب مدالی، بر اساس مقدار موثر؛ نامرئی‌ها تو شمارش رتبه حساب نمیشن"""
     mine = medal_value(user, tab)
     higher = (await session.execute(
-        select(func.count(User.id)).where(_medal_expr(tab) > mine)
+        select(func.count(User.id)).where(_medal_expr(tab) > mine, User.lb_hidden == 0)
     )).scalar_one()
     return higher + 1
 

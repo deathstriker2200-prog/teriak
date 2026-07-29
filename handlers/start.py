@@ -31,20 +31,14 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # ── /start تو پیوی ──
     if created:
+        # خوش‌آمد تازه‌کار فقط یه قدم مشخص میده، بقیه آموزش‌ها تو بخش راهنما می‌مونه
         text = (
-            f"<b>🔥 سلام {name} به تریاکی خوش اومدی</b>\n\n"
-            "اینجا یه محله‌ست و تو می‌خوای پادشاهش بشی\n"
+            f"<b>🔥 سلام {name}، به بازی تریاکی خوش اومدی</b>\n\n"
             f"با {money(config.START_CASH)} سرمایه شروع می‌کنی\n\n"
-            "برخی از قابلیت ها:\n"
-            "🌱 زمین بخری، بذر بخری و...همم تریاک بکاری\n"
-            "🔧 کنده کاری کنی بنویس «کنده کاری»\n"
-            "📦 هر 2 دقیقه می‌تونی برداشت کنی\n"
-            "🐕 سگ بگیر که باهات بجنگه\n"
-            "🛒 سلاح و زره بگیر که قوی بشی\n"
-            "⚔️ تو گروه ریپلای بزن رو هرکی که میخوای و بنویس «حمله» و جیبش رو خالی کن\n\n"
-            "دستورها همه با «تریاکی» یا به طور خلاصه‌تر «تی» شروع میشن، مثلا «تریاکی شاپ»\n"
-            "📗 بقیه دستورات و کارایی ربات رو از بخش آموزشات میتونید بررسی کنید\n\n"
-            "از منوی زیر شروع کن 👇"
+            "اولین قدم خیلی ساده‌ست\n"
+            "⛏ روی «کنده کاری» بزن تا اولین تی‌پوینت و جایزه شروع بازی رو بگیری\n\n"
+            "بعدش قدم به قدم خود بازی راهنماییت می‌کنه\n"
+            "📖 آموزشات کامل هم همیشه تو بخش راهنماست"
         )
     else:
         text = (
@@ -52,16 +46,29 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "محله بی تو حال نمی‌داد\n"
             "فقط بگو کجا می‌خوای بری 👇"
         )
+        card = await _mission_card(update)
+        if card:
+            text = card + "\n\n" + text
 
     await update.message.reply_html(text, reply_markup=kb.main_menu_kb())
 
 
+async def _mission_card(update: Update) -> str | None:
+    """کارت مأموریت شروع تازه‌کارها، فقط تا لول MISSION_GUIDE_MAX_LEVEL بالای منو میاد"""
+    from services import onboarding as onb
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        card = await onb.menu_card(s, user)
+        await s.commit()
+    return card
+
+
 async def menu_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await respond(
-        update,
-        "<b>🏠 منوی اصلی</b>\n\nکجا می‌خوای بری؟",
-        kb.main_menu_kb(),
-    )
+    text = "<b>🏠 منوی اصلی</b>\n\nکجا می‌خوای بری؟"
+    card = await _mission_card(update)
+    if card:
+        text = card + "\n\n" + text
+    await respond(update, text, kb.main_menu_kb())
 
 
 async def cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -226,8 +233,9 @@ HELP_SECTIONS: dict[str, str] = {
         "🔍 جستجو، هر 10 دقیقه یه بار با «تریاکی جستجو» می‌تونی بگردی؛ ممکنه پول،\n"
         "بذر معمولی یا کمیاب، حتی بذر جهنم و ابلیس (نادرترین‌ها) پیدا کنی، ولی\n"
         "شانس کمی هم هست یه دزد بخشی از پولت رو بزنه\n\n"
-        "📈 بازار سیاه، هر 4 ساعت قیمت فروش محصولات عوض میشه، گاهی سود می‌سازه\n"
-        "گاهی ضرر؛ قبل فروش محصول یه نگاه به وضعیت بازار بنداز\n\n"
+        "📈 بازار سیاه، قیمت فروش هر محصول دست خود بازیکناس؛ هر فروشی رو قیمتش اثر می‌ذاره\n"
+        "کمیاب بشه گرون‌تر و اشباع بشه ارزون‌تر میشه، قیمت‌ها هر 4 ساعت یه حرکت کوچیک دارن\n"
+        "همه محصولات از روز اول با قیمتشون دیده میشن و قبل فروش بهتره یه نگاه به وضعیت بازار بندازی\n\n"
         "🌦 آب‌وهوا، هر 2 ساعت عوض میشه؛ بیشتر وقتا عادیه ولی گاهی یکی از این‌ها میاد:\n"
         "🌧 باران، رشد گیاه سریع‌تر | ☀️ گرمای شدید، رشد کندتر\n"
         "❄️ سرمای شدید، رشد کندتر | 🌫 مه، دفاع همه بیشتر\n"

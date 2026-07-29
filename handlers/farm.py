@@ -163,6 +163,7 @@ async def plant_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _, _, plot_id, seed_key = parts(update)
     dq_done, dq_left, uname = [], 0, ""
+    chain = None
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         plot = await farming.get_plot(s, user.id, int(plot_id))
@@ -174,8 +175,12 @@ async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 from services import quests as dq_svc
                 dq_done, dq_left = await dq_svc.track(s, user, "plant")
                 uname = users.display_name(user)
+                from services import onboarding as onb
+                chain = await onb.first_plant(s, user)  # جایزه و راهنمای اولین کاشت
         await s.commit()
     await render_farm(update, alert=alert)
+    from handlers.common import announce_notes
+    await announce_notes(update, [chain] if chain else [])
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
@@ -209,6 +214,10 @@ async def harvest_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if ok:
             dq_done, dq_left = dq
             uname = users.display_name(user)
+            from services import onboarding as onb
+            chain = await onb.first_harvest(s, user)  # جایزه و راهنمای اولین برداشت
+            if chain:
+                notes.insert(0, chain)
         await s.commit()
     await render_farm(update, extra=extra, alert=alert)
     # لول‌آپ به‌صورت پیام جدا میاد

@@ -80,7 +80,7 @@ async def main() -> None:
         lgu.level = 20
         await world_svc._meta_set(s, "weather_key", "normal")
         await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
-        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in world_svc.normal_seed_keys()))
+        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in config.SEEDS))
         await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
         lgp = (await farming.get_user_plots(s, lgu.id))[0]
         lgp.status, lgp.crop = "growing", "jahannam"
@@ -255,7 +255,7 @@ async def main() -> None:
         # جهان رو قطعی کن: هوای عادی + بازار ثابت → فقط کیفیت ⭐ (1 تا 3 برابر) اثر داره
         await world_svc._meta_set(s, "weather_key", "normal")
         await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
-        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in world_svc.normal_seed_keys()))
+        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in config.SEEDS))
         await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
 
         plot.ready_at = now_utc() - timedelta(seconds=1)
@@ -588,7 +588,7 @@ async def main() -> None:
 
     upd = _text_update("کنده کاری")
     await mine_h.mine_cmd(upd, None)
-    mine_text = upd.message.calls[-1][1]
+    mine_text = next(c[1] for c in upd.message.calls if "⛏ کنده‌کاری" in c[1])
     check("متن کنده‌کاری قالب دقیق جدید داره",
           all(x in mine_text for x in ["⛏ کنده‌کاری", "تی‌پوینت به دست آوردی", "تجربه گرفتی", "🪙 موجودی:",
                                        "خستت شده نیاز به 30ثانیه استراحت داری برای کنده کاری بعدی"]),
@@ -1900,11 +1900,13 @@ async def main() -> None:
             check(f"خرید {leg} از شاپ رد میشه", not ok and "افسانه‌ای" in msg, msg)
         await s.commit()
 
-    check("بذرهای عادی بازار = همون ۵ تای اول",
-          world_svc.normal_seed_keys() == ["marijuana", "gharch", "peyote", "teriak", "cocaine"])
-    check("مولت بازار برای افسانه‌ای‌ها همیشه ۱ه",
-          world_svc.market_mult({"jahannam": 120}, "jahannam") == 1.0
-          and world_svc.market_mult({"eblis": -40}, "eblis") == 1.0)
+    check("مولت بازار همون ضریب ذخیره‌شده‌ست و افسانه‌ای‌ها هم مولت خودشون رو دارن",
+          world_svc.market_mult({"jahannam": 1.2}, "jahannam") == 1.2
+          and world_svc.market_mult({"eblis": 0.8}, "eblis") == 0.8
+          and world_svc.market_mult({}, "marijuana") == 1.0)
+    check("ترجمه دیتای قدیمی درصدی بازار به ضریب جدید",
+          abs(world_svc._parse_market("marijuana:-20,gharch:10")["marijuana"] - 0.8) < 1e-9
+          and abs(world_svc._parse_market("marijuana:-20,gharch:10")["gharch"] - 1.1) < 1e-9)
 
     # ── جستجو 🔍 ──
     check("جمع شانس‌های جستجو ۱ه",
@@ -2069,15 +2071,17 @@ async def main() -> None:
         await world_svc._meta_set(s, "market_until", "2000-01-01T00:00:00")
         rolled = await world_svc.ensure_market(s)
         check("بازار منقضی ری‌رول شد", rolled)
-        pcts, left = await world_svc.market_pcts(s)
-        check("همه بذرهای عادی تو بازارن", set(pcts) == set(world_svc.normal_seed_keys()), str(pcts))
-        check("درصدهای بازار تو بازه کانفیگ (−30 تا +50)",
-              all(config.MARKET_MIN_PCT <= p <= config.MARKET_MAX_PCT for p in pcts.values()))
-        check("افسانه‌ای‌ها تو بازار نیستن", "jahannam" not in pcts and "eblis" not in pcts)
-        m = world_svc.market_mult(pcts, "marijuana")
-        check("مولت بازار از رو درصد حساب میشه", abs(m - (1 + pcts["marijuana"] / 100)) < 1e-9)
+        mults, left = await world_svc.market_mults(s)
+        check("همه محصولات از روز اول تو بازارن، حتی افسانه‌ای و قفل‌لولی‌ها",
+              set(mults) == set(config.SEEDS), str(sorted(mults)))
+        check("ضریب‌ها تو بازه کف و سقف کانفیگن (۰.۷۵ تا ۱.۲۵)",
+              all(config.MARKET_MIN_PRICE_MULTIPLIER <= m <= config.MARKET_MAX_PRICE_MULTIPLIER for m in mults.values()))
+        check("افسانه‌ای‌ها هم مولت بازار می‌گیرن", "jahannam" in mults and "eblis" in mults)
+        m = world_svc.market_mult(mults, "marijuana")
+        check("مولت بازار همون ضریب ذخیره‌شده برمی‌گرده",
+              abs(m - mults["marijuana"]) < 1e-9, f"{m} vs {mults['marijuana']}")
         # برای ثبات تست‌های بعدی: بازار صفر و هوا عادی
-        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in world_svc.normal_seed_keys()))
+        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in config.SEEDS))
         await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
         await world_svc._meta_set(s, "weather_key", "normal")
         await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
@@ -2911,39 +2915,46 @@ async def main() -> None:
 
     # ═══ آپدیت جدید: بازار 50/50 | متن جدید بازار | قفل کاشت | هلپ دکمه‌دار | /user /addtp /addxp | خوش‌آمد گروه ═══
 
-    # ── توزیع درصد بازار: 50/50 سود-ضرر و اغلب تو بازه کم‌نوسان ──
+    # ── مکانیک بازار پویا: کمیابی گرون‌تر، اشباع ارزون‌تر، حرکت کوچیک و کلمپ ──
     random.seed(21)
-    rolls = [world_svc.market_pct_roll() for _ in range(4000)]
-    check("درصد بازار بین 30%− تا 50%+",
-          min(rolls) >= -30 and max(rolls) <= 50, f"{min(rolls)}..{max(rolls)}")
-    ups = [r for r in rolls if r > 0]
-    downs = [r for r in rolls if r < 0]
-    check("سود و ضرر 50/50", 0.42 < len(ups) / max(1, len(downs) + len(ups)) < 0.58,
-          f"+:{len(ups)} −:{len(downs)}")
-    common = sum(1 for r in rolls if (0 <= r <= 20) or (-10 <= r <= 0)) / len(rolls)
-    check("اغلب‌ها (70%+) تو بازه سود ≤20 و ضرر ≤10", common > 0.70, f"{common:.1%}")
-    check("تنظیمات بازار جدید",
-          config.MARKET_MIN_PCT == -30 and config.MARKET_MAX_PCT == 50
-          and config.MARKET_UP_COMMON == 20 and config.MARKET_DOWN_COMMON == 10)
+    _hi = (1 + config.MARKET_MAX_STEP_CHANGE) * (1 + config.MARKET_RANDOM_NOISE)
+    _lo = (1 - config.MARKET_MAX_STEP_CHANGE) * (1 - config.MARKET_RANDOM_NOISE)
+    check("کمیابی (عرضه زیر تقاضا) قیمت رو می‌بره بالا اما نه بیشتر از حداکثر حرکت و نویز",
+          all(1.0 < world_svc._next_market_mult(1.0, 0, 10.0) <= _hi + 1e-9
+              for _ in range(200)))
+    check("اشباع (عرضه بالای تقاضا) قیمت رو میاره پایین",
+          all(_lo - 1e-9 <= world_svc._next_market_mult(1.0, 50, 10.0) < 1.0
+              for _ in range(200)))
+    check("تعادل عرضه و تقاضا قیمت رو تکون نمیده جز نویز ریز",
+          all(abs(world_svc._next_market_mult(1.0, 10, 10.0) - 1.0) <= config.MARKET_RANDOM_NOISE + 1e-9
+              for _ in range(200)))
+    check("سقف و کف قیمت کلمپ میشه",
+          world_svc._next_market_mult(1.249, 0, 10.0) <= config.MARKET_MAX_PRICE_MULTIPLIER
+          and world_svc._next_market_mult(0.751, 999, 10.0) >= config.MARKET_MIN_PRICE_MULTIPLIER
+          and all(config.MARKET_MIN_PRICE_MULTIPLIER <= world_svc._next_market_mult(1.25, 0, 0.1) <= 1.25 for _ in range(50)))
+    check("کانفیگ بازار پویا",
+          config.MARKET_MAX_PRICE_MULTIPLIER == 1.25 and config.MARKET_MIN_PRICE_MULTIPLIER == 0.75
+          and config.MARKET_MAX_STEP_CHANGE == 0.03 and config.MARKET_RANDOM_NOISE == 0.01
+          and config.MARKET_DEMAND_PER_ACTIVE_PLAYER > 0)
 
-    # ── متن وضعیت بازار، هر محصول چهار خطی با درصد و تی‌پوینت کامل ──
+    # ── متن وضعیت بازار پویا، همه محصولات با روند و قیمت کامل ──
     mtxt = world_svc.market_view_text(
-        {"marijuana": 46, "gharch": -12, "peyote": 9, "teriak": 34, "cocaine": -30}, 14340)
-    check("متن بازار هدر و راهنمای 🟢🔴 رو داره",
+        {"marijuana": 1.0862, "gharch": 0.912, "peyote": 1.0, "teriak": 1.1, "cocaine": 0.8,
+         "jahannam": 1.2, "eblis": 0.75}, 14340)
+    check("متن بازار هدر و توضیح عرضه و تقاضا رو داره",
           "<b>📈 وضعیت بازار سیاه</b>" in mtxt
-          and "قیمت فروش محصولات با توجه به بازار تغییر می‌کنه" in mtxt
-          and "🟢 یعنی الان قیمت فروش از حالت عادی بیشتره" in mtxt
-          and "🔴 یعنی الان قیمت فروش از حالت عادی کمتره" in mtxt
-          and "درصد کنار هر محصول مقدار افزایش یا کاهش قیمت رو نشون میده" in mtxt)
-    check("محصول چهار خطی با درصد و قیمت فروش و پایه کامل",
-          "🌿 ماری‌جوانا\n🟢 +46%\n💰 قیمت فروش: 438 تی‌پوینت\n📦 قیمت پایه: 300 تی‌پوینت" in mtxt,
-          mtxt.replace("\n", " | ")[:130])
-    check("محصول افت کرده 🔴 با علامت منفی می‌گیره",
-          "🍄 قارچ\n🔴 -12%\n💰 قیمت فروش: 704 تی‌پوینت\n📦 قیمت پایه: 800 تی‌پوینت" in mtxt)
-    check("تایمر تغییر بعدی بازار دو خطی",
-          "⏳ تغییر بعدی بازار\n3 ساعت و 59 دقیقه دیگه" in mtxt)
-    check("درصد صفر ⚪ می‌گیره نه 🟢 و نه 🔴",
-          "⚪ 0%" in world_svc.market_view_text({"marijuana": 0}, 60))
+          and "هر فروشی رو قیمتش اثر می‌ذاره" in mtxt
+          and "کمیاب بشه گرون‌تر میشه، اشباع بشه ارزون‌تر" in mtxt)
+    check("محصول گرون‌شده با 📈 و قیمت جدید میاد",
+          "📈 +8.6%" in mtxt and "💰 قیمت فروش الان: 325 تی‌پوینت" in mtxt,
+          mtxt.replace("\n", " | ")[:170])
+    check("محصول ارزون‌شده با 📉 و قیمت پایه کامل میاد",
+          "📉 -8.8%" in mtxt and "📦 قیمت پایه: 800 تی‌پوینت" in mtxt)
+    check("محصول سرِ پایه ⚖️ می‌گیره", "⚖️ +0.0%" in mtxt or "⚖️ 0.0%" in mtxt)
+    check("افسانه‌ای‌ها هم تو نمای بازار دیده میشن",
+          "جهنم" in mtxt and "ابلیس" in mtxt)
+    check("تایمر حرکت بعدی بازار دو خطی",
+          "⏳ حرکت بعدی بازار\n3 ساعت و 59 دقیقه دیگه" in mtxt)
 
     # ── کاشت آزاد تو هر لول: هر بذری که داری رو می‌تونی بکاری، قفل لول فقط روی خرید از شاپه ──
     async with session_scope() as s:
@@ -2968,7 +2979,7 @@ async def main() -> None:
         await s.commit()
     upd = _text_update("تریاکی کاشت جهنم", uid=8815, uname="anylvl", fname="آزاد")
     await textcmd_h2.plant_text(upd, None)
-    ptxt = upd.message.calls[-1][1]
+    ptxt = next(c[1] for c in upd.message.calls if "<b>🌱 کاشت</b>" in c[1])
     check("هندلر کاشت متنی بذر جهنم رو تو لول 1 می‌کاره",
           "<b>🌱 کاشت</b>" in ptxt and "کاشته شد" in ptxt and "قابل دسترسه" not in ptxt,
           ptxt[:120])
@@ -3451,13 +3462,16 @@ async def main() -> None:
             check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره یا بدون‌پیشوند مجازه",
                   snip.startswith(("تریاکی", "تیم", "ساخت تیم", "جوین تیم")) or snip in BARE_OK, snip)
 
-    # ── متن استارت پیوی دستورها رو با تریاکی یاد میده ──
-    upd = _text_update("/start", uid=8814, uname="nwb", fname="تازه")
+    # ── متن استارت پیوی بازطراحی‌شده: فقط یه قدم مشخص + ارجاع به راهنما ──
+    upd = _text_update("/start", uid=7313, uname="nwb", fname="تازه")
     await start_h2.start_cmd(upd, None)
     stx = upd.message.calls[-1][1]
-    check("استارت پیوی دستورهای تریاکی‌دار رو یاد میده",
-          "«حمله»" in stx and "«کنده کاری»" in stx and "«تریاکی شاپ»" in stx
-          and "به طور خلاصه‌تر «تی»" in stx and "آموزشات" in stx, stx[:200])
+    check("استارت پیوی جدید فقط اولین قدم رو می‌گه و بقیه رو می‌فرسته به راهنما",
+          "به بازی تریاکی خوش اومدی" in stx and "⛏ روی «کنده کاری» بزن" in stx
+          and "جایزه شروع بازی" in stx and "خود بازی راهنماییت می‌کنه" in stx
+          and "آموزشات" in stx, stx[:200])
+    check("دیگه لیست همه قابلیت‌ها تو خوش‌آمد نیس",
+          "قابلیت" not in stx and "پادشاه" not in stx)
 
     # ── متن‌های راهنما داخل صفحه‌ها هم پیشوند گرفتن ──
     from handlers import bank as bank_h2, battle as battle_h2
@@ -4614,10 +4628,11 @@ async def main() -> None:
     # ── هندلر کنده‌کاری: رول با منابع + صفحه بخش ──
     upd_m = _text_update("کنده کاری", uid=9602, uname="miner2", fname="ماینر۲")
     await mine_h2.mine_cmd(upd_m, None)
-    mt = upd_m.message.calls[-1][1]
+    mt = next(c[1] for c in upd_m.message.calls if "⛏ کنده‌کاری" in c[1])
     check("متن کنده‌کاری با قالب جدید و منابعه",
           all(x in mt for x in ["⛏ کنده‌کاری", "تی‌پوینت به دست آوردی", "تجربه گرفتی", "🪙 موجودی:"])
-          and len(upd_m.message.calls[-1][2].get("reply_markup").inline_keyboard) >= 3, mt.replace("\n", "|")[:100])
+          and len(next(c[2].get("reply_markup") for c in upd_m.message.calls if "⛏ کنده‌کاری" in c[1]).inline_keyboard) >= 3,
+          mt.replace("\n", "|")[:100])
     upd_m2 = _fake_update("menu:mine", uid=9602)
     await mine_h2.mine_home_cb(upd_m2, None)
     mt2 = next((c[1] for c in upd_m2.callback_query.calls if c[0] == "edit"), "")
@@ -5178,13 +5193,15 @@ async def main() -> None:
     upd_gm.effective_chat = SimpleNamespace(id=-100888, type="supergroup")
     await mine_h.mine_cmd(upd_gm, None)
     check("کنده کاری تو گروه فقط پیام نتیجه‌ست و کیبورد نداره",
-          upd_gm.message.calls[-1][2].get("reply_markup") is None, str(upd_gm.message.calls[-1][2]))
+          upd_gm.message.calls and all(c[2].get("reply_markup") is None for c in upd_gm.message.calls),
+          str(upd_gm.message.calls[-1][2]))
     check("گزارش گروهی هم درآمد رو نشون میده",
-          "تی‌پوینت به دست آوردی" in upd_gm.message.calls[-1][1], upd_gm.message.calls[-1][1][:80])
+          any("تی‌پوینت به دست آوردی" in c[1] for c in upd_gm.message.calls),
+          str([c[1][:60] for c in upd_gm.message.calls]))
     upd_pv = _text_update("کنده کاری", uid=9659, uname="pvminer", fname="ماینرپی‌وی")
     await mine_h.mine_cmd(upd_pv, None)
     check("کنده کاری تو پی‌وی کیبورد داره",
-          upd_pv.message.calls[-1][2].get("reply_markup") is not None)
+          any(c[2].get("reply_markup") is not None for c in upd_pv.message.calls))
     upd_mu = _text_update("تی آپگرید کنده کاری", uid=9659, uname="pvminer", fname="ماینرپی‌وی")
     await mine_h.mine_tools_cb(upd_mu, None)
     check("«تی آپگرید کنده کاری» صفحه اصلی کنده‌کاری با هزینه ارتقای ابزار رو میاره",
@@ -5367,12 +5384,12 @@ async def main() -> None:
     await rank_h2.rank_cb(upd_rk, None)
     ed_rk = next((c for c in upd_rk.callback_query.calls if c[0] == "edit"), None)
     check("پیش‌فرض لیدربرد تب هفتگیه",
-          ed_rk is not None and "<b>🏆 لیدربرد 🗓 هفتگی</b>" in ed_rk[1],
+          ed_rk is not None and "<b>🏆 لیدربرد بازیکنا</b>" in ed_rk[1] and "🗓 هفتگی" in ed_rk[1],
           ed_rk[1][:90] if ed_rk else "-")
-    check("لیدربرد مدال‌محوره و رتبه کاربر رو هم میگه",
-          ed_rk is not None and "🎖️" in ed_rk[1] and "رتبه‌ات توی جدول:" in ed_rk[1]
-          and "از" in ed_rk[1] and "با (🎖️" in ed_rk[1]
-          and "مدال‌هاتون از روی تجربه‌اتون حساب میشه" in ed_rk[1],
+    check("لیدربرد قالب جدید: لول و رتبه و توضیح مدال",
+          ed_rk is not None and "[Lv." in ed_rk[1] and "│" in ed_rk[1] and "🎖️" in ed_rk[1]
+          and "رتبه‌ات:" in ed_rk[1] and "از" in ed_rk[1] and "(🎖️" in ed_rk[1]
+          and "مدال‌ها از تجربه‌ای که می‌گیری جمع میشن" in ed_rk[1],
           ed_rk[1][-140:] if ed_rk else "-")
     mk_rk = ed_rk[2].get("reply_markup") if ed_rk else None
     row_rk = [(b.text, b.callback_data) for b in mk_rk.inline_keyboard[0]] if mk_rk else []
@@ -5385,7 +5402,7 @@ async def main() -> None:
     await rank_h2.rank_tab_cb(upd_rk2, None)
     ed_rk2 = next((c for c in upd_rk2.callback_query.calls if c[0] == "edit"), None)
     check("سوئیچ به تب روزانه لیدربرد",
-          ed_rk2 is not None and "<b>🏆 لیدربرد 📅 روزانه</b>" in ed_rk2[1])
+          ed_rk2 is not None and "<b>🏆 لیدربرد بازیکنا</b>" in ed_rk2[1] and "📅 روزانه" in ed_rk2[1])
     upd_rk3 = _fake_update("rank:tab:week:week", uid=1001)
     await rank_h2.rank_tab_cb(upd_rk3, None)
     check("زدن رو دکمه تب فعلی لیدربرد هیچ واکنشی نداره",
@@ -5398,8 +5415,12 @@ async def main() -> None:
     await team_h.top_teams_text(upd_tt, None)
     ed_tt = next((c for c in upd_tt.callback_query.calls if c[0] == "edit"), None)
     check("لیدربرد تیم پیش‌فرض هفتگیه و با مدال رتبه‌بندی میشه",
-          ed_tt is not None and "🏆 لیدربرد تیم‌ها 📅 هفتگی" in ed_tt[1] and "🎖️" in ed_tt[1],
+          ed_tt is not None and "<b>🏆 لیدربرد تیم‌ها</b>" in ed_tt[1] and "📅 هفتگی" in ed_tt[1] and "🎖️" in ed_tt[1],
           ed_tt[1][:110] if ed_tt else "-")
+    check("قالب جدید لیدربرد تیم: [Lv.] با جداکننده و فوتر توضیح",
+          ed_tt is not None and "🎖️ مجموع مدال‌های اعضای تیم" in ed_tt[1]
+          and "💬 تیم [نام تیم]" in ed_tt[1] and "━━━━━━━━━━━━━━━━" in ed_tt[1],
+          ed_tt[1][-160:] if ed_tt else "-")
     mk_tt = ed_tt[2].get("reply_markup") if ed_tt else None
     row_tt = [(b.text, b.callback_data) for b in mk_tt.inline_keyboard[0]] if mk_tt else []
     check("سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو لیدربرد تیم",
@@ -5411,13 +5432,242 @@ async def main() -> None:
     await team_h.top_teams_tab_cb(upd_tt2, None)
     ed_tt2 = next((c for c in upd_tt2.callback_query.calls if c[0] == "edit"), None)
     check("سوئیچ به تب روزانه لیدربرد تیم",
-          ed_tt2 is not None and "🏆 لیدربرد تیم‌ها ☀️ روزانه" in ed_tt2[1])
+          ed_tt2 is not None and "🏆 لیدربرد تیم‌ها" in ed_tt2[1] and "☀️ روزانه" in ed_tt2[1])
     upd_tt3 = _fake_update("ttop:tab:week:week", uid=1001)
     await team_h.top_teams_tab_cb(upd_tt3, None)
     check("زدن رو دکمه تب فعلی لیدربرد تیم هیچ واکنشی نداره",
           not any(c[0] == "edit" for c in upd_tt3.callback_query.calls)
           and any(c[0] == "answer" for c in upd_tt3.callback_query.calls),
           str(upd_tt3.callback_query.calls))
+
+    # ═══ آنبوردینگ 🎯 + بازار پویا 📈 + تیم تغییر نام ✏️ + نامرئی لیدربرد 👻 + فیکس «تی برداشت» ═══
+    import re as _reon
+
+    from models import InventoryItem, SeedSale, TeamMember
+    from services import onboarding as onb
+
+    # ── زنجیره اولین‌ها: جایزه + راهنما، فقط یه بار ──
+    async with session_scope() as s:
+        ob, _ = await users.get_or_create(s, tg(7317, "onb", "تازه‌کار"))
+        cash_ob0 = ob.cash
+        t1 = await onb.first_mine(s, ob)
+        check("اولین کنده‌کاری جایزه مشروطه و زنجیره قدم بعد رو داره",
+              t1 is not None and ob.cash - cash_ob0 == config.FIRST_MINE_BONUS
+              and "جایزه اولین کنده‌کاری" in t1 and "🎯 قدم بعد" in t1, str(t1)[:90])
+        check("جایزه اولین کنده‌کاری فقط یه باره",
+              await onb.first_mine(s, ob) is None and ob.first_mine_at is not None)
+        t2 = await onb.first_plant(s, ob)
+        t3 = await onb.first_harvest(s, ob)
+        check("اولین کاشت و برداشت هم جایزه و زنجیره دارن",
+              t2 is not None and "جایزه اولین کاشت" in t2
+              and t3 is not None and "جایزه اولین برداشت" in t3
+              and ob.first_plant_at is not None and ob.first_harvest_at is not None)
+        check("تکرار کاشت و برداشت جایزه نمیده",
+              await onb.first_plant(s, ob) is None and await onb.first_harvest(s, ob) is None)
+
+        # اولین سلاح، بعد دومی هیچی، زره اصلاً هیچی
+        wk = list(config.WEAPONS)
+        check("زره زنجیره آنبوردینگ نداره", await onb.first_weapon(s, ob, "arm") is None)
+        s.add(InventoryItem(user_id=ob.id, item_key=wk[0]))
+        w1 = await onb.first_weapon(s, ob, "weap")
+        check("خرید اولین سلاح زنجیره نبرد رو میاره",
+              w1 is not None and "آماده نبردی" in w1 and "اولین حمله" in w1, str(w1)[:80])
+        s.add(InventoryItem(user_id=ob.id, item_key=wk[1]))
+        check("سلاح دوم دیگه زنجیره نمیده", await onb.first_weapon(s, ob, "weap") is None)
+
+        # ردیف‌های مأموریت و کارت منو
+        rows_ob = await onb.mission_rows(s, ob)
+        dones_ob = {k: d for k, _, d in rows_ob}
+        check("ردیف‌های مأموریت با COUNT واقعی پر میشن",
+              dones_ob["mine"] and dones_ob["plant"] and dones_ob["harvest"] and dones_ob["weapon"]
+              and not dones_ob["plot"] and not dones_ob["attack"], str(rows_ob))
+        card_ob = await onb.menu_card(s, ob)
+        check("کارت مأموریت برای لول پایین با تیک و قدم فعلی میاد",
+              card_ob is not None and "🎯 <b>مأموریت فعلی</b>" in card_ob
+              and "✅" in card_ob and "🔹" in card_ob and "☐" in card_ob,
+              (card_ob or "").replace("\n", " | "))
+        ob.level = config.MISSION_GUIDE_MAX_LEVEL
+        check("از لول راهنما به بعد کارت مأموریت نمیاد",
+              await onb.menu_card(s, ob) is None)
+        ob.level = 1
+        await s.commit()
+
+    # همه مرحله‌ها کامل، کارت محو میشه
+    async with session_scope() as s:
+        ob2, _ = await users.get_or_create(s, tg(7321, "onb2", "کامل‌شده"))
+        ob2.first_mine_at = now_utc()
+        ob2.first_plant_at = now_utc()
+        ob2.first_harvest_at = now_utc()
+        ob2.last_attack_at = now_utc()
+        s.add(InventoryItem(user_id=ob2.id, item_key=list(config.WEAPONS)[0]))
+        s.add(Plot(user_id=ob2.id, status="empty"))  # با زمین رایگان ثبت‌نام میشه ۲ تا
+        rows_ob2 = await onb.mission_rows(s, ob2)
+        check("بعد کامل شدن همه مرحله‌ها کارت مأموریت محو میشه",
+              all(d for _, _, d in rows_ob2) and await onb.menu_card(s, ob2) is None, str(rows_ob2))
+        await s.commit()
+
+    # ── فیکس «تی برداشت» (آنپک خروجی harvest_all) ──
+    from handlers import textcmd as textcmd_h3
+    async with session_scope() as s:
+        hu, _ = await users.get_or_create(s, tg(7325, "hav", "برداشتگر"))
+        hu.last_harvest_at = None
+        hp = (await farming.get_user_plots(s, hu.id))[0]
+        hp.status, hp.crop = "growing", "marijuana"
+        hp.ready_at = now_utc() - timedelta(seconds=5)
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        cash_h0 = hu.cash
+        await s.commit()
+    upd_hv = _text_update("تی برداشت", uid=7325, uname="hav", fname="برداشتگر")
+    try:
+        await textcmd_h3.harvest_text(upd_hv, None)
+        crashed_hv = False
+    except Exception:
+        crashed_hv = True
+    htxt = upd_hv.message.calls[-1][1] if upd_hv.message.calls else ""
+    check("«تی برداشت» بدون کرش کار می‌کنه",
+          not crashed_hv and "<b>📦 برداشت</b>" in [c[1] for c in upd_hv.message.calls][0],
+          htxt[:80])
+    async with session_scope() as s:
+        hu2 = await users.get_by_tg(s, 7325)
+        check("بعد «تی برداشت» پول برداشت رسید و فروش واقعی هم ثبت شد",
+              hu2.cash > cash_h0, f"{hu2.cash} vs {cash_h0}")
+        mj_sales = (await s.execute(
+            select(_func.coalesce(_func.sum(SeedSale.qty), 0)).where(SeedSale.seed_key == "marijuana")
+        )).scalar() or 0
+        check("برداشت واقعی توی عرضه بازار ثبت شد", mj_sales >= 1, str(mj_sales))
+        await s.commit()
+
+    # ── «تیم تغییر نام» ──
+    async with session_scope() as s:
+        ru, _ = await users.get_or_create(s, tg(7329, "ren", "رهبرنام"))
+        ru.level = 12
+        ru.cash = 150000
+        ok_rn, _ = await team_svc.create_team(s, ru, "اسم قدیمی")
+        assert ok_rn
+        cash_rn0 = ru.cash  # بعد از هزینه ساخت تیم
+        ok, msg = await team_svc.rename_team(s, ru, "اسم نونوار")
+        check("رهبر با پول کافی اسم تیم رو عوض می‌کنه و هزینه کم میشه",
+              ok and "اسم نونوار" in msg and ru.cash == cash_rn0 - config.TEAM_RENAME_COST, msg)
+        ok, msg = await team_svc.rename_team(s, ru, "اسم نونوار")
+        check("اسم فعلی دوباره رد میشه", not ok and "همینه" in msg, msg)
+        ru.cash = 100
+        ok, msg = await team_svc.rename_team(s, ru, "اسم فقیر")
+        check("بدون پول کافی تغییر نام رد میشه", not ok and "می‌خواد" in msg, msg)
+        ru.cash = 150000
+        await s.commit()
+    async with session_scope() as s:
+        t_ren = await team_svc.get_team_by_name(s, "اسم نونوار")
+        mu_r, _ = await users.get_or_create(s, tg(7333, "memr", "عضو ساده"))
+        mu_r.cash = 100000
+        s.add(TeamMember(team_id=t_ren.id, user_id=mu_r.id, role="member", join_medals=0))
+        ok, msg = await team_svc.rename_team(s, mu_r, "اسم غریبه")
+        check("عضو ساده نمی‌تونه اسم تیم رو عوض کنه", not ok and "رهبر" in msg, msg)
+        ot, _ = await users.get_or_create(s, tg(7341, "oth", "تیم‌ساز"))
+        ot.level = 12
+        ot.cash = 100000
+        ok_ot, _ = await team_svc.create_team(s, ot, "تیم مقصد")
+        assert ok_ot
+        ok, msg = await team_svc.rename_team(s, await users.get_by_tg(s, 7329), "تیم مقصد")
+        check("اسم تکراری تیم دیگه رد میشه", not ok and "از قبل" in msg, msg)
+        await s.commit()
+    upd_rn = _text_update("تیم تغییر نام اسم آخرین", uid=7329, uname="ren", fname="رهبرنام")
+    await team_h.rename_text(upd_rn, None)
+    check("هندلر متنی «تیم تغییر نام» کار می‌کنه",
+          any("اسم آخرین" in c[1] for c in upd_rn.message.calls),
+          str([c[1][:70] for c in upd_rn.message.calls]))
+
+    # ── نامرئی لیدربرد 👻 (فقط ادمین) ──
+    async with session_scope() as s:
+        hid, _ = await users.get_or_create(s, tg(7337, "hid", "نامرئی"))
+        hid.level = 20
+        hid.medals = 999999
+        vis0 = [u.id for u in await users.top_by_medals(s, "all", 100)]
+        hid.lb_hidden = 1
+        vis1 = [u.id for u in await users.top_by_medals(s, "all", 100)]
+        check("کاربر نامرئی از لیست لیدربرد حذف میشه",
+              hid.id in vis0 and hid.id not in vis1, f"{hid.id}")
+        await s.commit()
+    upd_hb = _text_update("/hideboard", uid=1001, uname="adm1", fname="ادمین یک")
+    await admin_h.hideboard_cmd(upd_hb, None)
+    async with session_scope() as s:
+        adm_h1 = await users.get_by_tg(s, 1001)
+        hb1 = adm_h1.lb_hidden
+        await s.commit()
+    check("/hideboard ادمین رو نامرئی می‌کنه و پیام می‌ده",
+          hb1 == 1 and any("نامرئی شدی" in c[1] for c in upd_hb.message.calls),
+          str([c[1][:60] for c in upd_hb.message.calls]))
+    upd_hb2 = _text_update("/hideboard", uid=1001, uname="adm1", fname="ادمین یک")
+    await admin_h.hideboard_cmd(upd_hb2, None)
+    async with session_scope() as s:
+        adm_h2 = await users.get_by_tg(s, 1001)
+        hb2 = adm_h2.lb_hidden
+        await s.commit()
+    check("دوباره /hideboard برمی‌گردونه", hb2 == 0)
+    upd_hb3 = _text_update("/hideboard", uid=7337, uname="hid", fname="نامرئی")
+    await admin_h.hideboard_cmd(upd_hb3, None)
+    async with session_scope() as s:
+        hid3 = await users.get_by_tg(s, 7337)
+        hb3 = hid3.lb_hidden
+        await s.commit()
+    check("/hideboard برای غیرادمین بی‌صداس و اثری نداره",
+          not upd_hb3.message.calls and hb3 == 1)
+    async with session_scope() as s:
+        hid4 = await users.get_by_tg(s, 7337)
+        hid4.lb_hidden = 0
+        await s.commit()
+
+    # ── بازار پویا: پنجره فروش ۲۴ ساعت + پاکسازی + حرکت اشباع ──
+    async with session_scope() as s:
+        sales0 = await world_svc._sales_24h(s)
+        s.add(SeedSale(seed_key="peyote", qty=1000, at=now_utc() - timedelta(days=2, hours=1)))
+        s.add(SeedSale(seed_key="peyote", qty=7, at=now_utc()))
+        sales1 = await world_svc._sales_24h(s)
+        check("فقط فروش‌های داخل پنجره ۲۴ ساعت تو عرضه حساب میشن",
+              sales1.get("peyote", 0) - sales0.get("peyote", 0) == 7,
+              f"{sales0.get('peyote')} -> {sales1.get('peyote')}")
+        _pc0 = config.ACTION_LOG_PRUNE_CHANCE
+        config.ACTION_LOG_PRUNE_CHANCE = 1.0
+        try:
+            await world_svc.record_sale(s, "gharch", 1)
+        finally:
+            config.ACTION_LOG_PRUNE_CHANCE = _pc0
+        old_left = (await s.execute(
+            select(_func.count(SeedSale.id)).where(
+                SeedSale.at < now_utc() - timedelta(hours=config.MARKET_SALE_KEEP_HOURS))
+        )).scalar() or 0
+        check("پاکسازی خودکار ردیف‌های فروش قدیمی‌تر از نگه‌داری", old_left == 0, str(old_left))
+        await s.commit()
+    async with session_scope() as s:
+        for kk in config.SEEDS:
+            s.add(SeedSale(seed_key=kk, qty=100000, at=now_utc()))
+        await world_svc._meta_set(s, "market", ",".join(f"{kk}:1.1000" for kk in config.SEEDS))
+        await world_svc._meta_set(s, "market_until", "2000-01-01T00:00:00")
+        rolled_sat = await world_svc.ensure_market(s)
+        mults_sat, _ = await world_svc.market_mults(s)
+        check("بازار اشباع‌شده همه قیمت‌ها رو یه قدمی میاره پایین",
+              rolled_sat and all(0.99 <= mm < 1.1 for mm in mults_sat.values()), str(mults_sat))
+        await world_svc._meta_set(s, "market", ",".join(f"{kk}:0" for kk in config.SEEDS))
+        await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
+        await s.commit()
+
+    # ── قالب ردیف لیدربردها + ثبت دستورهای جدید ──
+    upd_tlx = _fake_update("ttop:x", uid=1001)
+    await team_h.top_teams_text(upd_tlx, None)
+    ed_tlx = next((c for c in upd_tlx.callback_query.calls if c[0] == "edit"), None)
+    check("ردیف لیدربرد تیم قالب «[Lv.XX] │ اسم 🎖️ عدد» رو داره",
+          ed_tlx is not None and bool(_reon.search(r"🥇 \[Lv\.\d\d\] │ .+ 🎖️ [\d,]+", ed_tlx[1])),
+          (ed_tlx[1] if ed_tlx else "-")[:150])
+    upd_rlx = _fake_update("menu:rank", uid=1001)
+    await rank_h2.rank_cb(upd_rlx, None)
+    ed_rlx = next((c for c in upd_rlx.callback_query.calls if c[0] == "edit"), None)
+    check("ردیف لیدربرد بازیکن هم قالب «[Lv.XX] │ اسم 🎖️ عدد» رو داره",
+          ed_rlx is not None
+          and (bool(_reon.search(r"🥇 \[Lv\.\d\d\] │ .+ 🎖️ [\d,]+", ed_rlx[1])) or "هنوز کسی" in ed_rlx[1]),
+          (ed_rlx[1] if ed_rlx else "-")[:150])
+    _init_src = open(os.path.join(_base_dir, "handlers", "__init__.py"), encoding="utf-8").read()
+    check("ثبت دستورهای جدید تو رجیستری: تیم تغییر نام و /hideboard",
+          "team_rename" in _init_src and "hideboard" in _init_src)
 
     # ── دکمه آپدیت مزرعه + حذف رفرش پروفایل ──
     from keyboards import keyboards as kb3

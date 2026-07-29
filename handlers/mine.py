@@ -98,6 +98,10 @@ async def _do_roll(update: Update) -> None:
             from services import actionlog
             await actionlog.log(s, "mine")  # آمار کنده‌کاری‌های پنل ادمین
             notes = users.add_xp(user, loot["xp"])
+            from services import onboarding as onb
+            chain = await onb.first_mine(s, user)  # جایزه و راهنمای اولین کنده‌کاری
+            if chain:
+                notes.insert(0, chain)
             from services import teams as team_svc
             notes += await team_svc.add_team_xp(s, user, loot["xp"])
 

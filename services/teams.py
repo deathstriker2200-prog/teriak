@@ -352,6 +352,39 @@ async def set_bio(session: AsyncSession, user: User, bio: str) -> tuple[bool, st
     return True, display
 
 
+# ───────── تغییر نام تیم ✏️ ─────────
+
+async def rename_team(session: AsyncSession, user: User, new_name: str) -> tuple[bool, str]:
+    """
+    تغییر نام تیم توسط رهبر با پرداخت TEAM_RENAME_COST از جیب خودش
+    متن جدید از همه قوانین اسم تیم رد میشه و نباید تکراری باشه
+    """
+    m = await get_membership(session, user.id)
+    if not m or m.role != "owner":
+        return False, "👑 فقط رهبر می‌تونه اسم تیم رو عوض کنه"
+    ok_name, clean, why = validate_team_name(new_name)
+    if not ok_name:
+        return False, why
+    team = await session.get(Team, m.team_id)
+    if not team:
+        return False, "🤷 تیمی نیس که"
+    if team_name_norm(team.name) == clean:
+        return False, "😅 همین الانشم اسمش همینه"
+    if await get_team_by_name(session, clean):
+        return False, f"🏴 تیمی با اسم «{clean}» از قبل هست، یه اسم دیگه بگو"
+
+    cost = config.TEAM_RENAME_COST
+    if user.cash < cost:
+        return False, f"❌ تغییر نام {money(cost)} می‌خواد و {money(user.cash)} داری"
+
+    user.cash -= cost
+    old = team.name
+    display = " ".join(str(new_name).split())
+    team.name = display
+    team.name_norm = team_name_norm(display)  # ستون یکدست‌شده جستجو هم آپدیت میشه
+    return True, f"✏️ اسم تیم از «{old}» شد «{team.name}»\n💸 {money(cost)} هم از جیبت رفت"
+
+
 # ───────── آمار تیم ─────────
 
 async def team_stats_data(session: AsyncSession, team: Team) -> dict:

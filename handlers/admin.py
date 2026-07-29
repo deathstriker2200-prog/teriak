@@ -38,6 +38,7 @@ def _panel_text(user, extra: str | None = None) -> str:
         "💸 <code>/detp 123456789 5000</code> و <code>/dexp 123456789 100</code>، کم کردن مستقیم سکه و تجربه\n"
         "🧨 <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
         "🔧 /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
+        "👻 /hideboard، نامرئی شدن از همه لیدربردها (دوباره بزنی برمی‌گرده)\n"
         "💾 /backup و /upload_backup، بک‌آپ و ری‌استور\n"
         "🔌 /botoff و /boton توی گروه، خاموش و روشن کردن ربات فقط تو همون گروه"
     )
@@ -112,6 +113,22 @@ async def user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ───────── /addtp و /addxp، دادن مستقیم ─────────
+
+async def hideboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """تاگل حالت نامرئی لیدربرد برای ادمین، دوباره بزنی برمی‌گرده"""
+    if not _is_admin(update):
+        return
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        user.lb_hidden = 0 if user.lb_hidden else 1
+        hidden = bool(user.lb_hidden)
+        await s.commit()
+    if hidden:
+        text = "👻 نامرئی شدی، دیگه تو لیدربردها دیده نمیشی\nبرای برگشت دوباره /hideboard بزن"
+    else:
+        text = "👀 برگشتی، از این به بعد تو لیدربردها دیده میشی"
+    await update.message.reply_html(text)
+
 
 async def addtp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_admin(update):

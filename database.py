@@ -62,6 +62,10 @@ _NEW_COLUMNS = {
         ("fj_member_status", "INTEGER"),
         ("fj_checked_at", "DATETIME"),
         ("fj_left_at", "DATETIME"),
+        ("first_mine_at", "DATETIME"),
+        ("first_plant_at", "DATETIME"),
+        ("first_harvest_at", "DATETIME"),
+        ("lb_hidden", "INTEGER NOT NULL DEFAULT 0"),
     ],
         "inventory": [
         ("level", "INTEGER NOT NULL DEFAULT 1"),
@@ -112,6 +116,9 @@ _NEW_INDEXES = (
     "CREATE INDEX IF NOT EXISTS ix_action_events_action ON action_events (action)",
     "CREATE INDEX IF NOT EXISTS ix_action_events_at ON action_events (at)",
     "CREATE INDEX IF NOT EXISTS ix_action_events_action_at ON action_events (action, at)",
+    "CREATE INDEX IF NOT EXISTS ix_seed_sales_seed_key ON seed_sales (seed_key)",
+    "CREATE INDEX IF NOT EXISTS ix_seed_sales_at ON seed_sales (at)",
+    "CREATE INDEX IF NOT EXISTS ix_seed_sales_seed_at ON seed_sales (seed_key, at)",
 )
 
 

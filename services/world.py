@@ -9,11 +9,11 @@
 import random
 from datetime import timedelta
 
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import delete, func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import GameMeta, GroupActivity, Plot, SeedStock, User
+from models import GameMeta, GroupActivity, Plot, SeedSale, SeedStock, User
 from services.farming import get_stock, add_seed_stock
 from services.users import add_xp
 from utils import esc, fa_dur, fa_num, money, now_utc
@@ -182,42 +182,79 @@ async def weather_view(session: AsyncSession) -> dict:
     return {"key": key, "w": w, "left": left}
 
 
-# ═════════ بازار سیاه 📈 ═════════
+# ═════════ بازار سیاه 📈 (پویا بر پایه عرضه و تقاضای واقعی) ═════════
 
-def _parse_market(raw: str | None) -> dict[str, int]:
-    out: dict[str, int] = {}
+def _parse_market(raw: str | None) -> dict[str, float]:
+    """
+    رشته متا «seed:mult,...» به نقشه ضریب قیمت هر محصول
+    فرمت جدید همیشه اعشاریه (مثل 1.0300) و فرمت خیلی قدیمی درصد صحیح بود، اینجا سازگار ترجمه میشه
+    """
+    out: dict[str, float] = {}
     if not raw:
         return out
     for chunk in raw.split(","):
         if ":" in chunk:
             k, v = chunk.split(":", 1)
             try:
-                out[k] = int(v)
+                if "." in v or "e" in v.lower():
+                    out[k] = float(v)
+                else:  # رول قدیمی درصدی صحیح بود، به ضریب قیمت ترجمش می‌کنیم
+                    out[k] = 1.0 + int(v) / 100.0
             except ValueError:
-                pass
+                continue
     return out
 
 
-def normal_seed_keys() -> list[str]:
-    """فقط بذرهای معمولی، بذرهای افسانه‌ای تو بازار سیاه نمیان"""
-    return [k for k, v in config.SEEDS.items() if not v.get("legendary")]
+async def record_sale(session: AsyncSession, seed_key: str, qty: int = 1) -> None:
+    """
+    ثبت یه فروش واقعی محصول برای حساب عرضه بازار، فقط ردیف اضافه می‌کنه (کامیت با صدا‌کننده‌ست)
+    هر از چندگاهی ردیف‌های قدیمی پاک میشن تا جدول همیشه سبک بمونه
+    """
+    if seed_key not in config.SEEDS:
+        return
+    session.add(SeedSale(seed_key=seed_key, qty=qty, at=now_utc()))
+    if random.random() < config.ACTION_LOG_PRUNE_CHANCE:
+        cutoff = now_utc() - timedelta(hours=config.MARKET_SALE_KEEP_HOURS)
+        await session.execute(delete(SeedSale).where(SeedSale.at < cutoff))
 
 
-def market_pct_roll() -> int:
+async def _active_players_24h(session: AsyncSession) -> int:
+    """تعداد بازیکنای فعال ۲۴ ساعت اخیر، مبنای تقاضای بازار"""
+    day_ago = now_utc() - timedelta(hours=24)
+    return (await session.execute(
+        select(func.count(User.id)).where(User.last_seen_at >= day_ago)
+    )).scalar() or 0
+
+
+async def _sales_24h(session: AsyncSession) -> dict[str, int]:
+    """فروش واقعی ۲۴ ساعت اخیر به تفکیک محصول، SUM گروه‌بندی‌شده مستقیم توی SQL"""
+    day_ago = now_utc() - timedelta(hours=24)
+    rows = (await session.execute(
+        select(SeedSale.seed_key, func.coalesce(func.sum(SeedSale.qty), 0))
+        .where(SeedSale.at >= day_ago)
+        .group_by(SeedSale.seed_key)
+    )).all()
+    return {key: int(total) for key, total in rows}
+
+
+def _next_market_mult(old: float, sold: int, demand: float) -> float:
     """
-    قرعه درصد تغییر یه محصول، سود/ضرر 50/50
-    اغلب‌ها تو بازه کم‌نوسانن (سود 0..20 | ضرر 0..10) و گاهی بازه کامل (تا +50 / تا −30)
+    ضریب بعدی یه محصول: بر اساس نسبت عرضه به تقاضا یه حرکت کوچیک + نویز خیلی ریز
+    همیشه تو بازه کف و سقف کانفیگ کلمپ میشه تا جهش نداشته باشیم
     """
-    up = random.random() < 0.5
-    if random.random() < config.MARKET_COMMON_WEIGHT:
-        return random.randint(0, config.MARKET_UP_COMMON) if up else -random.randint(0, config.MARKET_DOWN_COMMON)
-    if up:
-        return random.randint(config.MARKET_UP_COMMON + 1, config.MARKET_MAX_PCT)
-    return -random.randint(config.MARKET_DOWN_COMMON + 1, -config.MARKET_MIN_PCT)
+    demand = max(1.0, demand)
+    ratio = sold / demand
+    mult = old
+    if ratio < 1.0:  # عرضه کمتر از تقاضا، کمیابی و گرون شدن
+        mult += config.MARKET_MAX_STEP_CHANGE
+    elif ratio > 1.0:  # اشباع بازار، ارزون شدن
+        mult -= config.MARKET_MAX_STEP_CHANGE
+    mult *= 1.0 + random.uniform(-config.MARKET_RANDOM_NOISE, config.MARKET_RANDOM_NOISE)
+    return min(config.MARKET_MAX_PRICE_MULTIPLIER, max(config.MARKET_MIN_PRICE_MULTIPLIER, mult))
 
 
 async def ensure_market(session: AsyncSession) -> bool:
-    """اگه زمان بازار گذشته بود رول کن، خروجی True یعنی همین لحظه رول شد"""
+    """اگه زمان بازار گذشته بود یه حرکت قیمت بزن، خروجی True یعنی همین لحظه رول شد"""
     until_raw = await _meta(session, "market_until")
     from datetime import datetime as _dt
     try:
@@ -228,66 +265,71 @@ async def ensure_market(session: AsyncSession) -> bool:
     if until and until > now_utc():
         return False
 
+    old = _parse_market(await _meta(session, "market"))
+    active_n = await _active_players_24h(session)
+    demand = max(1.0, active_n * config.MARKET_DEMAND_PER_ACTIVE_PLAYER)
+    sales = await _sales_24h(session)
+
     parts = []
-    for k in normal_seed_keys():
-        pct = market_pct_roll()
-        parts.append(f"{k}:{pct}")
+    for key in config.SEEDS:  # همه محصولات از روز اول تو بازارن، حتی افسانه‌ای‌ها و قفل‌های لول
+        mult = _next_market_mult(old.get(key, 1.0), sales.get(key, 0), demand)
+        parts.append(f"{key}:{mult:.4f}")
     await _meta_set(session, "market", ",".join(parts))
     await _meta_set(session, "market_until", (now_utc() + timedelta(seconds=config.MARKET_ROLL_SECONDS)).isoformat())
     return True
 
 
-async def market_pcts(session: AsyncSession) -> tuple[dict[str, int], int]:
-    """(نسبت‌های تغییر برای هر بذر معمولی, ثانیه مونده)"""
+async def market_mults(session: AsyncSession) -> tuple[dict[str, float], int]:
+    """(ضریب قیمت فعلی هر محصول, ثانیه مونده تا حرکت بعدی بازار)"""
     await ensure_market(session)
-    pcts = _parse_market(await _meta(session, "market"))
+    mults = _parse_market(await _meta(session, "market"))
     from datetime import datetime as _dt
     raw = await _meta(session, "market_until")
     try:
         left = int((_dt.fromisoformat(raw) - now_utc()).total_seconds()) if raw else 0
     except ValueError:
         left = 0
-    return pcts, max(0, left)
+    return mults, max(0, left)
 
 
-def market_mult(pcts: dict[str, int], seed_key: str) -> float:
-    """ضریب قیمت بازار، فقط بذرهای معمولی"""
-    if seed_key not in pcts:
-        return 1.0
-    cfg = config.SEEDS.get(seed_key, {})
-    if cfg.get("legendary"):
-        return 1.0
-    return max(0.1, 1.0 + pcts[seed_key] / 100)
+def market_mult(mults: dict[str, float], seed_key: str) -> float:
+    """ضریب قیمت بازار یه محصول، نبود یعنی دقیقا قیمت پایه"""
+    return mults.get(seed_key, 1.0)
 
 
-def market_view_text(pcts: dict[str, int], left: int) -> str:
-    """متن بخش «وضعیت بازار سیاه»، 🟢 قیمت فروش از عادی بیشتره | 🔴 کمتره"""
+def market_view_text(mults: dict[str, float], left: int) -> str:
+    """
+    متن بخش «وضعیت بازار سیاه»
+    همه محصولات از روز اول با قیمتشون دیده میشن، محدودیت لول فقط رو خرید و کاشته نه دیدن قیمت
+    """
     lines = [
         "<b>📈 وضعیت بازار سیاه</b>",
         "",
-        "قیمت فروش محصولات با توجه به بازار تغییر می‌کنه",
+        "قیمت فروش هر محصول دست خود بازیکناس",
+        "هر فروشی رو قیمتش اثر می‌ذاره",
+        "کمیاب بشه گرون‌تر میشه، اشباع بشه ارزون‌تر",
         "",
-        "🟢 یعنی الان قیمت فروش از حالت عادی بیشتره",
-        "🔴 یعنی الان قیمت فروش از حالت عادی کمتره",
-        "",
-        "درصد کنار هر محصول مقدار افزایش یا کاهش قیمت رو نشون میده",
+        "📈 بالاتر از پایه | 📉 پایین‌تر از پایه | ⚖️ سر پایه",
+        "قیمت‌ها هر 4 ساعت یه حرکت کوچیک دارن، جهش ندارن",
     ]
-    for key in normal_seed_keys():
-        sd = config.SEEDS[key]
-        pct = pcts.get(key, 0)
-        cur = int(sd["sell"] * (1 + pct / 100))
-        dot = "🟢" if pct > 0 else ("🔴" if pct < 0 else "⚪")  # صفر یعنی دقیقا قیمت عادی
-        sign = f"+{pct}" if pct > 0 else str(pct)
+    for key, sd in config.SEEDS.items():
+        mult = mults.get(key, 1.0)
+        pct = round((mult - 1.0) * 100, 1)
+        if abs(pct) < 0.05:
+            pct = 0.0
+        cur = int(sd["sell"] * mult)
+        trend = "📈" if pct > 0 else ("📉" if pct < 0 else "⚖️")
+        emoji = sd.get("emoji")
         lines += [
             "",
-            f"{sd['emoji']} {sd['name']}",
-            f"{dot} {sign}%",
-            f"💰 قیمت فروش: {fa_num(cur)} تی‌پوینت",
-            f"📦 قیمت پایه: {fa_num(sd['sell'])} تی‌پوینت",
+            f"{emoji + ' ' if emoji else ''}{sd['name']}",
+            f"{trend} {pct:+.1f}%",
+            f"💰 قیمت فروش الان: {money(cur)}",
+            f"📦 قیمت پایه: {money(sd['sell'])}",
         ]
     lines += [
         "",
-        "⏳ تغییر بعدی بازار",
+        "⏳ حرکت بعدی بازار",
         f"{fa_dur(left)} دیگه",
     ]
     return "\n".join(lines)

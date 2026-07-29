@@ -1,0 +1,143 @@
+"""آنبوردینگ تازه‌کارها 🎯
+
+جایزه اولین تجربه‌های کلیدی (کنده‌کاری | کاشت | برداشت) + زنجیره راهنمای قدم‌به‌قدم
+کارت مأموریت شروع بالای منو برای لول‌های پایین، کاملاً مستقل از کوئست‌های روزانه‌ست
+هدف اینه که تازه‌کار هیچ‌وقت نپرسه الان باید چیکار کنم
+"""
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import config
+from models import InventoryItem, Plot, User
+from utils import now_utc
+
+
+# ───────── تیکه اول زنجیره 🎉 (جایزه‌های اولین تجربه) ─────────
+
+async def first_mine(session: AsyncSession, user: User) -> str | None:
+    """اولین کنده‌کاری موفق، جایزه میده و متن قدم بعدی رو برمی‌گردونه (کامیت با صدا‌کننده‌ست)"""
+    if user.first_mine_at is not None:
+        return None
+    from utils import money
+    user.first_mine_at = now_utc()
+    user.cash += config.FIRST_MINE_BONUS
+    return (
+        "<b>🎉 عالی بود، اولین جایزه‌ات رو گرفتی</b>\n\n"
+        f"💰 +{money(config.FIRST_MINE_BONUS)} جایزه اولین کنده‌کاری\n\n"
+        "🎯 قدم بعد: یه زمین بخر\n"
+        "از «🌱 مزرعه من» تو منوی اصلی زمین بگیر تا اولین بذرت رو بکاری\n"
+        f"حسابت الان {money(user.cash)} ـه"
+    )
+
+
+async def first_plant(session: AsyncSession, user: User) -> str | None:
+    """اولین کاشت موفق، جایزه + راهنمای قدم بعدی (کامیت با صدا‌کننده‌ست)"""
+    if user.first_plant_at is not None:
+        return None
+    from utils import money
+    user.first_plant_at = now_utc()
+    user.cash += config.FIRST_PLANT_BONUS
+    return (
+        "<b>🌱 کارت درسته، اولین بذرت کاشته شد</b>\n\n"
+        f"💰 +{money(config.FIRST_PLANT_BONUS)} جایزه اولین کاشت\n\n"
+        "🎯 قدم بعد: فقط صبر کن محصولت آماده بشه\n"
+        "بعد با «تریاکی برداشت» نقدش کن تا درآمد واقعی بازی رو ببینی"
+    )
+
+
+async def first_harvest(session: AsyncSession, user: User) -> str | None:
+    """اولین برداشت موفق، جایزه + راهنمای قدم بعدی (کامیت با صدا‌کننده‌ست)"""
+    if user.first_harvest_at is not None:
+        return None
+    from utils import money
+    user.first_harvest_at = now_utc()
+    user.cash += config.FIRST_HARVEST_BONUS
+    return (
+        "<b>💰 تبریک، الان وارد اقتصاد بازی شدی</b>\n\n"
+        f"💵 +{money(config.FIRST_HARVEST_BONUS)} جایزه اولین برداشت\n\n"
+        "🎯 قدم بعد: اولین سلاحت رو بخر\n"
+        "از «🛒 فروشگاه» یه کلت بگیر تا برای نبرد آماده بشی"
+    )
+
+
+async def first_weapon(session: AsyncSession, user: User, kind: str) -> str | None:
+    """
+    خرید اولین سلاح (نتیجه موفق purchase صدا زده میشه)
+    جایزه نداره، فقط راهنمای قدم آخر زنجیره رو میده
+    """
+    if kind != "weap":
+        return None
+    n_weapons = (await session.execute(
+        select(func.count(InventoryItem.id)).where(
+            InventoryItem.user_id == user.id,
+            InventoryItem.item_key.in_(list(config.WEAPONS)),
+        )
+    )).scalar() or 0
+    if n_weapons != 1:  # سلاح اوله (سلاح‌ها فروخته نمیشن، شمارش فقط زیاد میشه)
+        return None
+    return (
+        "<b>🔫 آماده نبردی</b>\n\n"
+        "🎯 آخرین قدم: اولین حمله‌ات رو بزن\n"
+        "تو گروه ریپلای بزن رو هرکی که می‌خوای و بنویس «حمله»\n"
+        "یا تو پی‌وی با «تریاکی حمله» یه هدف پیدا کن و سیستم مبارزه رو تجربه کن"
+    )
+
+
+# ───────── کارت مأموریت شروع 🎯 ─────────
+
+MISSION_DEFS: tuple[tuple[str, str], ...] = (
+    ("mine", "اولین کنده‌کاری"),
+    ("plot", "اولین خرید زمین"),
+    ("plant", "اولین کاشت"),
+    ("harvest", "اولین برداشت"),
+    ("weapon", "خرید اولین سلاح"),
+    ("attack", "اولین حمله"),
+)
+
+
+async def mission_rows(session: AsyncSession, user: User) -> list[tuple[str, str, bool]]:
+    """(کلید، لیبل، انجام‌شده) برای هر مرحله مأموریت شروع، چک‌ها با COUNT مستقیم توی SQL"""
+    plots_n = (await session.execute(
+        select(func.count(Plot.id)).where(Plot.user_id == user.id)
+    )).scalar() or 0
+    n_weapons = (await session.execute(
+        select(func.count(InventoryItem.id)).where(
+            InventoryItem.user_id == user.id,
+            InventoryItem.item_key.in_(list(config.WEAPONS)),
+        )
+    )).scalar() or 0
+    dones = {
+        # زمین اول رایگانه، قدم مأموریت خرید اولین زمین اضافه‌ست (دومین زمین)
+        "mine": user.first_mine_at is not None,
+        "plot": plots_n >= 2,
+        "plant": user.first_plant_at is not None,
+        "harvest": user.first_harvest_at is not None,
+        "weapon": n_weapons >= 1,
+        "attack": user.last_attack_at is not None or user.pv_attack_at is not None,
+    }
+    return [(key, label, dones[key]) for key, label in MISSION_DEFS]
+
+
+async def menu_card(session: AsyncSession, user: User) -> str | None:
+    """
+    کارت مأموریت شروع برای بالای منوی اصلی
+    فقط زیر لول راهنما میاد و بعد از کامل شدن همه مرحله‌ها محو میشه
+    """
+    if user.level >= config.MISSION_GUIDE_MAX_LEVEL:
+        return None
+    rows = await mission_rows(session, user)
+    if all(done for _, _, done in rows):
+        return None
+    lines = ["🎯 <b>مأموریت فعلی</b>", ""]
+    marked_next = False
+    for _, label, done in rows:
+        if done:
+            mark = "✅"
+        elif not marked_next:  # اولین مرحله انجام‌نشده، قدم فعلیه
+            mark = "🔹"
+            marked_next = True
+        else:
+            mark = "☐"
+        lines.append(f"{mark} {label}")
+    return "\n".join(lines)

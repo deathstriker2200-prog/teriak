@@ -129,9 +129,13 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         user, _ = await users.get_or_create(s, update.effective_user)
         _, alert = await shop_svc.purchase(s, user, kind, key, dog_name=dog_name)
         cash = user.cash
+        from services import onboarding as onb
+        chain = await onb.first_weapon(s, user, kind)  # راهنمای نبرد بعد خرید اولین سلاح
         await s.commit()
 
     text = f"<b>{esc(alert)}</b>\n\n💵 نقدینگی {money(cash)}"
+    if chain:
+        text += f"\n\n{chain}"
     await respond(update, text, kb.home_kb())
 
 
@@ -145,6 +149,7 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return await respond(update, f"🤷 محصولی با این اسم ندارم\n\nگزینه‌ها:\n{names}")
 
     dq_done, dq_left, uname = [], 0, ""
+    chain = None
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
 
@@ -166,9 +171,13 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 from services import quests as dq_svc
                 dq_done, dq_left = await dq_svc.track(s, user, "plant")
                 uname = users.display_name(user)
+                from services import onboarding as onb
+                chain = await onb.first_plant(s, user)  # جایزه و راهنمای اولین کاشت
         await s.commit()
 
     await respond(update, f"<b>🌱 کاشت</b>\n\n{esc(msg)}", kb.home_kb())
+    from handlers.common import announce_notes
+    await announce_notes(update, [chain] if chain else [])
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
@@ -177,12 +186,17 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     dq_done, dq_left, uname = [], 0, ""
+    notes: list[str] = []
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        ok, msg, extra, dq = await farming.harvest_all(s, user)
+        ok, msg, extra, dq, notes = await farming.harvest_all(s, user)
         if ok:
             dq_done, dq_left = dq
             uname = users.display_name(user)
+            from services import onboarding as onb
+            chain = await onb.first_harvest(s, user)  # جایزه و راهنمای اولین برداشت
+            if chain:
+                notes.insert(0, chain)
         await s.commit()
 
     if not ok:
@@ -190,6 +204,9 @@ async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     text = "<b>📦 برداشت</b>\n\n" + esc(extra or msg)
     await respond(update, text, kb.home_kb())
+    # لول‌آپ و زنجیره آنبوردینگ به‌صورت پیام جدا میان تا متن برداشت شلوغ نشه
+    from handlers.common import announce_notes
+    await announce_notes(update, notes)
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 

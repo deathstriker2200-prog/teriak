@@ -138,7 +138,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     wkey, _ = await world_svc.current_weather(session)
     sell_mult = world_svc.weather_sell_mult(wkey)
     q5_bonus = world_svc.weather_q5_bonus(wkey)
-    pcts, _ = await world_svc.market_pcts(session)
+    mults, _ = await world_svc.market_mults(session)
 
     total_gain = 0
     total_xp = 0
@@ -153,13 +153,14 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
             continue
         tier = world_svc.roll_quality(q5_bonus + economy.plot_quality_bonus(p.level))
         base = economy.crop_yield(p.crop, p.level, user.level)
-        mkt = world_svc.market_mult(pcts, p.crop)
+        mkt = world_svc.market_mult(mults, p.crop)
         gain = apply_legendary_cap(p.crop, int(base * tier["mult"] * sell_mult * mkt))
         total_gain += gain
         total_xp += config.SEEDS[p.crop]["xp"]
         item_lines.append(
             f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)}، {money_tp(gain)}"
         )
+        await world_svc.record_sale(session, p.crop)  # عرضه واقعی بازار پویا
         p.status = "empty"
         p.crop = None
         p.planted_at = None

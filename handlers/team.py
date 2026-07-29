@@ -236,6 +236,13 @@ async def _announce_winners(context: ContextTypes.DEFAULT_TYPE, winners: list[di
 
 _TEAM_TOP_TABS = [("day", "☀️ روزانه"), ("week", "📅 هفتگی"), ("all", "🌍 کلی")]
 
+# نشان رتبه لیدربرد: سه تای اول مدال، بعدیشون عدد کی‌کپ
+_RANK_BADGES = {1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣", 6: "6️⃣", 7: "7️⃣", 8: "8️⃣", 9: "9️⃣", 10: "🔟"}
+
+
+def _team_rank_badge(i: int) -> str:
+    return _RANK_BADGES.get(i, f"▫️ {fa_num(i)}")
+
 
 async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str | None = None) -> None:
     """🏆 لیدربرد تیم‌ها بر اساس جمع مدال‌های اعضا، تب روزانه/هفتگی/کلی («تیم لیدربرد»)"""
@@ -253,13 +260,13 @@ async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE, tab
     if winners:
         await _announce_winners(context, winners)
 
-    lines = [f"<b>🏆 لیدربرد تیم‌ها {titles[tab]}</b>", ""]
+    lines = ["<b>🏆 لیدربرد تیم‌ها</b>", titles[tab], ""]
     if not tops:
         lines.append("هنوز هیچ تیمی ساخته نشده\nاولیشو تو بساز 😎 «ساخت تیم»")
     else:
         for i, (t, total, n) in enumerate(tops, 1):
-            medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{fa_num(i)}.")
-            lines.append(f"{medal} «{esc(t.name)}» | 🎖️ {fa_num(total)}")
+            badge = _team_rank_badge(i)
+            lines.append(f"{badge} [Lv.{t.level:02d}] │ {esc(t.name)} 🎖️ {fa_num(total)}")
         if tab == "week" or not last_week:
             p1, p2, p3 = (config.TEAM_WEEKLY_PRIZES.get(i, 0) for i in (1, 2, 3))
             lines.append("")
@@ -270,9 +277,9 @@ async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE, tab
         lines.append("━━━━ 👑 قهرمانای هفته پیش ━━━━")
         lines.append(esc(last_week))
 
-    lines.append("")
-    lines.append("🎖️ مدال‌های اعضا موقع بازی کردن جمع میشن، کلی همه مدال‌هاست")
-    lines.append("💡 آمار هر تیم با «تیم [اسم]»، مثلا «تیم فوتبالیست‌ها»")
+    lines.append("━━━━━━━━━━━━━━━━")
+    lines.append("🎖️ مجموع مدال‌های اعضای تیم")
+    lines.append("💬 تیم [نام تیم] آمار هر تیمی رو نشونت میده")
     text = "\n".join(lines)
 
     await respond(update, text, kb.team_top_kb(tab))
@@ -469,6 +476,25 @@ async def set_bio_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if ok:
         return await respond(update, f"✏️ بیوی تیم ست شد:\n<i>{esc(res)}</i>\n\nتو آمار تیم با «تیم من» نمایش داده میشه")
+    await respond(update, res)
+
+
+async def rename_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """✏️ «تیم تغییر نام [اسم جدید]»، فقط رهبر با پرداخت هزینه تغییر نام"""
+    txt = strip_bot_cmd(update.message.text or "")
+    m = re.match(r"^تیم[\s‌]+تغییر[\s‌]+نام[\s‌]+(.+)$", txt)
+    arg = m.group(1) if m else ""
+
+    if not arg:
+        return await respond(update, f"✏️ این‌جوری بنویس: «تیم تغییر نام [اسم جدید]»، هزینش {money(config.TEAM_RENAME_COST)}ـه")
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, res = await teams.rename_team(s, user, arg)
+        await s.commit()
+
+    if ok:
+        return await respond(update, f"<b>{esc(res)}</b>")
     await respond(update, res)
 
 

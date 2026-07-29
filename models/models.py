@@ -95,6 +95,14 @@ class User(Base):
     # لحظه اولین تشخیص لفت — مبنای مهلت پاکسازی اکانت (برگشت عضویت NULLش می‌کنه)
     fj_left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # آنبوردینگ 🎯 — لحظه اولین تجربه‌های کلیدی، NULL یعنی هنوز تجربه نکرده (برای مهاجرت کاربرای قدیمی)
+    first_mine_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    first_plant_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    first_harvest_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # حالت نامرئی لیدربرد (فقط ادمین ربات) — ۱ یعنی تو هیچ لیدربردی دیده نمیشه
+    lb_hidden: Mapped[int] = mapped_column(Integer, default=0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
     plots: Mapped[list["Plot"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -319,6 +327,21 @@ class ActionEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     action: Mapped[str] = mapped_column(String(16), index=True)  # battle / pvattack / mine / casino
+    at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+class SeedSale(Base):
+    """
+    فروش واقعی محصولها برای بازار پویا — هر واحد فروخته‌شده یه ردیف برای حساب عرضه ۲۴ ساعت اخیر
+    ردیف‌های قدیمی‌تر از MARKET_SALE_KEEP_HOURS موقع درج بعدی پاک میشن
+    شمارش با SUM(qty) روی ایندکس (seed_key, at) مستقیم توی SQL انجام میشه
+    """
+    __tablename__ = "seed_sales"
+    __table_args__ = (Index("ix_seed_sales_seed_at", "seed_key", "at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    seed_key: Mapped[str] = mapped_column(String(32), index=True)
+    qty: Mapped[int] = mapped_column(Integer, default=1)
     at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
 
