@@ -354,10 +354,10 @@ async def set_bio(session: AsyncSession, user: User, bio: str) -> tuple[bool, st
 
 # ───────── تغییر نام تیم ✏️ ─────────
 
-async def rename_team(session: AsyncSession, user: User, new_name: str) -> tuple[bool, str]:
+async def rename_precheck(session: AsyncSession, user: User, new_name: str) -> tuple[bool, object]:
     """
-    تغییر نام تیم توسط رهبر با پرداخت TEAM_RENAME_COST از جیب خودش
-    متن جدید از همه قوانین اسم تیم رد میشه و نباید تکراری باشه
+    ولیدیشن تغییر نام بدون اعمال، برای مرحله نمایش فاکتور و تایید
+    موفق: (True, (تیم، اسم نمایشی پاک‌شده)) | ناموفق: (False، دلیل)
     """
     m = await get_membership(session, user.id)
     if not m or m.role != "owner":
@@ -377,9 +377,23 @@ async def rename_team(session: AsyncSession, user: User, new_name: str) -> tuple
     if user.cash < cost:
         return False, f"❌ تغییر نام {money(cost)} می‌خواد و {money(user.cash)} داری"
 
+    display = " ".join(str(new_name).split())
+    return True, (team, display)
+
+
+async def rename_team(session: AsyncSession, user: User, new_name: str) -> tuple[bool, str]:
+    """
+    تغییر نام تیم توسط رهبر با پرداخت TEAM_RENAME_COST از جیب خودش
+    دوباره از روی validate رد میشه چون بین تایید و اجرا وضعیت می‌تونه عوض بشه
+    """
+    ok, res = await rename_precheck(session, user, new_name)
+    if not ok:
+        return False, res
+    team, display = res
+
+    cost = config.TEAM_RENAME_COST
     user.cash -= cost
     old = team.name
-    display = " ".join(str(new_name).split())
     team.name = display
     team.name_norm = team_name_norm(display)  # ستون یکدست‌شده جستجو هم آپدیت میشه
     return True, f"✏️ اسم تیم از «{old}» شد «{team.name}»\n💸 {money(cost)} هم از جیبت رفت"

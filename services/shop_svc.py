@@ -109,7 +109,7 @@ async def purchase(
         await add_seed_stock(session, user.id, key, 1)
 
     emoji = KIND_EMOJI.get(kind, "🎉")
-    return True, f"{emoji} {item['name']} مالت شد"
+    return True, f"{emoji} {item['name']} خریداری شد"
 
 
 def find_shop_item(query: str) -> tuple[str | None, str | None, dict | None]:

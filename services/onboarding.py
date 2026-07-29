@@ -108,9 +108,9 @@ async def mission_rows(session: AsyncSession, user: User) -> list[tuple[str, str
         )
     )).scalar() or 0
     dones = {
-        # زمین اول رایگانه، قدم مأموریت خرید اولین زمین اضافه‌ست (دومین زمین)
+        # زمین اول دیگه هدیه نیس، خود بازیکن رایگان می‌خره و همین خرید قدم مأموریته
         "mine": user.first_mine_at is not None,
-        "plot": plots_n >= 2,
+        "plot": plots_n >= 1,
         "plant": user.first_plant_at is not None,
         "harvest": user.first_harvest_at is not None,
         "weapon": n_weapons >= 1,

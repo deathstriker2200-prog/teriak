@@ -154,6 +154,11 @@ def member_cache_drop(user_id: int) -> None:
     _MEMBER_CACHE.pop(user_id, None)
 
 
+def invalidate_members() -> None:
+    """ریست کامل کش عضویت همه کاربرا، برای /update ادمین که وضعیت‌ها تازه بشن"""
+    _MEMBER_CACHE.clear()
+
+
 # ─────── چک عضویت ───────
 
 async def is_member(bot, channel: str, user_id: int) -> bool:

@@ -99,8 +99,8 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
         dfn = int(dfn * (1 + tbuff_def))
 
     from services import world as world_svc
-    wkey, _ = await world_svc.current_weather(session)
-    watk, wdef = world_svc.weather_combat_mods(wkey)
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    watk, wdef = world_svc.weather_combat_mods(wkey, wpct)
     if watk:
         atk = max(1, int(atk * (1 + watk)))
     if wdef:

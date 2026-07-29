@@ -64,7 +64,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     # ── سیستم‌های جهان ──
     ("search", rf"{T}جستجو!?$|{T}جست{S}*و{S}*جو!?$", world.search_cmd),
     ("weather", rf"{T}وضعیت{S}+آب{S}+و{S}+هوا!?$|{T}آب{S}*و{S}*هوا!?$|{T}وضعیت{S}+هواشناسی!?$|{T}هواشناسی!?$|{T}وضعیت{S}+هوا!?$", world.weather_cmd),
-    ("market", rf"{T}وضعیت{S}+بازار!?$|{T}بازار{S}*سیاه!?$|{T}بازار!?$", world.market_cmd),
+    ("market", rf"{TP}وضعیت{S}+بازار!?$|{TP}بازار{S}*سیاه!?$|{TP}بازار!?$", world.market_cmd),  # با و بدون پیشوند
     ("shelter", rf"{T}پناهگاه!?$|{T}مخفیگاه!?$|{T}انبار!?$|{T}انبار{S}+و{S}+پناهگاه!?$", world.shelter_cmd),
     ("company", rf"{T}شرکت!?$|{T}کارخانه!?$", company.company_cb),
     ("dogrename", rf"{T}اسم{S}+سگ{S}+(.+)$", dogs.dog_rename_text),
@@ -117,6 +117,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("upload_backup", backup.upload_backup_cmd))
     app.add_handler(CommandHandler("user", admin.user_cmd))
     app.add_handler(CommandHandler("hideboard", admin.hideboard_cmd))
+    app.add_handler(CommandHandler("update", admin.update_cmd))
     app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
     app.add_handler(CommandHandler("detp", admin.detp_cmd))

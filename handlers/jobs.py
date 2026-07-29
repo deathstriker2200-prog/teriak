@@ -49,7 +49,7 @@ async def weather_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if not rolled:
         return
-    text = world_svc.weather_announce_text(key)
+    text = world_svc.weather_announce_text(key, rolled.get("pct"))
     for gid in groups:
         if gid in offs:
             continue  # گروه خاموشه (/botoff)

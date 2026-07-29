@@ -71,22 +71,37 @@ def _effect_emoji(line: str) -> str:
     return "⭐"
 
 
-def weather_announce_text(key: str) -> str:
-    """پیام اعلان آب و هوای جدید برای گروه‌ها، افکت به زبون کامل گفته میشه"""
+def _weather_pct(key: str, pct: int | None) -> int:
+    """درصد افکت؛ اگه رولی در کار نباشه (هوای ست‌شده قبل از نسخه پویا) پایه کانفیگ میاد"""
+    if pct is not None:
+        return pct
+    return int(weather_of(key).get("base", 0))
+
+
+def _weather_lines(key: str, field: str, pct: int | None) -> list[str]:
+    """قالب‌های announce/effects با درصد واقعی همین رول پر میشن"""
+    p = _weather_pct(key, pct)
+    return [t.format(p=p) for t in weather_of(key).get(field, [])]
+
+
+def weather_announce_text(key: str, pct: int | None = None) -> str:
+    """پیام اعلان آب و هوای جدید برای گروه‌ها، افکت با درصد همین رول گفته میشه"""
     w = weather_of(key)
+    hours = config.WEATHER_ROLL_SECONDS // 3600
     lines = ["<b>🌦 وضعیت آب و هوای جدید</b>", ""]
     if key == "normal":
         lines.append("🏙️ هوای محله صافِ صاف شد الان دیگه هیچ افکت خاصی فعال نیست")
     else:
         lines.append(f"{w['emoji']} {w['name']} آغاز شد")
-        for b in w.get("announce", []):
-            lines.append(f"{_effect_emoji(b)} {b}، تا 2 ساعت آینده")
+        for b in _weather_lines(key, "announce", pct):
+            lines.append(f"{_effect_emoji(b)} {b}، تا {fa_num(hours)} ساعت آینده")
     return "\n".join(lines)
 
 
-async def ensure_weather(session: AsyncSession) -> tuple[str, object | None]:
+async def ensure_weather(session: AsyncSession, force: bool = False) -> tuple[str, object | None]:
     """
     آب و هوای فعلی رو بگیر، اگه زمانش گذشته بود همینجا رول کن (تنبل، رول‌بک‌پروف)
+    force=True یعنی فوراً رول کن حتی اگه زمانش نرسیده (کامند /update ادمین)
     خروجی: (کلید, رکورد جدید اگه همین لحظه رول شده وگرنه None)
     """
     until_raw = await _meta(session, "weather_until")
@@ -101,8 +116,12 @@ async def ensure_weather(session: AsyncSession) -> tuple[str, object | None]:
         except ValueError:
             until = None
 
-    if cur_key in config.WEATHERS and until and until > now:
+    if cur_key in config.WEATHERS and until and until > now and not force:
         return cur_key, None
+
+    # درصد رول قبلی، برای تنظیم تایمر زمین‌های در حال رشد لازمه
+    old_pct_raw = await _meta(session, "weather_pct")
+    old_pct = int(old_pct_raw) if old_pct_raw is not None else None
 
     # رول جدید
     if random.random() < config.WEATHER_NORMAL_CHANCE:
@@ -111,22 +130,38 @@ async def ensure_weather(session: AsyncSession) -> tuple[str, object | None]:
         specials = [k for k in config.WEATHERS if k != "normal"]
         key = random.choice(specials)
 
+    # شدت افکت این رول: سه‌گوش حول پایه با مود زیر پایه، بعد اثر شلوغی محله، بعد کلمپ
+    pct: int | None = None
+    if key != "normal":
+        base = int(weather_of(key).get("base", 0))
+        f = random.triangular(config.WEATHER_ROLL_MIN_F, config.WEATHER_ROLL_MAX_F, config.WEATHER_ROLL_MODE_F)
+        act = await _active_players_24h(session)
+        crowd = 1.0 + config.WEATHER_ACTIVE_WEIGHT * max(
+            -1.0, min(1.0, (act - config.WEATHER_ACTIVE_REF) / max(1, config.WEATHER_ACTIVE_REF))
+        )
+        pct = int(round(base * f * crowd))
+        pct = max(config.WEATHER_MIN_PCT, min(config.WEATHER_MAX_PCT, pct))
+
     new_until = now + timedelta(seconds=config.WEATHER_ROLL_SECONDS)
     await _meta_set(session, "weather_key", key)
     await _meta_set(session, "weather_until", new_until.isoformat())
+    await _meta_set(session, "weather_pct", str(pct or 0))
     # افکت هوای جدید همون لحظه روی محصول‌های در حال رشد هم اعمال میشه
-    await apply_growth_rescale(session, cur_key, key)
-    return key, {"key": key, "until": new_until}
+    await apply_growth_rescale(session, cur_key, key, old_pct, pct)
+    return key, {"key": key, "until": new_until, "pct": pct or 0}
 
 
-async def apply_growth_rescale(session: AsyncSession, old_key: str, new_key: str) -> int:
+async def apply_growth_rescale(
+    session: AsyncSession, old_key: str, new_key: str,
+    old_pct: int | None = None, new_pct: int | None = None,
+) -> int:
     """
     با عوض شدن آب و هوا، تایمر زمین‌های در حال رشد بر اساس سرعت جدید تنظیم میشه
     کار باقی‌مونده ثابت می‌مونه، فقط سرعتش با هوای جدید حساب میشه
     خروجی: تعداد زمین‌هایی که تایمرشون عوض شد
     """
-    old_speed = weather_grow_speed(old_key)
-    new_speed = weather_grow_speed(new_key)
+    old_speed = weather_grow_speed(old_key, old_pct)
+    new_speed = weather_grow_speed(new_key, new_pct)
     if old_speed <= 0 or new_speed <= 0 or old_speed == new_speed:
         return 0
     mult = old_speed / new_speed
@@ -154,32 +189,61 @@ async def current_weather(session: AsyncSession) -> tuple[str, int]:
     return key, max(0, left)
 
 
-def weather_grow_speed(key: str) -> float:
-    """ضریب سرعت رشد (باران +30% | گرمای شدید ۲۰%− | سرمای شدید +15% زمان)"""
-    return weather_of(key).get("speed", 1.0)
+async def weather_state(session: AsyncSession) -> tuple[str, int | None, int]:
+    """
+    (کلید هوای فعلی، درصد رول فعلی اگه ویژه‌ست وگرنه None، ثانیه مونده)
+    None یعنی یا هوا عادیه یا از دوره قبل از شدت پویا مونده، در این حالت پایه کانفیگ اعمال میشه
+    """
+    key, left = await current_weather(session)
+    if key == "normal":
+        return key, None, left
+    raw = await _meta(session, "weather_pct")
+    return key, (int(raw) if raw is not None else None), left
 
 
-def weather_sell_mult(key: str) -> float:
-    """ضریب قیمت فروش (جشن برداشت +50%)"""
-    return 1.0 + weather_of(key).get("sell_mod", 0.0)
-
-
-def weather_combat_mods(key: str) -> tuple[float, float]:
-    """(اصلاح حمله, اصلاح دفاع)، طوفان −10% موفقیت حمله | مه +20% دفاع"""
+def weather_grow_speed(key: str, pct: int | None = None) -> float:
+    """ضریب سرعت رشد: باران +p% | گرما p%− | سرما +p% زمان، p درصد همین روله (نه ثابت)"""
     w = weather_of(key)
-    return w.get("atk_mod", 0.0), w.get("def_mod", 0.0)
+    p = _weather_pct(key, pct)
+    if w.get("kind") == "speed":
+        return 1.0 + w.get("sign", 1) * p / 100.0
+    if w.get("kind") == "time":
+        return 1.0 / (1.0 + p / 100.0)
+    return 1.0
 
 
-def weather_q5_bonus(key: str) -> float:
-    """شانس اضافه محصول ۵ ستاره (شب مهتابی +10%)"""
-    return weather_of(key).get("q5", 0.0)
+def weather_sell_mult(key: str, pct: int | None = None) -> float:
+    """ضریب قیمت فروش (جشن برداشت +p%)"""
+    w = weather_of(key)
+    if w.get("kind") == "sell":
+        return 1.0 + _weather_pct(key, pct) / 100.0
+    return 1.0
+
+
+def weather_combat_mods(key: str, pct: int | None = None) -> tuple[float, float]:
+    """(اصلاح حمله, اصلاح دفاع)، طوفان حمله p%− | مه دفاع p%+"""
+    w = weather_of(key)
+    p = w.get("sign", 1) * _weather_pct(key, pct) / 100.0
+    if w.get("kind") == "atk":
+        return p, 0.0
+    if w.get("kind") == "def":
+        return 0.0, p
+    return 0.0, 0.0
+
+
+def weather_q5_bonus(key: str, pct: int | None = None) -> float:
+    """شانس اضافه محصول ۵ ستاره (شب مهتابی +p%)"""
+    w = weather_of(key)
+    if w.get("kind") == "q5":
+        return _weather_pct(key, pct) / 100.0
+    return 0.0
 
 
 async def weather_view(session: AsyncSession) -> dict:
-    """دیتای بخش «وضعیت آب و هوا»"""
-    key, left = await current_weather(session)
+    """دیتای بخش «وضعیت آب و هوا» با درصدهای رندرشده همین رول"""
+    key, pct, left = await weather_state(session)
     w = weather_of(key)
-    return {"key": key, "w": w, "left": left}
+    return {"key": key, "w": w, "left": left, "pct": pct, "effect_lines": _weather_lines(key, "effects", pct)}
 
 
 # ═════════ بازار سیاه 📈 (پویا بر پایه عرضه و تقاضای واقعی) ═════════
@@ -253,8 +317,11 @@ def _next_market_mult(old: float, sold: int, demand: float) -> float:
     return min(config.MARKET_MAX_PRICE_MULTIPLIER, max(config.MARKET_MIN_PRICE_MULTIPLIER, mult))
 
 
-async def ensure_market(session: AsyncSession) -> bool:
-    """اگه زمان بازار گذشته بود یه حرکت قیمت بزن، خروجی True یعنی همین لحظه رول شد"""
+async def ensure_market(session: AsyncSession, force: bool = False) -> bool:
+    """
+    اگه زمان بازار گذشته بود یه حرکت قیمت بزن، خروجی True یعنی همین لحظه رول شد
+    force=True یعنی فوراً رول کن حتی اگه زمانش نرسیده (کامند /update ادمین)
+    """
     until_raw = await _meta(session, "market_until")
     from datetime import datetime as _dt
     try:
@@ -262,7 +329,7 @@ async def ensure_market(session: AsyncSession) -> bool:
     except ValueError:
         until = None
 
-    if until and until > now_utc():
+    if until and until > now_utc() and not force:
         return False
 
     old = _parse_market(await _meta(session, "market"))
@@ -310,7 +377,7 @@ def market_view_text(mults: dict[str, float], left: int) -> str:
         "کمیاب بشه گرون‌تر میشه، اشباع بشه ارزون‌تر",
         "",
         "📈 بالاتر از پایه | 📉 پایین‌تر از پایه | ⚖️ سر پایه",
-        "قیمت‌ها هر 4 ساعت یه حرکت کوچیک دارن، جهش ندارن",
+        "قیمت‌ها هر یک ساعت یه حرکت کوچیک دارن",
     ]
     for key, sd in config.SEEDS.items():
         mult = mults.get(key, 1.0)

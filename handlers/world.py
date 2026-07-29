@@ -90,10 +90,10 @@ async def weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         lines.append("افکت خاصی فعال نیست، هوا عادیه")
     else:
         lines.append("افکت‌های فعلی:")
-        for b in w.get("effects", []):
+        for b in view["effect_lines"]:
             lines.append(f"▫️ {b}")
     lines.append("")
-    lines.append("🌦 هر 2 ساعت عوض میشه و تو گروه‌های فعال اعلام میشه")
+    lines.append("🌦 هر 6 ساعت عوض میشه و شدت افکتش هم هر بار فرق می‌کنه، تو گروه‌های فعال اعلام میشه")
     await respond(update, "\n".join(lines), kb.home_kb())
 
 
@@ -127,6 +127,7 @@ async def _shelter_text(session, user) -> str:
         "",
         f"🪵 چوب {bar(user.wood, wcap)} {fa_num(user.wood)}/{fa_num(wcap)}",
         f"⛏️ آهن {bar(user.iron, icap)} {fa_num(user.iron)}/{fa_num(icap)}",
+        "",  # فاصله بین منابع و بذرها که توهم نرن
     ]
     # بذرهای انبار هم مثل چوب و آهن با نوار پرشوندگی نشون داده میشن (۵ بذر پایه، افسانه‌ای‌ها نه)
     for key, sd in config.SEEDS.items():

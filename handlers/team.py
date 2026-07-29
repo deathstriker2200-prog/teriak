@@ -448,6 +448,12 @@ async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if action == "leave":
             ok, res = await teams.leave_team(s, user)
             msg = f"🚪 از تیم «{res}» رفتی برو بیرون 😅" if ok else res
+        elif action == "rename":
+            new_name = (context.user_data or {}).pop("pending_team_rename", None)
+            if new_name is None:
+                ok, msg = False, "⏳ این تایید منقضی شده، «تیم تغییر نام [اسم]» رو دوباره بزن"
+            else:
+                ok, msg = await teams.rename_team(s, user, new_name)
         else:
             ok, res = await teams.disband_team(s, user)
             msg = f"💥 تیم «{res}» منحل شد، همه آزادن" if ok else res
@@ -480,7 +486,7 @@ async def set_bio_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def rename_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """✏️ «تیم تغییر نام [اسم جدید]»، فقط رهبر با پرداخت هزینه تغییر نام"""
+    """✏️ «تیم تغییر نام [اسم جدید]»، فقط رهبر، اول فاکتور و تایید میاد بعد اعمال میشه"""
     txt = strip_bot_cmd(update.message.text or "")
     m = re.match(r"^تیم[\s‌]+تغییر[\s‌]+نام[\s‌]+(.+)$", txt)
     arg = m.group(1) if m else ""
@@ -490,12 +496,24 @@ async def rename_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        ok, res = await teams.rename_team(s, user, arg)
+        ok, res = await teams.rename_precheck(s, user, arg)
+        old_name = res[0].name if ok else None
+        display = res[1] if ok else None
         await s.commit()
 
-    if ok:
-        return await respond(update, f"<b>{esc(res)}</b>")
-    await respond(update, res)
+    if not ok:
+        return await respond(update, res)
+
+    # اسم جدید تا لحظه تایید اینجا پارک میشه، موقع اجرا دوباره ولیدیت میشه
+    context.user_data["pending_team_rename"] = display
+    text = (
+        f"<b>✏️ تغییر نام تیم</b>\n\n"
+        f"اسم فعلی: «{esc(old_name)}»\n"
+        f"اسم جدید: «{esc(display)}»\n"
+        f"💸 هزینه: {money(config.TEAM_RENAME_COST)}\n\n"
+        "مطمئنی؟"
+    )
+    await respond(update, text, kb.team_confirm_kb("rename", update.effective_user.id))
 
 
 # ───────── کوئست ─────────

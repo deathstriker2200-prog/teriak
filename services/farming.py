@@ -90,10 +90,10 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
     await add_seed_stock(session, user.id, seed_key, -1)
 
-    # آب و هوا روی سرعت رشد اثر می‌ذاره (باران سریع‌تر | گرما/سرما کندتر)
+    # آب و هوا روی سرعت رشد اثر می‌ذاره (باران سریع‌تر | گرما/سرما کندتر)، شدت همین رول
     from services import world as world_svc
-    wkey, _ = await world_svc.current_weather(session)
-    speed = world_svc.weather_grow_speed(wkey)
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    speed = world_svc.weather_grow_speed(wkey, wpct)
     seconds = max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
     plot.status = "growing"
     plot.crop = seed_key
@@ -133,11 +133,11 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     if not ready:
         return False, "▫️ چیزی آماده برداشت نیس", None, ([], 0), []
 
-    # افکت‌های جهان: کیفیت برداشت ⭐ + آب و هوا 🌦 + بازار سیاه 📈
+    # افکت‌های جهان: کیفیت برداشت ⭐ + آب و هوا 🌦 + بازار سیاه 📈، شدت هوا همین رول
     from services import world as world_svc
-    wkey, _ = await world_svc.current_weather(session)
-    sell_mult = world_svc.weather_sell_mult(wkey)
-    q5_bonus = world_svc.weather_q5_bonus(wkey)
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    sell_mult = world_svc.weather_sell_mult(wkey, wpct)
+    q5_bonus = world_svc.weather_q5_bonus(wkey, wpct)
     mults, _ = await world_svc.market_mults(session)
 
     total_gain = 0

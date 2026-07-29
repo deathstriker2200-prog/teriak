@@ -82,7 +82,9 @@ async def main() -> None:
         await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
         await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in config.SEEDS))
         await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
-        lgp = (await farming.get_user_plots(s, lgu.id))[0]
+        lgp = Plot(user_id=lgu.id, status="growing")
+        s.add(lgp)
+        await s.flush()
         lgp.status, lgp.crop = "growing", "jahannam"
         lgp.planted_at = now_utc() - timedelta(hours=2)
         lgp.ready_at = now_utc() - timedelta(seconds=1)
@@ -141,7 +143,7 @@ async def main() -> None:
 
     # ── کاتالوگ جدید زمین‌ها: ۱۰۰۰/۳۰ثانیه | ۱۰٬۰۰۰/۱۵دقیقه | ۲۰٬۰۰۰/۱ساعت | ۵۰٬۰۰۰/۱۲ساعت ──
     check("سقف زمین 5 تاست", config.MAX_PLOTS == 5)
-    check("زمین اول رایگانه", config.PLOT_CATALOG[1]["price"] == 0 and config.PLOT_CATALOG[1]["build_sec"] == 0)
+    check("زمین اول رایگانه ولی ۱۰ ثانیه ساخت می‌خواد (قدم آموزشی)", config.PLOT_CATALOG[1]["price"] == 0 and config.PLOT_CATALOG[1]["build_sec"] == 10)
     check("زمین دوم ۱۰۰۰ و ۳۰ ثانیه",
           economy.plot_price(1) == 1000 and economy.plot_build_seconds(1) == 30,
           f"{economy.plot_price(1)}/{economy.plot_build_seconds(1)}")
@@ -211,14 +213,27 @@ async def main() -> None:
         u3, _ = await users.get_or_create(s, tg(1003, "boss", "باس"))
         u3.level = 20
 
-        # ── زمین رایگان ثبت‌نام + خرید زمین دوم ──
+        # ── زمین اول دیگه هدیه نیس، خود بازیکن رایگان می‌خره (قدم آموزشی آنبوردینگ) ──
         free_plots = await farming.get_user_plots(s, u1.id)
-        check("زمین اول موقع ثبت‌نام رایگان داده میشه", len(free_plots) == 1, str(len(free_plots)))
-        check("زمین رایگان از اول ساخته شدس", free_plots[0].built_at is None)
-        check("ثبت‌نام دوباره زمین دوباره نمیده",
-              len(await farming.get_user_plots(s, (await users.get_or_create(s, tg(1001, "ali", "علی")))[0].id)) == 1)
+        check("موقع ثبت‌نام زمین هدیه داده نمیشه، خودت باید بخری", len(free_plots) == 0, str(len(free_plots)))
+        check("ثبت‌نام دوباره هم زمین نمیده",
+              len(await farming.get_user_plots(s, (await users.get_or_create(s, tg(1001, "ali", "علی")))[0].id)) == 0)
 
         u1.cash = 100000  # شارژ حساب برای تست‌ها
+        ok, msg = await farming.buy_plot(s, u1)
+        check("زمین اول رایگان خریده میشه (صفر تی‌پوینت)", ok and u1.cash == 100000, msg)
+        plots = await farming.get_user_plots(s, u1.id)
+        check("یه زمین شد", len(plots) == 1)
+        plot = plots[0]  # زمین اول برای کاشت تست‌ها
+        check("زمین اول ۱۰ ثانیه ساخت می‌خواد", plot.built_at is not None, str(plot.built_at))
+        st, left = plot.current_status()
+        check("وضعیت «در حال ساخت» با زمان مونده، حداکثر ۱۰ ثانیه", st == "building" and 0 < left <= 10, f"{st}/{left}")
+        ok, msg = await farming.plant(s, u1, plot, "teriak")
+        check("کاشت روی زمین نیم‌ساخت رد میشه", not ok and "ساخته" in msg, msg)
+        plot.built_at = now_utc() - timedelta(seconds=1)
+        st, _ = plot.current_status()
+        check("بعد تموم شدن ساخت استفاده میشه", st == "empty", st)
+
         check("زمین دوم زیر لول ۵ قفله", (await farming.buy_plot(s, u1))[0] is False or u1.level >= 5)
         u1.level = 10
         ok, msg = await farming.buy_plot(s, u1)
@@ -227,15 +242,7 @@ async def main() -> None:
         check("دو تا زمین شد", len(plots) == 2)
         built_plot = plots[1]
         check("زمین خریدنی داره ساخته میشه", built_plot.built_at is not None, str(built_plot.built_at))
-        st, left = built_plot.current_status()
-        check("وضعیت «در حال ساخت» با زمان مونده", st == "building" and 0 < left <= 30, f"{st}/{left}")
-        ok, msg = await farming.plant(s, u1, built_plot, "teriak")
-        check("کاشت روی زمین نیم‌ساخت رد میشه", not ok and "ساخته" in msg, msg)
-        built_plot.built_at = now_utc() - timedelta(seconds=1)
-        st, _ = built_plot.current_status()
-        check("بعد تموم شدن ساخت استفاده میشه", st == "empty", st)
-
-        plot = plots[0]  # زمین رایگان برای کاشت تست‌ها
+        built_plot.built_at = now_utc() - timedelta(seconds=1)  # ساختش تموم بشه برای تست‌های بعد
 
         u1.cash = 3000
         ok, msg = await shop_svc.purchase(s, u1, "seed", "teriak")
@@ -1981,19 +1988,19 @@ async def main() -> None:
               and abs(world_svc.weather_grow_speed("frost") - 1 / 1.15) < 1e-9)
         check("طوفان حمله 10%−", world_svc.weather_combat_mods("storm") == (-0.10, 0.0))
         check("مه دفاع 20%+", world_svc.weather_combat_mods("fog") == (0.0, 0.20))
-        check("جشن برداشت فروش 50%+", world_svc.weather_sell_mult("fest") == 1.50)
+        check("جشن برداشت فروش 35%+ (پایه کمتر شده که سقف ۵۰ درصدی به‌ندرت دیده بشه)", world_svc.weather_sell_mult("fest") == 1.35)
         check("شب مهتابی ⭐۵ +10%", world_svc.weather_q5_bonus("moon") == 0.10)
         txtw = world_svc.weather_announce_text("rain")
         check("متن اعلان آب و هوا قالب داره",
               "🌦 وضعیت آب و هوای جدید" in txtw and "باران" in txtw and "آغاز شد" in txtw and "30%" in txtw,
               txtw.replace("\n", " | ")[:100])
         check("متن اعلان باران افکت کامل رو می‌گه",
-              "🌱 سرعت رشد گیاه ها 30% افزایش پیدا کرد، تا 2 ساعت آینده" in txtw,
+              "🌱 سرعت رشد گیاه ها 30% افزایش پیدا کرد، تا 6 ساعت آینده" in txtw,
               txtw.replace("\n", " | ")[-120:])
         txth = world_svc.weather_announce_text("heat")
         check("متن اعلان گرما دقیقه",
               "☀️ گرمای شدید آغاز شد" in txth
-              and "🌱 سرعت رشد گیاه ها 20% کاهش پیدا کرد، تا 2 ساعت آینده" in txth,
+              and "🌱 سرعت رشد گیاه ها 20% کاهش پیدا کرد، تا 6 ساعت آینده" in txth,
               txth.replace("\n", " | ")[:120])
         check("برگشت هوای عادی هم اعلام میشه",
               world_svc.weather_announce_text("normal") ==
@@ -2007,6 +2014,7 @@ async def main() -> None:
     async with session_scope() as s:
         await world_svc._meta_set(s, "weather_key", "heat")
         await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        await world_svc._meta_set(s, "weather_pct", "20")  # درصد این رول گرما، دیترمینیستیک برای متن
         await s.commit()
     upd = _text_update("تریاکی آب و هوا", uid=1001, uname="ali", fname="علی")
     await world_h.weather_cmd(upd, None)
@@ -2015,7 +2023,7 @@ async def main() -> None:
           "<b>🌦 وضعیت آب و هوا</b>" in wtxt and "☀️ گرمای شدید" in wtxt
           and "دیگه عوض میشه" in wtxt and "افکت‌های فعلی:" in wtxt
           and "▫️ سرعت رشد منفی 20%" in wtxt
-          and "هر 2 ساعت عوض میشه و تو گروه‌های فعال اعلام میشه" in wtxt,
+          and "هر 6 ساعت عوض میشه و شدت افکتش هم هر بار فرق می‌کنه، تو گروه‌های فعال اعلام میشه" in wtxt,
           wtxt.replace("\n", " | ")[:180])
     async with session_scope() as s:
         await world_svc._meta_set(s, "weather_key", "normal")
@@ -2029,8 +2037,9 @@ async def main() -> None:
     # ── rescale فوری تایمر زمین‌ها با عوض شدن هوا ──
     async with session_scope() as s:
         rsu, _ = await users.get_or_create(s, tg(8840, "resc", "رشدی"))
-        rplots = await farming.get_user_plots(s, rsu.id)
-        rplot = rplots[0]
+        rplot = Plot(user_id=rsu.id, status="empty")
+        s.add(rplot)
+        await s.flush()
         rplot.status = "growing"
         rplot.seed_key = "teriak"
         rplot.ready_at = now_utc() + timedelta(seconds=1000)
@@ -2052,6 +2061,7 @@ async def main() -> None:
         rplot.ready_at = now_utc() + timedelta(seconds=1000)
         await world_svc._meta_set(s, "weather_key", "heat")
         await world_svc._meta_set(s, "weather_until", "2000-01-01T00:00:00")
+        await world_svc._meta_set(s, "weather_pct", "20")  # درصد رول فعلی گرما، دیترمینیستیک برای ریسکیل
         old_nc = config.WEATHER_NORMAL_CHANCE
         config.WEATHER_NORMAL_CHANCE = 1.0
         try:
@@ -2961,8 +2971,10 @@ async def main() -> None:
         lk, _ = await users.get_or_create(s, tg(8810, "lockp", "قفلی"))
         lk.level = 2
         await farming.add_seed_stock(s, lk.id, "cocaine", 1)
-        lplots = await farming.get_user_plots(s, lk.id)
-        ok, msg = await farming.plant(s, lk, lplots[0], "cocaine")
+        lplot = Plot(user_id=lk.id, status="empty")
+        s.add(lplot)
+        await s.flush()
+        ok, msg = await farming.plant(s, lk, lplot, "cocaine")
         check("کاشت کوکائین تو لول 2 موفقه (قفل لول فقط برای خریده)",
               ok and "کاشته شد" in msg, msg)
         ok2, msg2 = await shop_svc.purchase(s, lk, "seed", "cocaine")
@@ -2976,6 +2988,7 @@ async def main() -> None:
         au, _ = await users.get_or_create(s, tg(8815, "anylvl", "آزاد"))
         au.level = 1
         await farming.add_seed_stock(s, au.id, "jahannam", 1)
+        s.add(Plot(user_id=au.id, status="empty"))
         await s.commit()
     upd = _text_update("تریاکی کاشت جهنم", uid=8815, uname="anylvl", fname="آزاد")
     await textcmd_h2.plant_text(upd, None)
@@ -3250,8 +3263,10 @@ async def main() -> None:
               any(t.startswith("🌿 ماری‌جوانا") for t in seed_texts)
               and any(t.startswith("🍄 قارچ") for t in seed_texts)
               and any(t.startswith("🌱 تریاک") for t in seed_texts), str(seed_texts[:4]))
-        plots1 = await farming.get_user_plots(s, su1.id)
-        pkb = kb2.seeds_kb(su1, plots1[0], {"teriak": 3})
+        splot1 = Plot(user_id=su1.id, status="empty")
+        s.add(splot1)
+        await s.flush()
+        pkb = kb2.seeds_kb(su1, splot1, {"teriak": 3})
         p_texts = [b.text for row in pkb.inline_keyboard for b in row]
         check("دکمه کاشت بذر هم ایموجی داره",
               any(t.startswith("🌱 تریاک") for t in p_texts), str(p_texts[:3]))
@@ -4410,8 +4425,9 @@ async def main() -> None:
         fu = await users.get_by_tg(s, 9410)  # لول ۲۰، همه آپگریدها براش بازه
         fu.cash = 500000
         fu.wood = 0
-        p1 = (await farming.get_user_plots(s, fu.id))[0]
-        p1.level = 1
+        p1 = Plot(user_id=fu.id, status="empty", level=1)
+        s.add(p1)
+        await s.flush()
         ok, msg = await farming.upgrade_plot(s, fu, p1)
         check("آپگرید زمین بدون چوب رد میشه", not ok and "چوب" in msg, msg)
         fu.wood = 500
@@ -4422,8 +4438,9 @@ async def main() -> None:
         fu2, _ = await users.get_or_create(s, tg(9415, "lowlvl", "کم‌لول"))
         fu2.level = 1
         fu2.cash = 999999
-        f2 = (await farming.get_user_plots(s, fu2.id))[0]
-        f2.level = 1
+        f2 = Plot(user_id=fu2.id, status="empty", level=1)
+        s.add(f2)
+        await s.flush()
         ok, msg = await farming.upgrade_plot(s, fu2, f2)
         check("آپگرید زمین زیر لول ۳ قفله",
               not ok and "آپگرید به لول 2 لول 3 می‌خواد" in msg and f2.level == 1, msg)
@@ -5500,7 +5517,7 @@ async def main() -> None:
         ob2.first_harvest_at = now_utc()
         ob2.last_attack_at = now_utc()
         s.add(InventoryItem(user_id=ob2.id, item_key=list(config.WEAPONS)[0]))
-        s.add(Plot(user_id=ob2.id, status="empty"))  # با زمین رایگان ثبت‌نام میشه ۲ تا
+        s.add(Plot(user_id=ob2.id, status="empty"))  # حالا یک زمین یعنی مرحله «اولین زمین» انجام شده
         rows_ob2 = await onb.mission_rows(s, ob2)
         check("بعد کامل شدن همه مرحله‌ها کارت مأموریت محو میشه",
               all(d for _, _, d in rows_ob2) and await onb.menu_card(s, ob2) is None, str(rows_ob2))
@@ -5511,6 +5528,8 @@ async def main() -> None:
     async with session_scope() as s:
         hu, _ = await users.get_or_create(s, tg(7325, "hav", "برداشتگر"))
         hu.last_harvest_at = None
+        s.add(Plot(user_id=hu.id, status="empty"))
+        await s.flush()
         hp = (await farming.get_user_plots(s, hu.id))[0]
         hp.status, hp.crop = "growing", "marijuana"
         hp.ready_at = now_utc() - timedelta(seconds=5)
@@ -5572,10 +5591,35 @@ async def main() -> None:
         check("اسم تکراری تیم دیگه رد میشه", not ok and "از قبل" in msg, msg)
         await s.commit()
     upd_rn = _text_update("تیم تغییر نام اسم آخرین", uid=7329, uname="ren", fname="رهبرنام")
-    await team_h.rename_text(upd_rn, None)
-    check("هندلر متنی «تیم تغییر نام» کار می‌کنه",
-          any("اسم آخرین" in c[1] for c in upd_rn.message.calls),
+    rn_ctx = SimpleNamespace(user_data={})
+    await team_h.rename_text(upd_rn, rn_ctx)
+    check("«تیم تغییر نام» اول فاکتور با دکمه تایید میاره و هنوز اعمال نمیشه",
+          any("تغییر نام تیم" in c[1] and "اسم آخرین" in c[1] for c in upd_rn.message.calls)
+          and rn_ctx.user_data.get("pending_team_rename") == "اسم آخرین",
           str([c[1][:70] for c in upd_rn.message.calls]))
+    async with session_scope() as s:
+        check("قبل زدن تایید اسم تیم عوض نشده", await team_svc.get_team_by_name(s, "اسم آخرین") is None)
+        cash_rn_before = (await users.get_by_tg(s, 7329)).cash
+        await s.commit()
+    upd_rnc = _fake_update("tmcf:rename:7329", uid=7329)
+    await team_h.team_confirm_cb(upd_rnc, rn_ctx)
+    async with session_scope() as s:
+        t_done = await team_svc.get_team_by_name(s, "اسم آخرین")
+        ru2 = await users.get_by_tg(s, 7329)
+        check("بعد تایید اسم عوض شد و هزینه از جیب رهبر کم شد",
+              t_done is not None and ru2.cash == cash_rn_before - config.TEAM_RENAME_COST,
+              f"{t_done} {ru2.cash}")
+        check("اسم قبلی آزاد شده", await team_svc.get_team_by_name(s, "اسم نونوار") is None)
+        await s.commit()
+    check("پیام موفقیت تغییر نام اومد",
+          any("اسم آخرین" in str(c[1]) for c in upd_rnc.callback_query.calls),
+          str(upd_rnc.callback_query.calls[-2:]))
+    check("معلق تغییر نام بعد اجرا پاک شد", "pending_team_rename" not in rn_ctx.user_data)
+    upd_rnx = _fake_update("tmcf:rename:7329", uid=7329)
+    await team_h.team_confirm_cb(upd_rnx, rn_ctx)
+    check("تایید بدون معلق می‌گه منقضی شده",
+          any("منقضی شده" in str(c[1]) for c in upd_rnx.callback_query.calls),
+          str(upd_rnx.callback_query.calls[-2:]))
 
     # ── نامرئی لیدربرد 👻 (فقط ادمین) ──
     async with session_scope() as s:
@@ -5666,8 +5710,125 @@ async def main() -> None:
           and (bool(_reon.search(r"🥇 \[Lv\.\d\d\] │ .+ 🎖️ [\d,]+", ed_rlx[1])) or "هنوز کسی" in ed_rlx[1]),
           (ed_rlx[1] if ed_rlx else "-")[:150])
     _init_src = open(os.path.join(_base_dir, "handlers", "__init__.py"), encoding="utf-8").read()
-    check("ثبت دستورهای جدید تو رجیستری: تیم تغییر نام و /hideboard",
-          "team_rename" in _init_src and "hideboard" in _init_src)
+    check("ثبت دستورهای جدید تو رجیستری: تیم تغییر نام و /hideboard و /update",
+          "team_rename" in _init_src and "hideboard" in _init_src and '"update"' in _init_src)
+
+    # ── بازار بدون پیشوند + متن جدید + ریتم ساعتی ──
+    check("بازار هر یک ساعت و هوا هر ۶ ساعت رول میشن، شانس هوای صاف بیشتر شد",
+          config.MARKET_ROLL_SECONDS == 3600 and config.WEATHER_ROLL_SECONDS == 21600
+          and abs(config.WEATHER_NORMAL_CHANCE - 0.70) < 1e-9)
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=1950)).isoformat())
+        await s.commit()
+    upd_mk = _text_update("بازار", uid=7317, uname="onb", fname="تازه‌کار")
+    await world_h.market_cmd(upd_mk, None)
+    mtxt = upd_mk.message.calls[-1][1]
+    check("دستور «بازار» بدون پیشوند هم کار می‌کنه",
+          "<b>📈 وضعیت بازار سیاه</b>" in mtxt, mtxt[:60])
+    check("متن بازار قالب جدیده: سطر حرکت ساعتی و فوتر تایمر دقیقه و ثانیه",
+          "قیمت‌ها هر یک ساعت یه حرکت کوچیک دارن" in mtxt and "⏳ حرکت بعدی بازار" in mtxt
+          and bool(_reon.search(r"32 دقیقه و \d+ ثانیه دیگه", mtxt)),
+          mtxt.replace("\n", " | ")[-170:])
+    check("ردیف محصول چهارخطیه و افسانه‌ای‌ها هم با اسم ایموجی‌دار خودشون میان",
+          "🌿 ماری‌جوانا" in mtxt and "💰 قیمت فروش الان:" in mtxt and "📦 قیمت پایه:" in mtxt
+          and "بذر جهنم 🔥" in mtxt, mtxt[:150])
+
+    # ── فاصله بین منابع و بذرها تو متن انبار و مخفیگاه ──
+    upd_sh = _text_update("تریاکی انبار", uid=7317, uname="onb", fname="تازه‌کار")
+    await world_h.shelter_cmd(upd_sh, None)
+    sh_txt = upd_sh.message.calls[-1][1]
+    check("تو متن انبار بین چوب و آهن و بذرها فاصله‌ست که توهم نرن",
+          bool(_reon.search(r"⛏️ آهن[^\n]*\n\n🌿", sh_txt)),
+          sh_txt.replace("\n", " | ")[:150])
+
+    # ── متن خرید «خریداری شد» ──
+    async with session_scope() as s:
+        bu, _ = await users.get_or_create(s, tg(7345, "buyfix", "خریدار"))
+        bu.cash = 1000
+        ok_by, msg_by = await shop_svc.purchase(s, bu, "seed", "marijuana")
+        check("متن پاپ‌آپ خرید «خریداری شد» شد نه مالت",
+              ok_by and "خریداری شد" in msg_by and "مالت" not in msg_by, msg_by)
+        await s.commit()
+
+    # ── قدم «اولین زمین» با خرید همون یک زمین تیک می‌خوره ──
+    async with session_scope() as s:
+        pm, _ = await users.get_or_create(s, tg(7349, "plotmis", "زمین‌دار"))
+        r0 = {k: d for k, _, d in await onb.mission_rows(s, pm)}
+        s.add(Plot(user_id=pm.id, status="empty"))
+        await s.flush()
+        r1 = {k: d for k, _, d in await onb.mission_rows(s, pm)}
+        check("قدم مأموریت «اولین زمین» با یک زمین انجام میشه",
+              not r0["plot"] and r1["plot"], f"{r0['plot']} ← {r1['plot']}")
+        await s.commit()
+
+    # ── شدت پویای آب‌وهوا: درصد هر رول تو بازه و روی متن‌ها و اکسسورها میشینه ──
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "weather_until", "2000-01-01T00:00:00")
+        old_nc2 = config.WEATHER_NORMAL_CHANCE
+        config.WEATHER_NORMAL_CHANCE = 0.0  # موقتاً همیشه ویژه رول بشه
+        try:
+            k_sp, rec_sp = await world_svc.ensure_weather(s)
+        finally:
+            config.WEATHER_NORMAL_CHANCE = old_nc2
+        pct_sp = int(await world_svc._meta(s, "weather_pct"))
+        check("هوای ویژه درصد رول داره و تو بازه کف تا سقفه",
+              rec_sp is not None and k_sp != "normal" and pct_sp == rec_sp["pct"]
+              and config.WEATHER_MIN_PCT <= pct_sp <= config.WEATHER_MAX_PCT, f"{k_sp}/{pct_sp}")
+        ann_sp = world_svc.weather_announce_text(k_sp, pct_sp)
+        check("اعلان هوا درصد همین رول و مهلت ۶ ساعته رو می‌گه",
+              f"{pct_sp}%" in ann_sp and "تا 6 ساعت آینده" in ann_sp,
+              ann_sp.replace("\n", " | ")[-100:])
+        st_key, st_pct, _st_left = await world_svc.weather_state(s)
+        check("weather_state درصد رول فعلی رو برمی‌گردونه",
+              st_key == k_sp and st_pct == pct_sp, f"{st_key}/{st_pct}")
+        await s.commit()
+    check("اکسسورهای هوا درصد رول رو اعمال می‌کنن",
+          world_svc.weather_grow_speed("rain", 45) == 1.45
+          and abs(world_svc.weather_grow_speed("frost", 20) - 1 / 1.2) < 1e-9
+          and world_svc.weather_sell_mult("fest", 50) == 1.50
+          and world_svc.weather_combat_mods("fog", 15) == (0.0, 0.15)
+          and world_svc.weather_q5_bonus("moon", 12) == 0.12)
+    check("بدون درصد رول، پایه کانفیگ میاد (سازگاری با هوای قدیمی)",
+          world_svc.weather_grow_speed("rain") == 1.30
+          and world_svc.weather_combat_mods("storm") == (-0.10, 0.0))
+
+    # ── /update ادمین: رول فوری بازار و هوا + بازخوانی ظرفیت + ریست کش ──
+    upd_una = _text_update("/update", uid=7333, uname="memr", fname="عضو ساده")
+    await admin_h.update_cmd(upd_una, None)
+    check("/update برای غیرادمین کاملاً بی‌صداس", len(upd_una.message.calls) == 0)
+
+    class _UpBot:
+        def __init__(self):
+            self.sent = []
+
+        async def send_message(self, *a, **k):
+            self.sent.append(a)
+
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=3000)).isoformat())
+        await s.commit()
+    upd_up = _text_update("/update", uid=1001, uname="adm1", fname="ادمین یک")
+    await admin_h.update_cmd(upd_up, SimpleNamespace(bot=_UpBot()))
+    utxt = upd_up.message.calls[-1][1]
+    check("خروجی /update گزارش کامل به‌روزرسانیه",
+          "🔄 وضعیت بازی به‌روز شد" in utxt and "📈 بازار" in utxt and "🌦 آب‌وهوا" in utxt
+          and "👥 ظرفیت" in utxt and "🧹 کش" in utxt, utxt.replace("\n", " | ")[:220])
+    from datetime import datetime as _dtu
+    async with session_scope() as s:
+        left_mu = (_dtu.fromisoformat(await world_svc._meta(s, "market_until")) - now_utc()).total_seconds()
+        check("بازار فورس رول شد و تایمر یک ساعته ریست شد",
+              abs(left_mu - 3600) < 30, str(left_mu))
+        raw_wp = await world_svc._meta(s, "weather_pct")
+        left_wu = (_dtu.fromisoformat(await world_svc._meta(s, "weather_until")) - now_utc()).total_seconds()
+        check("آب و هوا هم فورس رول شد و تایمر ۶ ساعته ریست شد",
+              raw_wp is not None and abs(left_wu - 21600) < 30, f"{raw_wp}/{left_wu}")
+        # برگشت هوا به حالت عادی دیترمینیستیک برای ادامه سوییت
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=21600)).isoformat())
+        await world_svc._meta_set(s, "weather_pct", "0")
+        await s.commit()
+    check("کش عضویت بعد /update خالیه و مرور بعدی تازه چک میشه",
+          len(fj_svc._MEMBER_CACHE) == 0)
 
     # ── دکمه آپدیت مزرعه + حذف رفرش پروفایل ──
     from keyboards import keyboards as kb3
@@ -5924,7 +6085,7 @@ async def main() -> None:
               and w.wood == 0 and w.wins == 0 and w.bank_balance == 0,
               f"lvl {w.level} cash {w.cash} medals {w.medals}")
         wplots = await farming.get_user_plots(s, w.id)
-        check("بعد ریست یه زمین رایگان داره", len(wplots) == 1, str(len(wplots)))
+        check("بعد ریست هم زمین هدیه نمیشه، مثل روز اول خودش رایگان می‌خره", len(wplots) == 0, str(len(wplots)))
         check("سلامت بعد ریست به مکس روز اول 200 برمی‌گرده (نه HP قدیمی)",
               w.hp == battle_svc.max_hp(1) == 200, str(w.hp))
         await s.commit()

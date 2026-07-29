@@ -32,7 +32,7 @@ async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
     session.add(user)
     await session.flush()  # گرفتن id بدون کامیت
     user.last_seen_at = now_utc()
-    session.add(Plot(user_id=user.id))  # زمین اول هدیه خونه‌بختگی 🎁
+    # دیگه زمین اول هدیه داده نمیشه، خود بازیکن رایگان می‌خره تا قدم خرید زمین آنبوردینگ رو تجربه کنه
     battle_svc.ensure_hp(user)  # HP شروع ۲۰۰
     return user, True
 
@@ -97,7 +97,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     user.medals_week_id = None
 
     from services import battle as battle_svc
-    session.add(Plot(user_id=user.id))  # زمین اول هدیه خونه‌بختگی دوباره 🎁
+    # بعد ریست هم زمین هدیه نمیشه، مثل ثبت‌نام تازه خودش رایگان می‌خره
     # HP هم باید به مکس روز اول برگرده، ensure_hp فقط وقتی hp برابر None باشه ست می‌کنه و مقدار قدیمی رو نگه می‌داشت
     battle_svc.full_heal(user)
 

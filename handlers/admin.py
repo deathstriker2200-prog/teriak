@@ -39,6 +39,7 @@ def _panel_text(user, extra: str | None = None) -> str:
         "🧨 <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
         "🔧 /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
         "👻 /hideboard، نامرئی شدن از همه لیدربردها (دوباره بزنی برمی‌گرده)\n"
+        "🔄 /update، به‌روزرسانی فوری وضعیت بازی: رول بازار و آب‌وهوا، بازخوانی ظرفیت تیم‌ها و ریست کش‌ها\n"
         "💾 /backup و /upload_backup، بک‌آپ و ری‌استور\n"
         "🔌 /botoff و /boton توی گروه، خاموش و روشن کردن ربات فقط تو همون گروه"
     )
@@ -128,6 +129,74 @@ async def hideboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         text = "👀 برگشتی، از این به بعد تو لیدربردها دیده میشی"
     await update.message.reply_html(text)
+
+
+async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    🔄 /update، فقط ادمین: به‌روزرسانی فوری وضعیت بازی
+    رول فوری بازار و آب‌وهوا (با اعلان گروهی)، بازخوانی ظرفیت تیم‌ها و ریست کش‌های حافظه
+    برای موقعی که تنظیمات کانفیگ عوض شده ولی وضعیت قبلی هنوز اعمال نشده
+    """
+    if not _is_admin(update):
+        return  # غیرادمین کاملاً بی‌صدا
+
+    from sqlalchemy import func as sa_func, select as sa_select
+    from models import Team, TeamMember
+    from services import power as power_svc
+
+    async with session_scope() as s:
+        market_rolled = await world_svc.ensure_market(s, force=True)
+        wkey, wrec = await world_svc.ensure_weather(s, force=True)
+        # ظرفیت تیم‌ها داینامیک از لول حساب میشه؛ اینجا بازخوانی و گزارش سرریز
+        all_teams = (await s.execute(sa_select(Team))).scalars().all()
+        over: list[tuple[str, int, int]] = []
+        for t in all_teams:
+            n = (await s.execute(sa_select(sa_func.count(TeamMember.id)).where(TeamMember.team_id == t.id))).scalar() or 0
+            cap = team_svc.team_capacity(t)
+            if n > cap:
+                over.append((t.name, n, cap))
+        await s.commit()
+
+    # کش‌های حافظه ریست بشن تا وضعیت‌های قدیمی (ستینگ گیت | عضویت کاربرا) تازه بشن
+    fj_svc.invalidate_settings()
+    fj_svc.invalidate_members()
+
+    # اعلان هوای تازه به گروه‌های فعال، مثل weather_job
+    sent = 0
+    if wrec:
+        async with session_scope() as s:
+            groups = await world_svc.active_group_ids(s, config.WEATHER_GROUP_ACTIVE_HOURS)
+            offs = await power_svc.off_group_ids(s)
+            await s.commit()
+        wtext = world_svc.weather_announce_text(wkey, wrec["pct"])
+        for gid in groups:
+            if gid in offs:
+                continue  # گروه خاموشه (/botoff)
+            try:
+                await context.bot.send_message(gid, wtext, parse_mode="HTML")
+                sent += 1
+            except Exception:
+                pass
+
+    w = world_svc.weather_of(wkey)
+    lines = [
+        "<b>🔄 وضعیت بازی به‌روز شد</b>",
+        "",
+        f"📈 بازار: {'رول فوری انجام شد و قیمت‌ها تازه حساب شدن' if market_rolled else 'بدون تغییر'}",
+        f"🌦 آب‌وهوا: {w['emoji']} {w['name']}"
+        + (f" با قدرت {fa_num(wrec['pct'])}%" if wrec and wrec.get("pct") else "")
+        + f"، اعلان به {fa_num(sent)} گروه فعال",
+        f"👥 ظرفیت {fa_num(len(all_teams))} تیم بازخوانی شد",
+    ]
+    if over:
+        lines.append(
+            f"⚠️ {fa_num(len(over))} تیم سرریز ظرفیت دارن: "
+            + "، ".join(f"{name} ({fa_num(n)}/{fa_num(c)})" for name, n, c in over[:5])
+        )
+    else:
+        lines.append("✅ هیچ تیمی سرریز ظرفیت نیس")
+    lines.append("🧹 کش تنظیمات گیت و عضویت کاربرا ریست شد")
+    await update.message.reply_html("\n".join(lines))
 
 
 async def addtp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
