@@ -193,6 +193,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(shop.gear_up_confirm, pattern=r"^gup:(?:weap|arm):\w+$"))
     app.add_handler(CallbackQueryHandler(shop.gear_up_execute, pattern=r"^cf:gup:(?:weap|arm):\w+$"))
     app.add_handler(CallbackQueryHandler(shop.gear_up_cancel, pattern=r"^cl:gup:(?:weap|arm)$"))
+    app.add_handler(CallbackQueryHandler(shop.buyres_execute, pattern=r"^cf:shopres:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(shop.buyres_cancel, pattern=r"^cl:shopres$"))
 
     # ── سگ‌ها ──
     app.add_handler(CallbackQueryHandler(dogs.feed_picker, pattern=r"^dogs:feed:\d+$"))

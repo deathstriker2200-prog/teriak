@@ -571,18 +571,17 @@ async def _stats_text(bot=None) -> str:
     from utils import now_utc
 
     async with session_scope() as s:
-        hour_ago = now_utc() - timedelta(hours=1)
         day_ago = now_utc() - timedelta(hours=24)
+        # آمار بازیکنان: فعال و جدید روی پنجره ۲۴ ساعت اخیر + کل
         users_n = (await s.execute(select(func.count(User.id)))).scalar() or 0
-        # آمار بازیکنان و جوین‌ها روی پنجره ۱ ساعت اخیره
-        active_h = (await s.execute(
-            select(func.count(User.id)).where(User.last_seen_at >= hour_ago)
+        active_d = (await s.execute(
+            select(func.count(User.id)).where(User.last_seen_at >= day_ago)
         )).scalar() or 0
-        new_h = (await s.execute(
-            select(func.count(User.id)).where(User.created_at >= hour_ago)
+        new_d = (await s.execute(
+            select(func.count(User.id)).where(User.created_at >= day_ago)
         )).scalar() or 0
-        groups_active_h = (await s.execute(
-            select(func.count(GroupActivity.chat_id)).where(GroupActivity.last_active_at >= hour_ago)
+        groups_active_d = (await s.execute(
+            select(func.count(GroupActivity.chat_id)).where(GroupActivity.last_active_at >= day_ago)
         )).scalar() or 0
         groups_n = (await s.execute(select(func.count(GroupActivity.chat_id)))).scalar() or 0
         # فعال‌ترین گروه‌های ساعت جاری ایران، با شمارنده پیام ساعتی که touch_group نگه می‌داره
@@ -593,6 +592,17 @@ async def _stats_text(bot=None) -> str:
             select(GroupActivity).where(GroupActivity.hour_key == bucket)
             .order_by(GroupActivity.msgs_hour.desc()).limit(5)
         )).scalars())
+        # تعداد پلیرای هر گروه (فعال ۲۴ ساعت اخیر اون گروه) برای جلوی اسم گروه‌های برتر
+        from models import GroupPlayer
+        gids = [g.chat_id for g in top_groups]
+        players_in: dict[int, int] = {}
+        if gids:
+            pl_rows = (await s.execute(
+                select(GroupPlayer.chat_id, func.count(GroupPlayer.user_tg))
+                .where(GroupPlayer.chat_id.in_(gids), GroupPlayer.last_active_at >= day_ago)
+                .group_by(GroupPlayer.chat_id)
+            )).all()
+            players_in = {cid: int(n) for cid, n in pl_rows}
 
         cash_sum = (await s.execute(
             select(func.coalesce(func.sum(User.cash + User.bank_balance), 0))
@@ -645,29 +655,34 @@ async def _stats_text(bot=None) -> str:
             f"(میانگین آخرین {fa_num(proc_count)} دستور)"
         )
 
-    # بالاتر از همه پینگ و آمار بازیکنای ۱ ساعت اخیر، بعد فعال‌ترین گروه‌ها و خلاصه بقیه
+    # بالاتر از همه پینگ و آمار بازیکنای ۲۴ ساعت اخیر، بعد خلاصه بازی و تهش آمار گروه‌ها
     lines = [
         "<b>📊 آمار زنده ربات</b>",
         "",
         ping_line,
         proc_line,
         "",
-        f"👥 بازیکنای فعال ۱ ساعت اخیر: <b>{fa_num(active_h)}</b> نفر (کل: {fa_num(users_n)})",
-        f"🆕 جوین ۱ ساعت اخیر: {fa_num(new_h)} نفر",
-        f"🏘 گروه‌های فعال ۱ ساعت اخیر: {fa_num(groups_active_h)} (کل: {fa_num(groups_n)})",
+        f"👥 بازیکنای فعال ۲۴ ساعت اخیر: <b>{fa_num(active_d)}</b> نفر",
+        f"🆕 بازیکنای جدید ۲۴ ساعت اخیر: <b>{fa_num(new_d)}</b> نفر",
+        f"👥 کل بازیکن‌ها: <b>{fa_num(users_n)}</b> نفر",
+        "",
+        f"🏴 تیم‌ها: {fa_num(teams_n)} | 🐕 سگ‌ها: {fa_num(dogs_n)} | 🌱 در حال رشد: {fa_num(growing_n)}",
+        f"💰 تی‌پوینت کل محله: {money(cash_sum)} (تو بانک {money(bank_sum)})",
+        f"🚛 کاروان زنده الان: {fa_num(len(world_svc.CARAVANS))}",
+        f"🔥 اکشن‌های ۲۴ ساعت: ⛏ {fa_num(mine_n)} | ⚔️ {fa_num(battle_n + pv_n)} | 🎰 {fa_num(casino_n)}",
+        "",
+        f"🏘 گروه‌های فعال ۲۴ ساعت اخیر: <b>{fa_num(groups_active_d)}</b> (کل: {fa_num(groups_n)})",
     ]
     if top_groups:
         lines += ["", "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>"]
         badges = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         for i, g in enumerate(top_groups):
             gname = esc(g.title) if g.title else f"گروه {fa_num(g.chat_id)}"
-            lines.append(f"{badges[i]} {gname} 🗨 {fa_num(g.msgs_hour or 0)} پیام")
+            lines.append(
+                f"{badges[i]} {gname} 🗨 {fa_num(g.msgs_hour or 0)} پیام"
+                f" | 👥 {fa_num(players_in.get(g.chat_id, 0))} پلیر"
+            )
     lines += [
-        "",
-        f"🏴 تیم‌ها: {fa_num(teams_n)} | 🐕 سگ‌ها: {fa_num(dogs_n)} | 🌱 در حال رشد: {fa_num(growing_n)}",
-        f"💰 تی‌پوینت کل محله: {money(cash_sum)} (تو بانک {money(bank_sum)})",
-        f"🚛 کاروان زنده الان: {fa_num(len(world_svc.CARAVANS))}",
-        f"🔥 اکشن‌های ۲۴ ساعت: ⛏ {fa_num(mine_n)} | ⚔️ {fa_num(battle_n + pv_n)} | 🎰 {fa_num(casino_n)}",
         "",
         "⏱ آمار زنده‌ست، با 🔃 رفرش میشه",
     ]

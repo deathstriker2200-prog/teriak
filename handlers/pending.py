@@ -16,7 +16,7 @@ from services import bank as bank_svc
 from services import dogs as dog_svc
 from services import resources as res_svc
 from services import teams, users
-from utils import esc, fa_num, money, normalize_fa, parse_amount
+from utils import esc, fa_num, money, money_tp, normalize_fa, parse_amount
 
 # متن‌هایی که دستورن و نباید به‌عنوان اسم قورت داده بشن («لغو» جداگانه هندل میشه)
 _KNOWN_TEXTS = {
@@ -46,7 +46,9 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # ردیابی فعالیت گروه، برای اعلان آب و هوا و اسپون کاروان
         if is_group:
             from services import world as world_svc
-            await world_svc.touch_group(s, chat.id, getattr(chat, "title", None))
+            await world_svc.touch_group(
+                s, chat.id, getattr(chat, "title", None), user_tg=update.effective_user.id
+            )
             await s.commit()
 
         user = await users.get_by_tg(s, update.effective_user.id)
@@ -107,6 +109,39 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await s.commit()
             from handlers import team as team_h
             await team_h.kick_search_respond(update, context, text)
+            raise ApplicationHandlerStop()
+
+        # ── تعداد خرید دونه‌ای چوب/آهن از شاپ: فاکتور با تایید/لغو میاد ──
+        if action == "resbuy":
+            res_key = user.pending_value or ""
+            info = config.RES_SHOP.get(res_key)
+            if not info:
+                user.pending_action = None
+                user.pending_value = None
+                await s.commit()
+                await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از شاپ شروع کن")
+                raise ApplicationHandlerStop()
+
+            qty = parse_amount(text)
+            if qty is None:
+                await s.commit()
+                await update.message.reply_html(
+                    f"❌ فقط یه عدد صحیح بفرست، مثلا 24\n\n❌ پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+
+            user.pending_action = None
+            user.pending_value = None
+            total = info["unit"] * qty
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>🧾 فاکتور خرید {info['emoji']} {info['name']}</b>\n\n"
+                f"🔢 تعداد: {fa_num(qty)} دونه\n"
+                f"💸 قیمت هر دونه: {money_tp(info['unit'])}\n"
+                f"💰 جمع فاکتور: {money(total)}\n\n"
+                "معامله‌ست؟",
+                reply_markup=kb.buyres_confirm_kb(res_key, qty),
+            )
             raise ApplicationHandlerStop()
 
         # ── مبلغ واریز/برداشت بانک (بعد از دکمه‌های «بانک») ──

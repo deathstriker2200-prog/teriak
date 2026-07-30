@@ -300,6 +300,15 @@ class GroupActivity(Base):
     hour_key: Mapped[str | None] = mapped_column(String(16), nullable=True)     # کلید سطل ساعتی ایران «روز-ساعت»
 
 
+class GroupPlayer(Base):
+    """بازیکنای دیده‌شده تو هر گروه، برای شمارش «تعداد پلیرای هر گروه» تو آمار ادمین"""
+    __tablename__ = "group_players"
+
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_tg: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
 class GameMeta(Base):
     """کلید-مقدار سراسری بازی — مثل آخرین هفته پردازش‌شده رقابت تیم‌ها"""
     __tablename__ = "game_meta"

@@ -7,13 +7,13 @@
 """
 
 import random
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import GameMeta, GroupActivity, Plot, SeedSale, SeedStock, User
+from models import GameMeta, GroupActivity, GroupPlayer, Plot, SeedSale, SeedStock, User
 from services.farming import get_stock, add_seed_stock
 from services.users import add_xp
 from utils import esc, fa_dur, fa_num, money, now_iran, now_utc
@@ -21,10 +21,16 @@ from utils import esc, fa_dur, fa_num, money, now_iran, now_utc
 
 # ═════════ فعالیت گروه‌ها ═════════
 
-async def touch_group(session: AsyncSession, chat_id: int, title: str | None = None) -> None:
+# کش حافظه‌ای نشانه‌گذاری پلیرای گروه: (گروه, کاربر) → آخرین ثبت، که هر پیام کوئری نزنه
+_PLAYER_MARK: dict[tuple[int, int], datetime] = {}
+_PLAYER_MARK_REFRESH = timedelta(hours=1)
+_PLAYER_MARK_CAP = 5000
+
+
+async def touch_group(session: AsyncSession, chat_id: int, title: str | None = None, user_tg: int | None = None) -> None:
     """
     آپدیت آخرین فعالیت گروه، موجب میشه گروه تو لیست اعلان آب و هوا و کاروان بمونه
-    اسم گروه و شمارنده پیام‌های ساعت جاری ایران هم برای آمار ادمین نگه داشته میشه
+    اسم گروه و شمارنده پیام‌های ساعت جاری ایران و دیده‌شدن پلیراش هم برای آمار ادمین نگه داشته میشه
     """
     ir = now_iran()
     bucket = f"{ir.date().isoformat()}-{ir.hour:02d}"
@@ -41,6 +47,21 @@ async def touch_group(session: AsyncSession, chat_id: int, title: str | None = N
         row.msgs_hour = 1
     else:
         row.msgs_hour = (row.msgs_hour or 0) + 1
+
+    # دیده‌شدن پلیر تو این گروه، برای شمارش «تعداد پلیرای هر گروه» تو آمار ادمین
+    if user_tg is not None:
+        key = (chat_id, user_tg)
+        last = _PLAYER_MARK.get(key)
+        now = now_utc()
+        if last is None or now - last >= _PLAYER_MARK_REFRESH:
+            if len(_PLAYER_MARK) >= _PLAYER_MARK_CAP:
+                _PLAYER_MARK.clear()  # GC کش، لیک نده
+            _PLAYER_MARK[key] = now
+            prow = await session.get(GroupPlayer, (chat_id, user_tg))
+            if prow:
+                prow.last_active_at = now
+            else:
+                session.add(GroupPlayer(chat_id=chat_id, user_tg=user_tg))
 
 
 async def active_group_ids(session: AsyncSession, hours: float) -> list[int]:
@@ -334,18 +355,24 @@ async def _sales_24h(session: AsyncSession) -> dict[str, int]:
 
 def _next_market_mult(old: float, sold: int, demand: float) -> float:
     """
-    ضریب بعدی یه محصول: بر اساس نسبت عرضه به تقاضا یه حرکت کوچیک + نویز خیلی ریز
-    همیشه تو بازه کف و سقف کانفیگ کلمپ میشه تا جهش نداشته باشیم
+    ضریب بعدی یه محصول: حرکت شانسی دور و بر MARKET_MAX_STEP_CHANGE بر اساس نسبت عرضه به تقاضا
+    اشباع فروش هرچی سنگین‌تر باشه افت تندتر میشه تا چک کردن بازار به‌صرفه،
+    سقف و کف واقعی هر رول هم دور و بر ±25% جابه‌جا میشن (جیتر کانفیگ) تا عددها قفلِ دقیق نمونن
     """
     demand = max(1.0, demand)
     ratio = sold / demand
     mult = old
+    step = config.MARKET_MAX_STEP_CHANGE * random.uniform(1.0, 1.6)  # هر رول بزرگی حرکت فرق می‌کنه
     if ratio < 1.0:  # عرضه کمتر از تقاضا، کمیابی و گرون شدن
-        mult += config.MARKET_MAX_STEP_CHANGE
-    elif ratio > 1.0:  # اشباع بازار، ارزون شدن
-        mult -= config.MARKET_MAX_STEP_CHANGE
+        mult += step
+    elif ratio > 1.0:  # اشباع بازار، ارزون شدن؛ فروش خیلی زیاد ریزش رو عمیق‌تر می‌کنه
+        depth = min(config.MARKET_SELL_SATURATION_MAX, ratio)
+        mult -= step * depth
     mult *= 1.0 + random.uniform(-config.MARKET_RANDOM_NOISE, config.MARKET_RANDOM_NOISE)
-    return min(config.MARKET_MAX_PRICE_MULTIPLIER, max(config.MARKET_MIN_PRICE_MULTIPLIER, mult))
+    jit = config.MARKET_BAND_JITTER
+    hi = config.MARKET_MAX_PRICE_MULTIPLIER + random.uniform(-jit, jit)
+    lo = config.MARKET_MIN_PRICE_MULTIPLIER + random.uniform(-jit, jit)
+    return min(hi, max(lo, mult))
 
 
 async def ensure_market(session: AsyncSession, force: bool = False) -> bool:
@@ -406,6 +433,8 @@ def market_view_text(mults: dict[str, float], left: int) -> str:
         "قیمت فروش هر محصول دست خود بازیکناس",
         "هر فروشی رو قیمتش اثر می‌ذاره",
         "کمیاب بشه گرون‌تر میشه، اشباع بشه ارزون‌تر",
+        "فروش سنگین یه محصول قیمتشو تند می‌ریزه",
+        "قبل از کاشت یه چک به بازار بزن، بعضی وقتا محصول ارزون‌تر بیشتر می‌صرفه",
         "",
         "📈 بالاتر از پایه | 📉 پایین‌تر از پایه | ⚖️ سر پایه",
         "قیمت‌ها هر یک ساعت یه حرکت کوچیک دارن",

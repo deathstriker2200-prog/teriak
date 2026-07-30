@@ -7,7 +7,7 @@ from models import InventoryItem, User
 from services import dogs as dog_svc
 from services import economy, users
 from services.farming import add_seed_stock
-from utils import fa_num
+from utils import fa_num, money
 
 # نوع کاتالوگ‌ها برای routing خرید
 CATALOGS = {
@@ -26,19 +26,34 @@ def shop_seeds() -> dict:
 
 
 async def purchase_resource(
-    session: AsyncSession, user: User, res: str
+    session: AsyncSession, user: User, res: str, qty: int
 ) -> tuple[bool, str]:
-    """خرید پک چوب/آهن از بخش منابع شاپ"""
-    from services.resources import add_res
+    """
+    خرید دونه‌ای چوب/آهن از بخش منابع شاپ، فاکتور با تعداد دلخواه کاربره
+    انبار پر باشه یا جا نمیرسه رد میشه، پول فقط موقع موفقیت کم میشه
+    """
+    from services.resources import add_res, iron_cap, wood_cap
 
-    pack = config.RES_SHOP.get(res)
-    if not pack:
+    info = config.RES_SHOP.get(res)
+    if not info:
         return False, "❌ همچین جنسی نیس"
-    if user.cash < pack["price"]:
-        return False, "❌ تی‌پوینتت کافی نیس"
-    user.cash -= pack["price"]
-    got = add_res(user, res, pack["pack"])
-    return True, f"{pack['emoji']} {fa_num(got)} {pack['name']} اضافه شد"
+    qty = int(qty)
+    if qty < 1:
+        return False, "❌ تعداد باید حداقل 1 باشه"
+    total = info["unit"] * qty
+    cur = user.wood if res == "wood" else user.iron
+    cap = wood_cap(user) if res == "wood" else iron_cap(user)
+    free = max(0, cap - (cur or 0))
+    if qty > free:
+        return False, (
+            "❌ توی انبارت جای خالی برای اینهمه نداری\n"
+            f"انبارت فقط جای {fa_num(free)} تا {info['name']} دیگه داره"
+        )
+    if user.cash < total:
+        return False, f"❌ تی‌پوینتت کافی نیس، {money(total)} می‌خواد"
+    user.cash -= total
+    got = add_res(user, res, qty)
+    return True, f"{info['emoji']} {fa_num(got)} {info['name']} خریدی، جمع {money(total)}"
 
 
 async def purchase(

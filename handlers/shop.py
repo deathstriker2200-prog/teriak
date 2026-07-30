@@ -9,7 +9,7 @@ from database import session_scope
 from handlers import dogs as dogs_h
 from handlers.common import parts, respond
 from keyboards import keyboards as kb
-from services import combat, dogs as dog_svc, economy, farming, shop_svc, users
+from services import combat, dogs as dog_svc, economy, farming, resources as res_svc, shop_svc, users
 from utils import esc, fa_num, money, money_tp
 
 SEP = "━━━━━━━━━━━━━━"
@@ -156,7 +156,7 @@ def _res_text(user) -> str:
         "چوب و آهن از کنده‌کاری، شاپ و کارخانه به دست میان",
         "خریدش گرونه ولی تولیدش می‌صرفه",
         "فروش منابع اضافه هم از بخش مخفیگاه انجام میشه",
-        "برای خرید روی پک موردنظر بزن",
+        "برای خرید روی جنس موردنظر بزن و بگو چندتا می‌خوای",
     ])
 
 
@@ -294,13 +294,23 @@ async def section_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: 
 async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _, _, kind, key = parts(update)
 
-    # خرید پک منابع، بدون فاکتور با یه کلیک
+    # خرید دونه‌ای منابع: اول تعداد پرسیده میشه، بعد فاکتور با تایید/لغو
     if kind == "res":
+        info = config.RES_SHOP.get(key)
+        if not info:
+            return await shop_cb(update, context)
         async with session_scope() as s:
             user, _ = await users.get_or_create(s, update.effective_user)
-            ok, alert = await shop_svc.purchase_resource(s, user, key)
+            user.pending_action = "resbuy"
+            user.pending_value = key
             await s.commit()
-        return await render_section(update, "res", alert=alert)
+        text = (
+            f"<b>🛒 خرید {info['emoji']} {info['name']}</b>\n\n"
+            f"💸 قیمت هر دونه {money_tp(info['unit'])}\n\n"
+            f"چندتا {info['name']} می‌خوای؟ یه عدد بفرست، مثلا 24\n\n"
+            "❌ پشیمون شدی بنویس «لغو»"
+        )
+        return await respond(update, text)
 
     item = (shop_svc.CATALOGS.get(kind) or {}).get(key) or config.DOGS.get(key)
     if not item:
@@ -366,6 +376,33 @@ async def buy_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # زنجیره آنبوردینگ پیام جدا میاد تا فاکتور خرید شلوغ نشه
     from handlers.common import announce_notes
     await announce_notes(update, [x for x in (chain, congrats) if x])
+
+
+# ───────── تایید فاکتور خرید دونه‌ای منابع (cf:shopres | cl:shopres) ─────────
+
+async def buyres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _, _, res_key, qty_s = parts(update)
+    info = config.RES_SHOP.get(res_key)
+    if not info:
+        return await shop_cb(update, context)
+    qty = int(qty_s)
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, out = await shop_svc.purchase_resource(s, user, res_key, qty)
+        cur = user.wood if res_key == "wood" else user.iron
+        cap = res_svc.wood_cap(user) if res_key == "wood" else res_svc.iron_cap(user)
+        await s.commit()
+    if not ok:
+        return await respond(update, f"<b>{esc(out)}</b>", kb.shop_res_kb())
+    text = (
+        f"<b>✅ {esc(out)}</b>\n\n"
+        f"{info['emoji']} موجودی انبارت: {fa_num(cur)} از {fa_num(cap)}"
+    )
+    await respond(update, text, kb.shop_res_kb())
+
+
+async def buyres_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    return await render_section(update, "res", alert="❌ خرید لغو شد")
 
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────

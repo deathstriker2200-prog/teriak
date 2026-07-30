@@ -236,7 +236,7 @@ async def cancel_pending(session: AsyncSession, user: User) -> str:
     """لغو کار معلق، هیچکدوم هنوز پولی جابه‌جا نکردن و فقط اکشن پاک میشه"""
     action = user.pending_action
     if action not in ("dogname", "teamname", "teamcf", "bankdep", "bankwd", "admtp", "admxp",
-                      "ressell", "teamkick", "fjchan"):
+                      "ressell", "teamkick", "fjchan", "resbuy"):
         return "🤷 کاری در جریان نیس که"
 
     user.pending_action = None
@@ -245,6 +245,8 @@ async def cancel_pending(session: AsyncSession, user: User) -> str:
         return "😅 خرید سگ لغو شد"
     if action == "ressell":
         return "باشه بیخیال فروش منابع شدیم"
+    if action == "resbuy":
+        return "باشه بیخیال خرید منابع شدیم"
     return "😅 بی‌خیال شدیم"
 
 

@@ -18,7 +18,7 @@ if os.path.exists("/tmp/teriaky_test.db"):
 
 import config  # noqa: E402
 from database import init_db, session_scope  # noqa: E402
-from models import Dog, GroupActivity, Plot, Team, TeamDaily, User  # noqa: E402
+from models import Dog, GroupActivity, GroupPlayer, Plot, Team, TeamDaily, User  # noqa: E402
 from services import (  # noqa: E402
     backup as backup_svc,
     bank as bank_svc,
@@ -505,6 +505,11 @@ async def main() -> None:
         check("غارت همون لحظه از جیب هدف کم شد",
               u2.cash == cash_t - res["steal"], f"{cash_t}->{u2.cash} steal={res['steal']}")
         check("تجربه همون لحظه داده شد", res["xp"] >= config.BATTLE_HIT_XP_BASE)
+        check("تجربه حمله ۲۰% کمتر از نسخه قبلیه (پایه و ضریب دمیج و پی‌وی)",
+              config.BATTLE_HIT_XP_BASE == 2.4 and config.BATTLE_HIT_XP_PER_DMG == 0.056
+              and config.PV_ATTACK_WIN_XP == 20 and config.PV_ATTACK_LOSE_XP == 5
+              and battle_svc.xp_for_hit(0) == 2 and battle_svc.xp_for_hit(100) == 8,
+              f"{battle_svc.xp_for_hit(0)}/{battle_svc.xp_for_hit(100)}")
 
         # گرگ سیاه دفاع طرف رو خرد می‌کنه (مهاجم گرگ داره)
         check("گرگ سیاه دفاع طرف رو خرد می‌کنه", res["info"]["defcut"] > 0, str(res["info"]["defcut"]))
@@ -2112,8 +2117,9 @@ async def main() -> None:
         mults, left = await world_svc.market_mults(s)
         check("همه محصولات از روز اول تو بازارن، حتی افسانه‌ای و قفل‌لولی‌ها",
               set(mults) == set(config.SEEDS), str(sorted(mults)))
-        check("ضریب‌ها تو بازه کف و سقف کانفیگن (۰.۷۵ تا ۱.۲۵)",
-              all(config.MARKET_MIN_PRICE_MULTIPLIER <= m <= config.MARKET_MAX_PRICE_MULTIPLIER for m in mults.values()))
+        check("ضریب‌ها تو بازه کف و سقف جیتر‌دار کانفیگن (دور و بر ۰.۷۵ تا ۱.۲۵)",
+              all(config.MARKET_MIN_PRICE_MULTIPLIER - config.MARKET_BAND_JITTER <= m
+                  <= config.MARKET_MAX_PRICE_MULTIPLIER + config.MARKET_BAND_JITTER for m in mults.values()))
         check("افسانه‌ای‌ها هم مولت بازار می‌گیرن", "jahannam" in mults and "eblis" in mults)
         m = world_svc.market_mult(mults, "marijuana")
         check("مولت بازار همون ضریب ذخیره‌شده برمی‌گرده",
@@ -2227,6 +2233,19 @@ async def main() -> None:
         g.last_active_at = now_utc() - timedelta(hours=25)
         gids = await world_svc.active_group_ids(s, 24)
         check("گروه قدیمی از لیست ۲۴ ساعته خارج میشه", -100123 not in gids)
+        # نشانه‌گذاری پلیرای گروه، برای «تعداد پلیرای هر گروه» تو آمار ادمین
+        world_svc._PLAYER_MARK.clear()
+        await world_svc.touch_group(s, -100123, user_tg=7357)
+        await world_svc.touch_group(s, -100123, user_tg=7357)  # تو TTL فقط یه بار ثبت میشه
+        await s.flush()
+        gp = await s.get(GroupPlayer, (-100123, 7357))
+        cnt_gp = len(list((await s.execute(
+            select(GroupPlayer).where(GroupPlayer.chat_id == -100123))).scalars()))
+        check("دیده‌شدن پلیر تو گروه ثبت میشه و تو یه ساعت دوباره ثبت نمیشه",
+              gp is not None and cnt_gp >= 1, f"rows={cnt_gp}")
+        t0 = gp.last_active_at
+        await world_svc.touch_group(s, -100123, user_tg=7357)
+        check("ثبت تکراری داخل TTL زمانش تازه نمیشه (کش حافظه)", gp.last_active_at == t0)
         await s.commit()
 
     # ── کاروان 🚛 ──
@@ -2658,18 +2677,22 @@ async def main() -> None:
         await s.commit()
     check("حذف کانال گیت رو کامل پاک می‌کنه", not off)
 
-    # ── 📊 آمار پنل ادمین (قالب جدید: پینگ و بازیکنا بالا، ۱ ساعته، فعال‌ترین گروه‌ها) ──
+    # ── 📊 آمار پنل ادمین (قالب ۲۴ ساعته: پینگ و بازیکنا بالا، آمار گروه‌ها ته لیست) ──
     from handlers import admin as admin_h
     stats_txt = await admin_h._stats_text()
-    check("آمار پنل ادمین بخش‌های کلیدی قالب جدید رو داره",
+    check("آمار پنل ادمین بخش‌های کلیدی قالب ۲۴ ساعته رو داره",
           all(x in stats_txt for x in ["📊 آمار زنده ربات", "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
-                                       "👥 بازیکنای فعال ۱ ساعت اخیر", "🆕 جوین ۱ ساعت اخیر",
-                                       "🏘 گروه‌های فعال ۱ ساعت اخیر", "🏴 تیم‌ها:", "🐕 سگ‌ها:",
+                                       "👥 بازیکنای فعال ۲۴ ساعت اخیر", "🆕 بازیکنای جدید ۲۴ ساعت اخیر",
+                                       "👥 کل بازیکن‌ها", "🏘 گروه‌های فعال ۲۴ ساعت اخیر", "🏴 تیم‌ها:", "🐕 سگ‌ها:",
                                        "🌱 در حال رشد:", "🚛 کاروان زنده الان", "💰 تی‌پوینت کل محله",
                                        "🔥 اکشن‌های ۲۴ ساعت"]), stats_txt[:60])
     check("پینگ و پردازش بالاتر از آمار بازیکنان اومدن",
-          stats_txt.index("📡 پینگ API تلگرام:") < stats_txt.index("👥 بازیکنای فعال ۱ ساعت اخیر")
-          and stats_txt.index("⚙️ پردازش داخلی:") < stats_txt.index("👥 بازیکنای فعال ۱ ساعت اخیر"))
+          stats_txt.index("📡 پینگ API تلگرام:") < stats_txt.index("👥 بازیکنای فعال ۲۴ ساعت اخیر")
+          and stats_txt.index("⚙️ پردازش داخلی:") < stats_txt.index("👥 بازیکنای فعال ۲۴ ساعت اخیر"))
+    check("آمار بازیکنها اولن و مال گروه‌ها ته لیسته",
+          stats_txt.index("👥 کل بازیکن‌ها") < stats_txt.index("🔥 اکشن‌های ۲۴ ساعت")
+          < stats_txt.index("🏘 گروه‌های فعال ۲۴ ساعت اخیر")
+          < stats_txt.index("⏱ آمار زنده‌ست"))
     check("آمار به خط رفرش زنده ختم میشه",
           stats_txt.endswith("⏱ آمار زنده‌ست، با 🔃 رفرش میشه"))
 
@@ -2700,7 +2723,8 @@ async def main() -> None:
     check("بخش‌های خلاصه آمار قالب جدید همه تو پیامن",
           all(x in st_all for x in [
               "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
-              "👥 بازیکنای فعال ۱ ساعت اخیر", "🆕 جوین ۱ ساعت اخیر", "🏘 گروه‌های فعال ۱ ساعت اخیر",
+              "👥 بازیکنای فعال ۲۴ ساعت اخیر", "🆕 بازیکنای جدید ۲۴ ساعت اخیر", "👥 کل بازیکن‌ها",
+              "🏘 گروه‌های فعال ۲۴ ساعت اخیر",
               "🏴 تیم‌ها:", "🐕 سگ‌ها:", "💰 تی‌پوینت کل محله", "(تو بانک",
               "🔥 اکشن‌های ۲۴ ساعت: ⛏", "⏱ آمار زنده‌ست، با 🔃 رفرش میشه",
           ]) and st_all.endswith("⏱ آمار زنده‌ست، با 🔃 رفرش میشه"))
@@ -2725,6 +2749,11 @@ async def main() -> None:
             g3s = GroupActivity(chat_id=-99000303)
             s.add(g3s)
         g3s.title, g3s.hour_key, g3s.msgs_hour = "گروه کهنه دیشب", "2000-01-01-00", 9999  # سطل قدیمی
+        # پلیرای دیده‌شده هر گروه، برای شمارش «تعداد پلیرای هر گروه» تو آمار
+        s.add(GroupPlayer(chat_id=-99000101, user_tg=7301))
+        s.add(GroupPlayer(chat_id=-99000101, user_tg=7305))
+        s.add(GroupPlayer(chat_id=-99000101, user_tg=99, last_active_at=now_utc() - timedelta(days=2)))  # قدیمی نمیشمره
+        s.add(GroupPlayer(chat_id=-99000202, user_tg=7309))
         await s.commit()
     st_top = await admin_h._stats_text()
     check("بخش فعال‌ترین گروه‌های این ساعت با مدال و شمارنده پیام میاد",
@@ -2732,6 +2761,10 @@ async def main() -> None:
           and "🥇 گروه داغ محله 🗨 777 پیام" in st_top
           and "گروه دوم بازار 🗨 12 پیام" in st_top,
           " | ".join(st_top.splitlines()[7:13])[:220])
+    check("تعداد پلیرای هر گروه (فعال ۲۴ ساعت اخیرش) جلوی اسمش میاد",
+          "🥇 گروه داغ محله 🗨 777 پیام | 👥 2 پلیر" in st_top
+          and "گروه دوم بازار 🗨 12 پیام | 👥 1 پلیر" in st_top,
+          " | ".join(st_top.splitlines()[7:14])[:260])
     check("گروه سطل قدیمی ساعت دیگه تو فعال‌ترین‌ها نمیاد",
           "گروه کهنه دیشب" not in st_top)
 
@@ -2805,25 +2838,29 @@ async def main() -> None:
         await s.commit()
     check("پاکسازی: ردیف‌های قدیمی‌تر از نگه‌داری رویداد حذف میشن", left_old == 0, f"مونده: {left_old}")
 
-    # ── 🆕 تازه‌واردها و فعال‌های ۱ ساعت اخیر (پنجره ساعتی جدید آمار بازیکنان) ──
-    act0 = _stat_int(st_b1, "👥 بازیکنای فعال ۱ ساعت اخیر")
-    new0 = _stat_int(st_b1, "🆕 جوین ۱ ساعت اخیر")
+    # ── 🆕 تازه‌واردها و فعال‌های ۲۴ ساعت اخیر (پنجره جدید آمار بازیکنان) ──
+    act0 = _stat_int(st_b1, "👥 بازیکنای فعال ۲۴ ساعت اخیر")
+    new0 = _stat_int(st_b1, "🆕 بازیکنای جدید ۲۴ ساعت اخیر")
+    tot0 = _stat_int(st_b1, "👥 کل بازیکن‌ها")
     async with session_scope() as s:
         u_new, _ = await users.get_or_create(s, tg(7309, "newb", "تازه‌وارد"))
         u_new.level = 10
         u_old, _ = await users.get_or_create(s, tg(7305, "oldb", "کهنه‌کار"))
         u_old.level = 40
         u_old.created_at = now_utc() - timedelta(days=2)
-        u_old.last_seen_at = now_utc() - timedelta(days=2)  # غیرفعال، تو هیچکدوم از آمارهای ۱ ساعته نمیاد
+        u_old.last_seen_at = now_utc() - timedelta(days=2)  # غیرفعال، تو هیچکدوم از آمارهای ۲۴ ساعته نمیاد
         u_f0, _ = await users.get_or_create(s, tg(7301, "farmx", "کشاورز"))  # تازه‌وارد + لول ۱ فعال
         await s.commit()
     st_c1 = await admin_h._stats_text()
-    check("جوین ۱ ساعت اخیر فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
-          _stat_int(st_c1, "🆕 جوین ۱ ساعت اخیر") == new0 + 2,
-          f"{_stat_int(st_c1, '🆕 جوین ۱ ساعت اخیر')} vs {new0}")
-    check("فعال ۱ ساعت اخیر فقط تازه‌فعالا رو میشمره نه کهنه‌کار غیرفعال",
-          _stat_int(st_c1, "👥 بازیکنای فعال ۱ ساعت اخیر") == act0 + 2,
-          f"{_stat_int(st_c1, '👥 بازیکنای فعال ۱ ساعت اخیر')} vs {act0}")
+    check("جدید ۲۴ ساعت اخیر فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
+          _stat_int(st_c1, "🆕 بازیکنای جدید ۲۴ ساعت اخیر") == new0 + 2,
+          f"{_stat_int(st_c1, '🆕 بازیکنای جدید ۲۴ ساعت اخیر')} vs {new0}")
+    check("فعال ۲۴ ساعت اخیر فقط تازه‌فعالا رو میشمره نه کهنه‌کار غیرفعال",
+          _stat_int(st_c1, "👥 بازیکنای فعال ۲۴ ساعت اخیر") == act0 + 2,
+          f"{_stat_int(st_c1, '👥 بازیکنای فعال ۲۴ ساعت اخیر')} vs {act0}")
+    check("کل بازیکن‌ها سه تا ساخته‌شده جدید رو هم میشمره",
+          _stat_int(st_c1, "👥 کل بازیکن‌ها") == tot0 + 3,
+          f"{_stat_int(st_c1, '👥 کل بازیکن‌ها')} vs {tot0}")
 
     # ── 🌱 پلات در حال رشد + 💰 تی‌پوینت کل محله و بخش بانکیش ──
     # مبنا از st_c1 (بعد ساخت کاربرا) خونده میشه، اینجا دیگه کاربر تازه‌ای ساخته نمیشه
@@ -2968,26 +3005,32 @@ async def main() -> None:
 
     # ═══ آپدیت جدید: بازار 50/50 | متن جدید بازار | قفل کاشت | هلپ دکمه‌دار | /user /addtp /addxp | خوش‌آمد گروه ═══
 
-    # ── مکانیک بازار پویا: کمیابی گرون‌تر، اشباع ارزون‌تر، حرکت کوچیک و کلمپ ──
+    # ── مکانیک بازار پویا: حرکت شانسی دور و بر پایه، اشباع سنگین ریزش تند، باند کف/سقف جیتر‌دار ──
     random.seed(21)
-    _hi = (1 + config.MARKET_MAX_STEP_CHANGE) * (1 + config.MARKET_RANDOM_NOISE)
-    _lo = (1 - config.MARKET_MAX_STEP_CHANGE) * (1 - config.MARKET_RANDOM_NOISE)
-    check("کمیابی (عرضه زیر تقاضا) قیمت رو می‌بره بالا اما نه بیشتر از حداکثر حرکت و نویز",
-          all(1.0 < world_svc._next_market_mult(1.0, 0, 10.0) <= _hi + 1e-9
+    _up_hi = (1 + config.MARKET_MAX_STEP_CHANGE * 1.6) * (1 + config.MARKET_RANDOM_NOISE)
+    check("کمیابی (عرضه زیر تقاضا) قیمت رو شانسی بین ۳ تا چهارونیم درصد می‌بره بالا",
+          all(1.0 < world_svc._next_market_mult(1.0, 0, 10.0) <= _up_hi + 1e-9
               for _ in range(200)))
-    check("اشباع (عرضه بالای تقاضا) قیمت رو میاره پایین",
-          all(_lo - 1e-9 <= world_svc._next_market_mult(1.0, 50, 10.0) < 1.0
+    check("اشباع ملایم قیمت رو آروم می‌ده پایین",
+          all(0.92 < world_svc._next_market_mult(1.0, 12, 10.0) < 1.0
               for _ in range(200)))
     check("تعادل عرضه و تقاضا قیمت رو تکون نمیده جز نویز ریز",
           all(abs(world_svc._next_market_mult(1.0, 10, 10.0) - 1.0) <= config.MARKET_RANDOM_NOISE + 1e-9
               for _ in range(200)))
-    check("سقف و کف قیمت کلمپ میشه",
-          world_svc._next_market_mult(1.249, 0, 10.0) <= config.MARKET_MAX_PRICE_MULTIPLIER
-          and world_svc._next_market_mult(0.751, 999, 10.0) >= config.MARKET_MIN_PRICE_MULTIPLIER
-          and all(config.MARKET_MIN_PRICE_MULTIPLIER <= world_svc._next_market_mult(1.25, 0, 0.1) <= 1.25 for _ in range(50)))
+    _heavy = [world_svc._next_market_mult(1.0, 50, 10.0) for _ in range(300)]
+    _mild = [world_svc._next_market_mult(1.0, 12, 10.0) for _ in range(300)]
+    check("فروش خیلی سنگین ریزش رو تا 3 برابر عمیق‌تر می‌کنه (چک کردن بازار می‌صرفه)",
+          all(x < 0.93 for x in _heavy) and sum(_heavy) / 300 < sum(_mild) / 300,
+          f"heavy avg {sum(_heavy)/300:.3f} vs mild avg {sum(_mild)/300:.3f}")
+    check("سقف و کف کلمپ با جیتر دور و بر ±25 درصد می‌شن، دقیق قفل نیس",
+          world_svc._next_market_mult(1.299, 0, 10.0) <= config.MARKET_MAX_PRICE_MULTIPLIER + config.MARKET_BAND_JITTER
+          and world_svc._next_market_mult(0.701, 999, 10.0) >= config.MARKET_MIN_PRICE_MULTIPLIER - config.MARKET_BAND_JITTER
+          and all(1.20 <= world_svc._next_market_mult(1.31, 0, 0.1) <= 1.30 for _ in range(50))
+          and all(0.70 <= world_svc._next_market_mult(0.71, 999, 10.0) <= 0.80 for _ in range(50)))
     check("کانفیگ بازار پویا",
           config.MARKET_MAX_PRICE_MULTIPLIER == 1.25 and config.MARKET_MIN_PRICE_MULTIPLIER == 0.75
-          and config.MARKET_MAX_STEP_CHANGE == 0.03 and config.MARKET_RANDOM_NOISE == 0.01
+          and config.MARKET_MAX_STEP_CHANGE == 0.03 and config.MARKET_SELL_SATURATION_MAX == 3.0
+          and config.MARKET_BAND_JITTER == 0.05 and config.MARKET_RANDOM_NOISE == 0.015
           and config.MARKET_DEMAND_PER_ACTIVE_PLAYER > 0)
 
     # ── متن وضعیت بازار پویا، همه محصولات با روند و قیمت کامل ──
@@ -2997,7 +3040,9 @@ async def main() -> None:
     check("متن بازار هدر و توضیح عرضه و تقاضا رو داره",
           "<b>📈 وضعیت بازار سیاه</b>" in mtxt
           and "هر فروشی رو قیمتش اثر می‌ذاره" in mtxt
-          and "کمیاب بشه گرون‌تر میشه، اشباع بشه ارزون‌تر" in mtxt)
+          and "کمیاب بشه گرون‌تر میشه، اشباع بشه ارزون‌تر" in mtxt
+          and "فروش سنگین یه محصول قیمتشو تند می‌ریزه" in mtxt
+          and "قبل از کاشت یه چک به بازار بزن" in mtxt)
     check("محصول گرون‌شده با 📈 و قیمت جدید میاد",
           "📈 +8.6%" in mtxt and "💰 قیمت فروش الان: 325 تی‌پوینت" in mtxt,
           mtxt.replace("\n", " | ")[:170])
@@ -3525,9 +3570,10 @@ async def main() -> None:
     await start_h2.start_cmd(upd, None)
     stx = upd.message.calls[-1][1]
     check("استارت پیوی جدید فقط اولین قدم رو می‌گه و بقیه رو می‌فرسته به راهنما",
-          "به بازی تریاکی خوش اومدی" in stx and "⛏ روی «کنده کاری» بزن" in stx
-          and "جایزه شروع بازی" in stx and "خود بازی راهنماییت می‌کنه" in stx
-          and "آموزشات" in stx, stx[:200])
+          "به بازی تریاکی خوش اومدی" in stx and "⛏ روی «کنده کاری» بزن و بکن" in stx
+          and "برای شروع اولین قدم خیلی ساده‌ست" in stx
+          and "جایزه شروع بازی" in stx and "خود بازی راهنماییت می‌کنم" in stx
+          and "آموزشات" in stx and "سرمایه شروع می‌کنی" not in stx, stx[:200])
     check("دیگه لیست همه قابلیت‌ها تو خوش‌آمد نیس",
           "قابلیت" not in stx and "پادشاه" not in stx)
 
@@ -4009,6 +4055,14 @@ async def main() -> None:
           "هدف شانسی" in pvt
           and pvk is not None
           and any(b.callback_data == "patt:go" for row in pvk.inline_keyboard for b in row))
+
+    # زیر نتیجه حمله پی‌وی به‌جای هدف شانسی، دکمه بازگشت به پنل حمله میاد
+    from keyboards import keyboards as kb_ar
+    prk = kb_ar.pv_result_kb()
+    prs = [b.callback_data for row in prk.inline_keyboard for b in row]
+    pr_txts = [b.text for row in prk.inline_keyboard for b in row]
+    check("کیبورد نتیجه حمله پی‌وی: بازگشت + منوی اصلی، بدون هدف شانسی",
+          prs == ["patt:back", "menu:home"] and pr_txts[0] == "🔙 بازگشت", f"{pr_txts} {prs}")
 
     # ═══ این دور: حمله پی‌وی کلاسیک ۱۲ساعته | کریتیکال گروهی ۲٪ | گیت لول و قیمت مزرعه ═══
     from services import pvattack as pv_svc
@@ -4954,17 +5008,24 @@ async def main() -> None:
         check("دستور «اسم سگ» اسم رو عوض کرد",
               any(d.name == "کوه" for d in dd2), str([d.name for d in dd2]))
 
-    # ── منابع تو شاپ: خرید پک چوب و آهن ──
+    # ── منابع تو شاپ: خرید دونه‌ای چوب و آهن ──
     async with session_scope() as s:
         bu, _ = await users.get_or_create(s, tg(9608, "buyer", "پک‌خر"))
         bu.cash = 10000
-        ok, msg = await shop_svc.purchase_resource(s, bu, "wood")
-        check("خرید پک چوب از شاپ",
-              ok and bu.wood == config.RES_SHOP["wood"]["pack"]
-              and bu.cash == 10000 - config.RES_SHOP["wood"]["price"], msg)
-        ok, msg = await shop_svc.purchase_resource(s, bu, "iron")
-        check("خرید پک آهن تی‌پوینت کم و آهن زیاد می‌کنه",
-              ok and bu.iron == config.RES_SHOP["iron"]["pack"])
+        ok, msg = await shop_svc.purchase_resource(s, bu, "wood", 5)
+        check("خرید دونه‌ای چوب از شاپ",
+              ok and bu.wood == 5 and bu.cash == 10000 - 5 * config.RES_SHOP["wood"]["unit"], msg)
+        ok, msg = await shop_svc.purchase_resource(s, bu, "iron", 2)
+        check("خرید دونه‌ای آهن تی‌پوینت کم و آهن زیاد می‌کنه",
+              ok and bu.iron == 2 and bu.cash == 10000 - 750 - 600, msg)
+        ok, msg = await shop_svc.purchase_resource(s, bu, "wood", 99999)
+        check("بیشتر از جای انبار رد میشه (متن جای خالی)",
+              not ok and "جای خالی" in msg, msg)
+        bu.cash = 10
+        ok, msg = await shop_svc.purchase_resource(s, bu, "iron", 1)
+        check("پول ناکافی رد میشه", not ok and "کافی نیس" in msg, msg)
+        ok, msg = await shop_svc.purchase_resource(s, bu, "wood", 0)
+        check("تعداد صفر رد میشه", not ok and "حداقل" in msg, msg)
         await s.commit()
 
     # ── منوی اصلی: کنده کاری | شرکت | مخفیگاه ──
@@ -5026,9 +5087,11 @@ async def main() -> None:
     check("هر سلاح یه دسته معتبر داره و هر دسته حداقل یه سلاح",
           all(w.get("sec") in config.WEAPON_SECTIONS for w in config.WEAPONS.values())
           and {w["sec"] for w in config.WEAPONS.values()} == set(config.WEAPON_SECTIONS))
-    check("خرید منابع دو برابر فروششه (تولید می‌صرفه)",
-          all(config.RES_SHOP[k]["price"] == 2 * config.RES_SHOP[k]["pack"] * config.RES_SELL_PRICES[k]
-              for k in config.RES_SHOP), str(config.RES_SHOP))
+    check("خرید دونه‌ای منابع گرون‌تر از فروششه (تولید می‌صرفه)",
+          config.RES_SHOP["wood"]["unit"] == 150 and config.RES_SHOP["iron"]["unit"] == 300
+          and config.RES_SELL_PRICES == {"wood": 60, "iron": 150}
+          and all(config.RES_SHOP[k]["unit"] > config.RES_SELL_PRICES[k] for k in config.RES_SHOP),
+          str(config.RES_SHOP))
     check("اسپلینگ درست کولدان",
           "کاهش کولدان" in config.DOGS["pitbull"]["trait_line"]
           and "کولدون" not in config.DOGS["pitbull"]["trait_line"])
@@ -5053,12 +5116,94 @@ async def main() -> None:
               str(no_price_txts[:4]))
         rkb = kb3.shop_res_kb()
         rtxts = [b.text for row in rkb.inline_keyboard for b in row if b.callback_data.startswith("shop:buy:res:")]
-        check("فقط دکمه پک منابع قیمت داره",
-              len(rtxts) == 2 and all("TP" in t for t in rtxts), str(rtxts))
+        check("فقط دکمه منابع قیمت داره (قیمت دونه)",
+              len(rtxts) == 2 and all("TP" in t and "دونه" in t for t in rtxts), str(rtxts))
         gup_txt = [b.text for row in kb3.gear_up_kb("arm", {"steel": 2}, np_u).inline_keyboard for b in row]
         check("دکمه ارتقا قالب «زره فولادی به لول 3» رو داره",
               any(t.replace("⬆️ ", "") == "زره فولادی به لول 3" for t in gup_txt), str(gup_txt))
         await s.commit()
+
+    # ── 🎒 خرید دونه‌ای چوب/آهن: دکمه → سؤال تعداد → فاکتور ✅/❌ → چک جای انبار ──
+    check("قیمت دونه چوب ۱۵۰ و آهن ۳۰۰ شده (پک ثابت حذف شده)",
+          config.RES_SHOP["wood"]["unit"] == 150 and config.RES_SHOP["iron"]["unit"] == 300
+          and "pack" not in config.RES_SHOP["wood"] and "pack" not in config.RES_SHOP["iron"])
+    async with session_scope() as s:
+        rb, _ = await users.get_or_create(s, tg(7359, "resb", "خریدارمنابع"))
+        rb.cash = 100000
+        rb.shelter_level = 0
+        rb.wood = res_svc.wood_cap(rb) - 3  # فقط ۳ تا جای خالی تو انبار داره
+        rb.iron = 0
+        await s.commit()
+    upd_rb = _fake_update("shop:buy:res:wood", uid=7359)
+    await shop_h2.buy_confirm(upd_rb, None)
+    ask_txt = next(c[1] for c in upd_rb.callback_query.calls if c[0] == "edit")
+    async with session_scope() as s:
+        rb = await users.get_by_tg(s, 7359)
+    check("دکمه خرید چوب سؤال «چندتا می‌خوای» رو pending می‌کنه با قیمت دونه",
+          rb.pending_action == "resbuy" and rb.pending_value == "wood"
+          and "چندتا چوب می‌خوای؟ یه عدد بفرست، مثلا 24" in ask_txt
+          and "قیمت هر دونه 150 TP" in ask_txt, ask_txt[:170])
+    upd_bad = _text_update("سلام", uid=7359, uname="resb", fname="خریدارمنابع")
+    try:
+        await pending_h.capture(upd_bad, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        rb = await users.get_by_tg(s, 7359)
+        check("عدد غلط pending خرید منابع رو نگه می‌داره",
+              rb.pending_action == "resbuy"
+              and any("فقط یه عدد صحیح" in c[1] for c in upd_bad.message.calls))
+    upd_cl = _text_update("لغو", uid=7359, uname="resb", fname="خریدارمنابع")
+    try:
+        await pending_h.capture(upd_cl, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        rb = await users.get_by_tg(s, 7359)
+        check("«لغو» pending خرید منابع رو پاک می‌کنه", rb.pending_action is None)
+        rb.pending_action, rb.pending_value = "resbuy", "wood"
+        await s.commit()
+    upd_q = _text_update("24", uid=7359, uname="resb", fname="خریدارمنابع")
+    try:
+        await pending_h.capture(upd_q, None)
+    except Exception:
+        pass
+    inv = upd_q.message.calls[-1]
+    check("فاکتور خرید دونه‌ای با جمع درست و دکمه تایید/لغو میاد",
+          inv[0] == "reply" and "🧾 فاکتور خرید 🪵 چوب" in inv[1]
+          and "تعداد: 24 دونه" in inv[1] and "جمع فاکتور: 3,600 تی‌پوینت" in inv[1]
+          and any(b.callback_data == "cf:shopres:wood:24"
+                  for row in inv[2]["reply_markup"].inline_keyboard for b in row)
+          and any(b.callback_data == "cl:shopres"
+                  for row in inv[2]["reply_markup"].inline_keyboard for b in row),
+          inv[1][:170])
+    async with session_scope() as s:
+        rb = await users.get_by_tg(s, 7359)
+        check("بعد از فاکتور pending پاک شده", rb.pending_action is None)
+    upd_cf = _fake_update("cf:shopres:wood:24", uid=7359)
+    await shop_h2.buyres_execute(upd_cf, None)
+    nofit_txt = next(c[1] for c in upd_cf.callback_query.calls if c[0] == "edit")
+    async with session_scope() as s:
+        rb = await users.get_by_tg(s, 7359)
+        check("جای انبار کم باشه با «جای خالی برای اینهمه نداری» رد میشه و پول کم نمیشه",
+              "توی انبارت جای خالی برای اینهمه نداری" in nofit_txt
+              and "جای 3 تا چوب دیگه داره" in nofit_txt and rb.cash == 100000, nofit_txt[:180])
+    upd_cf3 = _fake_update("cf:shopres:wood:3", uid=7359)
+    await shop_h2.buyres_execute(upd_cf3, None)
+    ok_txt = next(c[1] for c in upd_cf3.callback_query.calls if c[0] == "edit")
+    async with session_scope() as s:
+        rb = await users.get_by_tg(s, 7359)
+        check("تایید فاکتور جا داشته باشه جنس واریز و پول کم میشه",
+              rb.wood == res_svc.wood_cap(rb) and rb.cash == 100000 - 450,
+              f"wood={rb.wood} cash={rb.cash}")
+        check("متن موفقیت موجودی انبار بعد از خرید رو هم می‌گه",
+              "موجودی انبارت" in ok_txt, ok_txt[:180])
+    upd_cl2 = _fake_update("cl:shopres", uid=7359)
+    await shop_h2.buyres_cancel(upd_cl2, None)
+    check("لغو فاکتور با الرت برمی‌گرده به بخش منابع شاپ",
+          any(a[0] == "answer" and "خرید لغو شد" in str(a[1][0])
+              for a in upd_cl2.callback_query.calls if len(a) > 1 and a[1]),
+          str(upd_cl2.callback_query.calls)[:120])
 
     # ── گیت سطح ارتقای پناهگاه ──
     check("جدول سطح ارتقای پناهگاه برای هر لول پر شده",
@@ -5509,6 +5654,9 @@ async def main() -> None:
         check("اولین کنده‌کاری جایزه مشروطه و زنجیره قدم بعد رو داره",
               t1 is not None and ob.cash - cash_ob0 == config.FIRST_MINE_BONUS
               and "جایزه اولین کنده‌کاری" in t1 and "🎯 قدم بعد" in t1, str(t1)[:90])
+        check("متن قدم بعد گرامرش درسته و «تریاکی زمین» و نقدینگی رو داره",
+              "از «🌱 مزرعه من» تو منوی اصلی یا با نوشتن «تریاکی زمین» یه زمین بگیر" in t1
+              and "💵 نقدینگی:" in t1, str(t1)[:200])
         check("جایزه اولین کنده‌کاری فقط یه باره",
               await onb.first_mine(s, ob) is None and ob.first_mine_at is not None)
         t2 = await onb.first_plant(s, ob)
@@ -5733,8 +5881,9 @@ async def main() -> None:
         await world_svc._meta_set(s, "market_until", "2000-01-01T00:00:00")
         rolled_sat = await world_svc.ensure_market(s)
         mults_sat, _ = await world_svc.market_mults(s)
-        check("بازار اشباع‌شده همه قیمت‌ها رو یه قدمی میاره پایین",
-              rolled_sat and all(0.99 <= mm < 1.1 for mm in mults_sat.values()), str(mults_sat))
+        check("بازار اشباع‌شده قیمت‌ها رو عمیق‌تر میاره پایین (فروش سنگین = ریزش تند)",
+              rolled_sat and all(0.84 <= mm < 1.10 for mm in mults_sat.values())
+              and len({round(mm, 4) for mm in mults_sat.values()}) == len(mults_sat), str(mults_sat))
         await world_svc._meta_set(s, "market", ",".join(f"{kk}:0" for kk in config.SEEDS))
         await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
         await s.commit()
@@ -6084,6 +6233,9 @@ async def main() -> None:
               and "بذر" in t_fp and fp.cash - c0_fp == 200
               and fp.first_plot_at is not None,
               f"+{fp.cash - c0_fp} | {str(t_fp)[:80]}")
+        check("متن قدم بعد بذر گِرامرش درسته (فروشگاه → مزرعه، بدون دولا)",
+              "از «🛒 فروشگاه» یه بذر بخر و تو «🌱 مزرعه من» اولین محصولت رو بکار" in t_fp,
+              str(t_fp)[:200])
         check("جایزه اولین زمین فقط یه باره",
               await onb.first_plot(s, fp) is None)
         await s.commit()
@@ -6146,7 +6298,8 @@ async def main() -> None:
     sw_txt = upd_sw.message.calls[0][1] if upd_sw.message.calls else ""
     check("بعد ریست، استارت دقیقاً همون خوش‌آمد روز اول کاری رو می‌گه",
           "به بازی تریاکی خوش اومدی" in sw_txt and "کنده کاری" in sw_txt
-          and "سرمایه شروع می‌کنی" in sw_txt, sw_txt[:90])
+          and "برای شروع اولین قدم خیلی ساده‌ست" in sw_txt
+          and "بزن و بکن تا اولین تی‌پوینت" in sw_txt and "راهنماییت می‌کنم" in sw_txt, sw_txt[:160])
     async with session_scope() as s:
         wc3 = await users.get_by_tg(s, 7357)
         wc3.level = 6
@@ -6483,6 +6636,10 @@ async def main() -> None:
     check("نتیجه حمله بعد تایید نمایش داده شد",
           ed_sh2 is not None and ("⚔️ بردی" in ed_sh2[1] or "تونست دفاع کنه، باختی" in ed_sh2[1]),
           ed_sh2[1][:110] if ed_sh2 else "-")
+    if ed_sh2 is not None:
+        _res_btns = [b.callback_data for row in ed_sh2[2]["reply_markup"].inline_keyboard for b in row]
+        check("زیر متن نتیجه به‌جای هدف شانسی دکمه بازگشت اومده",
+              _res_btns == ["patt:back", "menu:home"], str(_res_btns))
     check("دی‌ام قربانی هدر و سپر جدید رو داره",
           bool(atk_dm) and "🚨 بهت حمله شد" in str(atk_dm[-1][1])
           and "از حملات در امانی" in str(atk_dm[-1][1]), str(atk_dm[-1][1][:120] if atk_dm else "-"))

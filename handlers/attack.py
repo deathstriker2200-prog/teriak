@@ -233,7 +233,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
 
-    await respond(update, text, kb.pv_attack_kb())
+    await respond(update, text, kb.pv_result_kb())
     from handlers.common import announce_notes
     notes_out = (result.get("notes") or []) + ([congrats] if congrats else [])
     await announce_notes(update, notes_out)

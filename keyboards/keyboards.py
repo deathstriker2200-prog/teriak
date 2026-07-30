@@ -320,11 +320,11 @@ def shop_sections_kb() -> InlineKeyboardMarkup:
 
 
 def shop_res_kb() -> InlineKeyboardMarkup:
-    """بخش منابع شاپ، خرید پک چوب و آهن"""
+    """بخش منابع شاپ، خرید دونه‌ای چوب و آهن | قیمت دونه تو دکمه‌ست"""
     rows = []
     for key, r in config.RES_SHOP.items():
         rows.append([_btn(
-            f"{r['emoji']} {r['name']} ×{fa_num(r['pack'])} | {money_tp(r['price'])}",
+            f"{r['emoji']} {r['name']} | دونه {money_tp(r['unit'])}",
             f"shop:buy:res:{key}", SUCCESS,
         )])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
@@ -538,9 +538,17 @@ def team_create_confirm_kb(tg_id: int) -> InlineKeyboardMarkup:
 # ───────── درمان ❤️ ─────────
 
 def pv_attack_kb() -> InlineKeyboardMarkup:
-    """پنل حمله پی‌وی و زیر نتیجه حمله، فقط دکمه هدف شانسی"""
+    """پنل حمله پی‌وی، فقط دکمه هدف شانسی"""
     return InlineKeyboardMarkup([
         [_btn("🎯 هدف شانسی", "patt:go", DANGER)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def pv_result_kb() -> InlineKeyboardMarkup:
+    """زیر نتیجه حمله پی‌وی، به‌جای هدف شانسی دکمه بازگشت به پنل حمله میاد"""
+    return InlineKeyboardMarkup([
+        [_btn("🔙 بازگشت", "patt:back", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -850,6 +858,14 @@ def sellres_confirm_kb(res: str, amount: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         _btn("✅ تایید فروش", f"cf:sellres:{res}:{amount}", SUCCESS),
         _btn("❌ لغو", "cl:sellres", DANGER),
+    ]])
+
+
+def buyres_confirm_kb(res: str, qty: int) -> InlineKeyboardMarkup:
+    """فاکتور خرید دونه‌ای چوب/آهن از شاپ، تایید یا لغو"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید خرید", f"cf:shopres:{res}:{qty}", SUCCESS),
+        _btn("❌ لغو", "cl:shopres", DANGER),
     ]])
 
 
