@@ -273,6 +273,29 @@ def proc_light(ms: float | None) -> str:
     return "🔴 کند"
 
 
+_CMD_TIMES: list[float] = []  # epoch ثانیه، زمان دستورهای کاربر (متن با پیشوند یا کلیدواژه)
+
+
+def note_cmd() -> None:
+    """ثبت یه دستور کاربر، برای نرخ «میانگین دستور تو دقیقه» آمار ادمین، سقف کانفیگ لیک نده"""
+    import config
+    now = time.time()
+    _CMD_TIMES.append(now)
+    cap = config.CMD_TIMES_CAP
+    if len(_CMD_TIMES) > cap:
+        del _CMD_TIMES[0:len(_CMD_TIMES) - cap]
+
+
+def cmd_per_min() -> tuple[float | None, int]:
+    """میانگین دستور تو دقیقه روی پنجره اخیر کانفیگ (CMD_RATE_WINDOW_MIN)، بدون نمونه (None, 0)"""
+    import config
+    cutoff = time.time() - config.CMD_RATE_WINDOW_MIN * 60
+    n = sum(1 for t in _CMD_TIMES if t >= cutoff)
+    if not n:
+        return None, 0
+    return n / config.CMD_RATE_WINDOW_MIN, n
+
+
 class proc_timer:
     """با with دور یه هندلر می‌پیچه و زمانشو ثبت می‌کنه (بدون کوئری)"""
 

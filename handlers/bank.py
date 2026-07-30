@@ -19,7 +19,7 @@ def _bank_text(user) -> str:
     cap = bank_svc.bank_capacity(user.bank_level)
     return (
         "<b>🏦 بانک شخصی</b>\n\n"
-        f"💰 موجودی بانک {money(user.bank_balance)}\n"
+        f"💰 موجودی بانک: {money(user.bank_balance)}\n"
         f"📦 ظرفیت {bar(user.bank_balance, cap)} {fa_num(user.bank_balance)}/{fa_num(cap)}\n"
         f"⭐ لول بانک {fa_num(user.bank_level)}\n\n"
         "🛡 پولی که تو بانکه موقع حمله دزدیده نمیشه، امنه\n\n"
@@ -69,7 +69,7 @@ async def deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return await respond(update, msg)
     await respond(
         update,
-        f"<b>{esc(msg)}</b>\n\n🏦 موجودی بانک {money(bal)}\n💵 نقدینگی {money(cash)}",
+        f"<b>{esc(msg)}</b>\n\n🏦 موجودی بانک: {money(bal)}\n💵 نقدینگی: {money(cash)}",
     )
 
 
@@ -86,7 +86,7 @@ async def withdraw_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return await respond(update, msg)
     await respond(
         update,
-        f"<b>{esc(msg)}</b>\n\n💵 نقدینگی {money(cash)}\n🏦 موجودی بانک {money(bal)}",
+        f"<b>{esc(msg)}</b>\n\n💵 نقدینگی: {money(cash)}\n🏦 موجودی بانک: {money(bal)}",
     )
 
 

@@ -221,4 +221,11 @@ def register_jobs(app) -> None:
     jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
     jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
     jq.run_repeating(fj_wipe_job, interval=config.FORCE_JOIN_WIPE_SCAN_SECONDS, first=300, name="fj-wipe")
-    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس | نبض انرژی | پاکسازی غیرعضو")
+    # ادیت خودکار آخرین پیام آمار ادمین، هر ۱ ساعت یه بار (سبک، فشار به سرور نمیاره)
+    from handlers.admin import stats_autoedit_job
+    jq.run_repeating(
+        stats_autoedit_job,
+        interval=config.STATS_AUTOEDIT_SECONDS, first=config.STATS_AUTOEDIT_SECONDS,
+        name="stats-autoedit",
+    )
+    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار")

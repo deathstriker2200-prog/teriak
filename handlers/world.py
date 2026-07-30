@@ -46,13 +46,13 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         text = (
             "<b>🔍 جستجو</b>\n\n"
             f"{o['emoji']} {o['text']}، {money(res['amount'])} گیرت اومد\n\n"
-            f"💵 نقدینگی {fa_num(cash)}TP"
+            f"💵 نقدینگی: {money(cash)}"
         )
     elif st == "thief":
         text = (
             "<b>🔍 جستجو</b>\n\n"
             f"{o['emoji']} {o['text']}\n"
-            f"💸 {money(res['lost'])} از جیبت رفت، نقدینگی {fa_num(cash)}TP"
+            f"💸 {money(res['lost'])} از جیبت رفت، نقدینگی: {money(cash)}"
         )
     else:
         seed_name = config.SEEDS[res["seed"]]["name"]
@@ -191,7 +191,7 @@ async def sellres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     text = (
         f"<b>💰 {money(total)} گرفتی</b>\n\n"
         f"{emoji} {fa_num(int(amount))} {name} فروخته شد\n"
-        f"💵 نقدینگی {money(cash)}"
+        f"💵 نقدینگی: {money(cash)}"
     )
     await respond(update, text, kb.sell_menu_kb())
 
@@ -240,7 +240,7 @@ async def shelter_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if ok:
         return await respond(
             update,
-            text + f"\n\n{esc(msg)}\n💵 نقدینگی {fa_num(cash)}TP",
+            text + f"\n\n{esc(msg)}\n💵 نقدینگی: {money(cash)}",
             markup, alert="🏚 انبار و مخفیگاه ارتقا پیدا کرد",
         )
     await respond(update, text, markup, alert=msg)
@@ -264,7 +264,7 @@ async def casino_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         "<b>🎰 قمارخانه</b>\n\n"
         f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}% | برد = {config.CASINO_WIN_MULT} برابر شرط\n"
         f"یه دست هر {fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت\n"
-        f"💵 نقدینگی {fa_num(cash)}TP\n\n"
+        f"💵 نقدینگی: {money(cash)}\n\n"
         "میزتو انتخاب کن 🎲"
     )
     await respond(update, text, kb.casino_kb())

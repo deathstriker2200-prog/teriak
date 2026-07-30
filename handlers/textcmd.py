@@ -134,7 +134,7 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
         await s.commit()
 
-    text = f"<b>{esc(alert)}</b>\n\n💵 نقدینگی {money(cash)}"
+    text = f"<b>{esc(alert)}</b>\n\n💵 نقدینگی: {money(cash)}"
     if chain:
         text += f"\n\n{chain}"
     if congrats:

@@ -631,7 +631,7 @@ def team_kb(is_owner: bool = False, is_manager: bool = False) -> InlineKeyboardM
         rows.append([_btn("💥 انحلال تیم", "team:disband", DANGER)])
     else:
         rows.append([_btn("🚪 ترک تیم", "team:leave", PRIMARY)])
-    rows.append([_btn("🔃 رفرش", "menu:team", PRIMARY)])
+    # دکمه 🔃 رفرش عمداً حذف شده، کاربردی نداشت و فقط شلوغ می‌کرد
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 

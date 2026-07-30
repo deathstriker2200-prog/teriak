@@ -58,8 +58,8 @@ async def main() -> None:
     await init_db()
 
     # ═══ کاتالوگ‌ها ═══
-    seed_lvls = [s["min_level"] for s in config.SEEDS.values()]
-    check("ترتیب لول بذرها صعودیه", seed_lvls == sorted(seed_lvls), str(seed_lvls))
+    seed_lvls = [s["min_level"] for s in config.SEEDS.values() if not s.get("legendary")]
+    check("ترتیب لول بذرهای عادی صعودیه", seed_lvls == sorted(seed_lvls), str(seed_lvls))
     check("ترتیب بذرها: ۵ عادی + جهنم و ابلیس تو آخر",
           list(config.SEEDS.keys()) == ["marijuana", "gharch", "peyote", "teriak", "cocaine", "jahannam", "eblis"],
           str(list(config.SEEDS.keys())))
@@ -1817,9 +1817,9 @@ async def main() -> None:
 
     from handlers import jobs as jobs_h  # noqa: E402
     jobs_h.register_jobs(app)
-    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|پلیس|نبض انرژی|پاکسازی عضویت)",
-          app.job_queue is not None and len(app.job_queue.jobs()) == 7
-          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "police", "energy-pulse", "fj-wipe"},
+    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|پلیس|نبض انرژی|پاکسازی عضویت|ادیت ساعتی آمار)",
+          app.job_queue is not None and len(app.job_queue.jobs()) == 8
+          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "police", "energy-pulse", "fj-wipe", "stats-autoedit"},
           str([j.name for j in (app.job_queue.jobs() if app.job_queue else [])]))
 
     # regex دستورهای متنی، از خود TEXT_HANDLERS رجیستری — پیشوند «تریاکی » اجباریه
@@ -2677,24 +2677,27 @@ async def main() -> None:
         await s.commit()
     check("حذف کانال گیت رو کامل پاک می‌کنه", not off)
 
-    # ── 📊 آمار پنل ادمین (قالب ۲۴ ساعته: پینگ و بازیکنا بالا، آمار گروه‌ها ته لیست) ──
+    # ── 📊 آمار پنل ادمین (قالب بخش‌بندی‌شده: عملکرد و بازیکنان بالا، گروه‌ها ته لیست) ──
     from handlers import admin as admin_h
     stats_txt = await admin_h._stats_text()
-    check("آمار پنل ادمین بخش‌های کلیدی قالب ۲۴ ساعته رو داره",
-          all(x in stats_txt for x in ["📊 آمار زنده ربات", "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
-                                       "👥 بازیکنای فعال ۲۴ ساعت اخیر", "🆕 بازیکنای جدید ۲۴ ساعت اخیر",
-                                       "👥 کل بازیکن‌ها", "🏘 گروه‌های فعال ۲۴ ساعت اخیر", "🏴 تیم‌ها:", "🐕 سگ‌ها:",
-                                       "🌱 در حال رشد:", "🚛 کاروان زنده الان", "💰 تی‌پوینت کل محله",
-                                       "🔥 اکشن‌های ۲۴ ساعت"]), stats_txt[:60])
-    check("پینگ و پردازش بالاتر از آمار بازیکنان اومدن",
-          stats_txt.index("📡 پینگ API تلگرام:") < stats_txt.index("👥 بازیکنای فعال ۲۴ ساعت اخیر")
-          and stats_txt.index("⚙️ پردازش داخلی:") < stats_txt.index("👥 بازیکنای فعال ۲۴ ساعت اخیر"))
-    check("آمار بازیکنها اولن و مال گروه‌ها ته لیسته",
-          stats_txt.index("👥 کل بازیکن‌ها") < stats_txt.index("🔥 اکشن‌های ۲۴ ساعت")
-          < stats_txt.index("🏘 گروه‌های فعال ۲۴ ساعت اخیر")
-          < stats_txt.index("⏱ آمار زنده‌ست"))
+    check("آمار پنل ادمین همه بخش‌های قالب جدید رو داره",
+          all(x in stats_txt for x in ["📊 آمار زنده ربات", "<b>⚡️ عملکرد</b>", "🚀 زمان پاسخ ربات:",
+                                       "📡 پینگ تلگرام:", "⚙️ پردازش داخلی:", "<b>👥 بازیکنان</b>",
+                                       "⚡️ فعال ۱ ساعت اخیر:", "👤 فعال ۲۴ ساعت اخیر:",
+                                       "🆕 بازیکنان جدید:", "🌍 کل بازیکنان:", "📈 نرخ فعالیت: %",
+                                       "<b>🌍 وضعیت محله</b>", "🏴 تیم‌ها:", "🐕 سگ‌ها:",
+                                       "🌱 محصولات در حال رشد:", "🚛 کاروان‌های فعال:",
+                                       "<b>💰 اقتصاد</b>", "💵 تی‌پوینت کل:", "🏦 موجودی بانک:",
+                                       "💸 دست بازیکنان:", "<b>🔥 فعالیت ۲۴ ساعت اخیر</b>",
+                                       "⛏️ استخراج:", "⚔️ حمله:", "🎰 قمار:", "📊 مجموع اکشن‌ها:",
+                                       "<b>🏘 گروه‌ها</b>", "🟢 فعال ۱ ساعت اخیر:",
+                                       "👥 فعال ۲۴ ساعت اخیر:", "🌐 کل گروه‌ها:"]), stats_txt[:60])
+    check("ترتیب بخش‌ها مثل قالبه: عملکرد، بازیکنان، اقتصاد، فعالیت و تهش گروه‌ها",
+          stats_txt.index("<b>⚡️ عملکرد</b>") < stats_txt.index("<b>👥 بازیکنان</b>")
+          < stats_txt.index("<b>💰 اقتصاد</b>") < stats_txt.index("<b>🔥 فعالیت ۲۴ ساعت اخیر</b>")
+          < stats_txt.index("<b>🏘 گروه‌ها</b>") < stats_txt.index("⏱ آمار"))
     check("آمار به خط رفرش زنده ختم میشه",
-          stats_txt.endswith("⏱ آمار زنده‌ست، با 🔃 رفرش میشه"))
+          stats_txt.endswith("⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه"))
 
     # ── 📊 بخش‌های جدید آمار پنل ادمین ──
     import re as _re
@@ -2722,13 +2725,14 @@ async def main() -> None:
     st_all = await admin_h._stats_text()
     check("بخش‌های خلاصه آمار قالب جدید همه تو پیامن",
           all(x in st_all for x in [
-              "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
-              "👥 بازیکنای فعال ۲۴ ساعت اخیر", "🆕 بازیکنای جدید ۲۴ ساعت اخیر", "👥 کل بازیکن‌ها",
-              "🏘 گروه‌های فعال ۲۴ ساعت اخیر",
-              "🏴 تیم‌ها:", "🐕 سگ‌ها:", "💰 تی‌پوینت کل محله", "(تو بانک",
-              "🔥 اکشن‌های ۲۴ ساعت: ⛏", "⏱ آمار زنده‌ست، با 🔃 رفرش میشه",
-          ]) and st_all.endswith("⏱ آمار زنده‌ست، با 🔃 رفرش میشه"))
-    check("بدون بات، پینگ نامعلومه و کرش نمی‌ده", "پینگ API تلگرام: ➖ نامعلوم" in st_all)
+              "🚀 زمان پاسخ ربات:", "📡 پینگ تلگرام:", "⚙️ پردازش داخلی:",
+              "👤 فعال ۲۴ ساعت اخیر:", "🆕 بازیکنان جدید:", "🌍 کل بازیکنان:",
+              "🌐 کل گروه‌ها:", "👥 فعال ۲۴ ساعت اخیر:",
+              "🏴 تیم‌ها:", "🐕 سگ‌ها:", "💵 تی‌پوینت کل:", "🏦 موجودی بانک:", "💸 دست بازیکنان:",
+              "📊 مجموع اکشن‌ها:", "⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
+          ]) and st_all.endswith("⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه"))
+    check("بدون بات، پینگ و زمان پاسخ نامعلومن و کرش نمی‌ده",
+          "📡 پینگ تلگرام: ➖ نامعلوم" in st_all and "🚀 زمان پاسخ ربات: ➖ نامعلوم" in st_all)
 
     # ── 🏆 فعال‌ترین گروه‌های این ساعت تو آمار ادمین (سطل ساعت جاری ایران) ──
     from utils import now_iran as _nir_stat
@@ -2758,25 +2762,160 @@ async def main() -> None:
     st_top = await admin_h._stats_text()
     check("بخش فعال‌ترین گروه‌های این ساعت با مدال و شمارنده پیام میاد",
           "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>" in st_top
-          and "🥇 گروه داغ محله 🗨 777 پیام" in st_top
-          and "گروه دوم بازار 🗨 12 پیام" in st_top,
-          " | ".join(st_top.splitlines()[7:13])[:220])
+          and "🥇 گروه داغ محله ⌨️ 777 دستور" in st_top
+          and "گروه دوم بازار ⌨️ 12 دستور" in st_top,
+          " | ".join(st_top.splitlines()[-9:-3])[:220])
     check("تعداد پلیرای هر گروه (فعال ۲۴ ساعت اخیرش) جلوی اسمش میاد",
-          "🥇 گروه داغ محله 🗨 777 پیام | 👥 2 پلیر" in st_top
-          and "گروه دوم بازار 🗨 12 پیام | 👥 1 پلیر" in st_top,
-          " | ".join(st_top.splitlines()[7:14])[:260])
+          "🥇 گروه داغ محله ⌨️ 777 دستور │ 👥 2" in st_top
+          and "گروه دوم بازار ⌨️ 12 دستور │ 👥 1" in st_top,
+          " | ".join(st_top.splitlines()[-9:-3])[:260])
     check("گروه سطل قدیمی ساعت دیگه تو فعال‌ترین‌ها نمیاد",
           "گروه کهنه دیشب" not in st_top)
+
+    # ── 🏘 بخش گروه‌ها: فعال ۱ و ۲۴ ساعت اخیر و کل ──
+    async with session_scope() as s:
+        # سه گروه با فعالیت‌های متفاوت: نیم ساعت پیش، پنج ساعت پیش، سه روز پیش
+        gd1 = await s.get(GroupActivity, -99000401)
+        if gd1 is None:
+            gd1 = GroupActivity(chat_id=-99000401, title="گروه تازه‌نفس")
+            s.add(gd1)
+        gd1.last_active_at = now_utc() - timedelta(minutes=30)
+        gd2 = await s.get(GroupActivity, -99000402)
+        if gd2 is None:
+            gd2 = GroupActivity(chat_id=-99000402, title="گروه امروزی")
+            s.add(gd2)
+        gd2.last_active_at = now_utc() - timedelta(hours=5)
+        gd3 = await s.get(GroupActivity, -99000403)
+        if gd3 is None:
+            gd3 = GroupActivity(chat_id=-99000403, title="گروه باستانی")
+            s.add(gd3)
+        gd3.last_active_at = now_utc() - timedelta(days=3)
+        await s.commit()
+    st_g = await admin_h._stats_text()
+    _gh, _gd, _gt = (_stat_int(st_g, "🟢 فعال ۱ ساعت اخیر:"),
+                     _stat_int(st_g, "👥 فعال ۲۴ ساعت اخیر:"),
+                     _stat_int(st_g, "🌐 کل گروه‌ها:"))
+    check("پنجره‌های گروه لجیک درست دارن: ۱ ساعته کوچکترین، ۲۴ ساعته وسط، کل بزرگترینه",
+          _gh < _gd < _gt, f"{_gh}/{_gd}/{_gt}")
+
+    # ── ⌨️ فعالیت گروه فقط با دستور سنجیده میشه، چت عادی ملت حساب نیس ──
+    from handlers import pending as pending_h_cmd
+    world_svc._PLAYER_MARK.clear()
+
+    def _gmsg(txt, uid, uname, fname):
+        """آپدیت فیک پیام گروهی، برای تست capture و شمارش فقط-دستورها"""
+        msg = _Msg(text=txt, calls=[], chat_id=-99000505)
+        return SimpleNamespace(
+            message=msg, effective_message=msg,
+            effective_user=SimpleNamespace(id=uid, username=uname, first_name=fname, is_bot=False),
+            effective_chat=SimpleNamespace(id=-99000505, type="supergroup", title="گروه گپ"),
+            callback_query=None,
+        )
+
+    await pending_h_cmd.capture(_gmsg("سلام بچه‌ها چه خبرا", 7367, "chatter", "حرف‌زن"), None)
+    await pending_h_cmd.capture(_gmsg("تریاکی کنده کاری", 7368, "cmder", "دستوری"), None)
+    await pending_h_cmd.capture(_gmsg("بانک", 7369, "cmder2", "دستوری۲"), None)
+    async with session_scope() as s:
+        g_cmd = await s.get(GroupActivity, -99000505)
+        gp1 = await s.get(GroupPlayer, (-99000505, 7368))
+        gp0 = await s.get(GroupPlayer, (-99000505, 7367))
+        await s.commit()
+    check("چت عادی شمرده نمیشه ولی هر دستور (پیشوندی یا کلیدواژه) یه شمارش میخوره",
+          g_cmd is not None and g_cmd.msgs_hour == 2 and g_cmd.title == "گروه گپ",
+          str(g_cmd.msgs_hour if g_cmd else None))
+    check("پلیر فقط وقتی دیده‌شده ثبت میشه که دستور بزنه نه چت کنه",
+          gp1 is not None and gp0 is None)
+
+    # ── ⌨️ میانگین دستور تو دقیقه (نمونه تازه شمرده میشه، کهنه نه) ──
+    import time as _tm
+    common_h._CMD_TIMES.clear()
+    st_noc = await admin_h._stats_text()
+    check("بدون نمونه، نرخ دستور «هنوز نمونه‌ای نیس» می‌خوره",
+          "⌨️ میانگین دستور تو دقیقه: هنوز نمونه‌ای نیس" in st_noc)
+    for _i in range(5):
+        common_h.note_cmd()
+    common_h._CMD_TIMES.insert(0, _tm.time() - 3600)  # کهنه، بیرون پنجره نمیشمره
+    _r0, _rn = common_h.cmd_per_min()
+    st_rc = await admin_h._stats_text()
+    check("نرخ دستور تو دقیقه روی پنجره کانفیگ حساب میشه و خط آمار پر میشه",
+          _rn == 5 and abs(_r0 - 5 / config.CMD_RATE_WINDOW_MIN) < 1e-9
+          and "⌨️ میانگین دستور تو دقیقه: 0.5" in st_rc,
+          f"{_r0} | {[l for l in st_rc.splitlines() if '⌨️ میانگین' in l]}")
+    check("capture با دستور واقعی نمونه نرخ رو هم ثبت می‌کنه",
+          _tm.time() - common_h._CMD_TIMES[-1] < 60)
+    common_h._CMD_TIMES.clear()
+
+    # ── 🔁 جاب ادیت ساعتی آمار: آدرس پیام یادش می‌مونه و خودش ادیت می‌زنه ──
+    class _EditBot:
+        def __init__(self):
+            self.edits = []
+
+        async def get_me(self):
+            return SimpleNamespace(id=1)
+
+        async def edit_message_text(self, text, **k):
+            self.edits.append((text, k))
+            return SimpleNamespace(message_id=k.get("message_id"))
+
+    upd_st = _fake_update("adm:stats:0", uid=1001)
+    upd_st.callback_query.message.chat_id = 4242
+    upd_st.callback_query.message.message_id = 777
+    await admin_h.admin_cb(upd_st, SimpleNamespace(bot=_EditBot()))
+    async with session_scope() as s:
+        _ref = await team_svc.meta_get(s, admin_h.STATS_MSG_META_KEY)
+        await s.commit()
+    check("باز کردن آمار، آدرس آخرین پیامش برای جاب یاد می‌مونه", _ref == "4242:777", str(_ref))
+
+    _jb = _EditBot()
+    await admin_h.stats_autoedit_job(SimpleNamespace(bot=_jb))
+    check("جاب ساعتی پیام آمار ذخیره‌شده رو با کیبوردش ادیت می‌کنه",
+          len(_jb.edits) == 1 and _jb.edits[0][1].get("chat_id") == 4242
+          and _jb.edits[0][1].get("message_id") == 777
+          and "📊 آمار زنده ربات" in _jb.edits[0][0], str(_jb.edits[:1])[:160])
+
+    async with session_scope() as s:
+        await team_svc.meta_set(s, admin_h.STATS_MSG_META_KEY, "")
+        await s.commit()
+    _jb2 = _EditBot()
+    await admin_h.stats_autoedit_job(SimpleNamespace(bot=_jb2))
+    check("بدون آدرس ذخیره‌شده جاب کاری نمی‌کنه", not _jb2.edits)
+
+    class _DeadBot(_EditBot):
+        async def edit_message_text(self, text, **k):
+            raise RuntimeError("deleted")
+
+    async with session_scope() as s:
+        await team_svc.meta_set(s, admin_h.STATS_MSG_META_KEY, "1:2")
+        await s.commit()
+    try:
+        await admin_h.stats_autoedit_job(SimpleNamespace(bot=_DeadBot()))
+        _dead_ok = True
+    except Exception:
+        _dead_ok = False
+    check("ادیت ناموفق (پیام پاک‌شده) کرش نمی‌ده و بی‌صدا رد میشه", _dead_ok)
 
     class _FakeBot:
         async def get_me(self):
             await asyncio.sleep(0.001)
             return SimpleNamespace(id=1)
 
+    common_h._PROC_TIMES.clear()
+    for _i in range(3):
+        common_h.note_proc_time(0.150)
     st_ping = await admin_h._stats_text(_FakeBot())
-    _pl = [l for l in st_ping.splitlines() if "پینگ API تلگرام:" in l][0]
-    check("پینگ API با بات زنده عدد و چراغ سبز می‌گیره",
-          bool(_re.search(r"[\d,]+ms", _pl)) and "🟢 تند" in _pl, _pl)
+    _pl = [l for l in st_ping.splitlines() if "پینگ تلگرام:" in l][0]
+    _rl = [l for l in st_ping.splitlines() if "زمان پاسخ ربات:" in l][0]
+    _il = [l for l in st_ping.splitlines() if "پردازش داخلی:" in l][0]
+    check("پینگ تلگرام با بات زنده عدد می‌گیره",
+          bool(_re.search(r"[\d,]+ms", _pl)), _pl)
+    check("زمان پاسخ ربات = پینگ + پردازش داخلی، با چراغ سبز",
+          bool(_re.search(r"[\d,]+ms 🟢", _rl)) and _il.startswith("⚙️ پردازش داخلی: 150ms"),
+          f"{_rl} | {_il}")
+    _ping_v = int(_re.search(r"([\d,]+)ms", _pl).group(1).replace(",", ""))
+    _resp_v = int(_re.search(r"([\d,]+)ms", _rl).group(1).replace(",", ""))
+    check("عدد زمان پاسخ دقیقاً جمع پینگ و پردازشه",
+          _resp_v == _ping_v + 150, f"{_ping_v}+150 vs {_resp_v}")
+    common_h._PROC_TIMES.clear()
 
     # ── هوک‌های لاگ رویداد تو چهار مسیر وصلن ──
     _base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2789,9 +2928,10 @@ async def main() -> None:
           and 'actionlog.log(session, "casino")' in _src["services/world.py"]
           and 'actionlog.log(s, "mine")' in _src["handlers/mine.py"])
 
-    # ── شمارش رویدادهای ۲۴ ساعته، فقط COUNT توی SQL (خط جمع‌بندی جدید) ──
+    # ── شمارش رویدادهای ۲۴ ساعته، فقط COUNT توی SQL (بخش فعالیت ۲۴ ساعت اخیر) ──
     st_b0 = await admin_h._stats_text()
-    a0 = _stat_ints(st_b0, "🔥 اکشن‌های ۲۴ ساعت")  # [⛏ کنده‌کاری، ⚔️ نبرد (گروهی+پی‌وی)، 🎰 قمار]
+    m0, a0, c0, s0 = (_stat_int(st_b0, "⛏️ استخراج:"), _stat_int(st_b0, "⚔️ حمله:"),
+                      _stat_int(st_b0, "🎰 قمار:"), _stat_int(st_b0, "📊 مجموع اکشن‌ها:"))
     async with session_scope() as s:
         await alog.log(s, "battle")
         await alog.log(s, "battle")
@@ -2803,9 +2943,12 @@ async def main() -> None:
         s.add(ActionEvent(action="mine", at=now_utc() - timedelta(days=2)))  # قدیمی، نباید شمرده شه
         await s.commit()
     st_b1 = await admin_h._stats_text()
-    a1 = _stat_ints(st_b1, "🔥 اکشن‌های ۲۴ ساعت")
-    check("اکشن‌های ۲۴ساعته: کنده‌کاری تازه‌ها + نبرد گروهی و پی‌وی جمع‌شده + قمار رو همون خط میاد",
-          a1 == [a0[0] + 3, a0[1] + 3, a0[2] + 1], f"{a0} -> {a1}")
+    m1, a1v, c1, s1 = (_stat_int(st_b1, "⛏️ استخراج:"), _stat_int(st_b1, "⚔️ حمله:"),
+                       _stat_int(st_b1, "🎰 قمار:"), _stat_int(st_b1, "📊 مجموع اکشن‌ها:"))
+    check("اکشن‌های ۲۴ساعته: استخراج و حمله (گروهی+پی‌وی جمع‌شده) و قمار هرکدوم خط خودشون",
+          m1 == m0 + 3 and a1v == a0 + 3 and c1 == c0 + 1, f"{m0},{a0},{c0} -> {m1},{a1v},{c1}")
+    check("مجموع اکشن‌ها برابر جمع سه خطه",
+          s0 == m0 + a0 + c0 and s1 == m1 + a1v + c1, f"{s0} -> {s1}")
 
     # ── اکشن ناشناس نادیده گرفته میشه ──
     async with session_scope() as s:
@@ -2838,34 +2981,50 @@ async def main() -> None:
         await s.commit()
     check("پاکسازی: ردیف‌های قدیمی‌تر از نگه‌داری رویداد حذف میشن", left_old == 0, f"مونده: {left_old}")
 
-    # ── 🆕 تازه‌واردها و فعال‌های ۲۴ ساعت اخیر (پنجره جدید آمار بازیکنان) ──
-    act0 = _stat_int(st_b1, "👥 بازیکنای فعال ۲۴ ساعت اخیر")
-    new0 = _stat_int(st_b1, "🆕 بازیکنای جدید ۲۴ ساعت اخیر")
-    tot0 = _stat_int(st_b1, "👥 کل بازیکن‌ها")
+    # ── 🆕 تازه‌واردها و فعال‌های ۱ و ۲۴ ساعت اخیر (بخش بازیکنان) ──
+    act_h0 = _stat_int(st_b1, "⚡️ فعال ۱ ساعت اخیر:")
+    act0 = _stat_int(st_b1, "👤 فعال ۲۴ ساعت اخیر:")
+    new0 = _stat_int(st_b1, "🆕 بازیکنان جدید:")
+    tot0 = _stat_int(st_b1, "🌍 کل بازیکنان:")
     async with session_scope() as s:
         u_new, _ = await users.get_or_create(s, tg(7309, "newb", "تازه‌وارد"))
         u_new.level = 10
         u_old, _ = await users.get_or_create(s, tg(7305, "oldb", "کهنه‌کار"))
         u_old.level = 40
         u_old.created_at = now_utc() - timedelta(days=2)
-        u_old.last_seen_at = now_utc() - timedelta(days=2)  # غیرفعال، تو هیچکدوم از آمارهای ۲۴ ساعته نمیاد
+        u_old.last_seen_at = now_utc() - timedelta(days=2)  # غیرفعال، تو هیچکدوم از آمارهای ۱/۲۴ ساعته نمیاد
         u_f0, _ = await users.get_or_create(s, tg(7301, "farmx", "کشاورز"))  # تازه‌وارد + لول ۱ فعال
+        u_h, _ = await users.get_or_create(s, tg(7365, "hourguy", "یک‌ساعته"))
+        u_h.created_at = now_utc() - timedelta(days=3)  # جدید نیس
+        u_h.last_seen_at = now_utc() - timedelta(minutes=30)  # ولی تو ۱ ساعت اخیر فعاله
+        u_m, _ = await users.get_or_create(s, tg(7366, "dayguy", "روزانه"))
+        u_m.created_at = now_utc() - timedelta(days=3)
+        u_m.last_seen_at = now_utc() - timedelta(hours=5)  # تو ۲۴ ساعت فعاله ولی ۱ ساعت نه
         await s.commit()
     st_c1 = await admin_h._stats_text()
-    check("جدید ۲۴ ساعت اخیر فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
-          _stat_int(st_c1, "🆕 بازیکنای جدید ۲۴ ساعت اخیر") == new0 + 2,
-          f"{_stat_int(st_c1, '🆕 بازیکنای جدید ۲۴ ساعت اخیر')} vs {new0}")
+    check("جدید فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
+          _stat_int(st_c1, "🆕 بازیکنان جدید:") == new0 + 2,
+          f"{_stat_int(st_c1, '🆕 بازیکنان جدید:')} vs {new0}")
     check("فعال ۲۴ ساعت اخیر فقط تازه‌فعالا رو میشمره نه کهنه‌کار غیرفعال",
-          _stat_int(st_c1, "👥 بازیکنای فعال ۲۴ ساعت اخیر") == act0 + 2,
-          f"{_stat_int(st_c1, '👥 بازیکنای فعال ۲۴ ساعت اخیر')} vs {act0}")
-    check("کل بازیکن‌ها سه تا ساخته‌شده جدید رو هم میشمره",
-          _stat_int(st_c1, "👥 کل بازیکن‌ها") == tot0 + 3,
-          f"{_stat_int(st_c1, '👥 کل بازیکن‌ها')} vs {tot0}")
+          _stat_int(st_c1, "👤 فعال ۲۴ ساعت اخیر:") == act0 + 4,
+          f"{_stat_int(st_c1, '👤 فعال ۲۴ ساعت اخیر:')} vs {act0}")
+    check("فعال ۱ ساعت اخیر پنجره تنگ‌تری داره و نیم‌ساعتی تازه رو میشمره ولی پنج‌ساعته رو نه",
+          _stat_int(st_c1, "⚡️ فعال ۱ ساعت اخیر:") == act_h0 + 3,
+          f"{_stat_int(st_c1, '⚡️ فعال ۱ ساعت اخیر:')} vs {act_h0}")
+    check("کل بازیکنان پنج تا ساخته‌شده جدید رو هم میشمره",
+          _stat_int(st_c1, "🌍 کل بازیکنان:") == tot0 + 5,
+          f"{_stat_int(st_c1, '🌍 کل بازیکنان:')} vs {tot0}")
+    _rate_exp = round(_stat_int(st_c1, "👤 فعال ۲۴ ساعت اخیر:") * 100 / _stat_int(st_c1, "🌍 کل بازیکنان:"))
+    check("نرخ فعالیت درصد فعال‌های ۲۴ ساعته به کل بازیکنانه",
+          _stat_int(st_c1, "📈 نرخ فعالیت: %") == _rate_exp,
+          f"{_stat_int(st_c1, '📈 نرخ فعالیت: %')} vs {_rate_exp}")
 
-    # ── 🌱 پلات در حال رشد + 💰 تی‌پوینت کل محله و بخش بانکیش ──
+    # ── 🌱 پلات در حال رشد + 💰 بخش اقتصاد (کل، بانک، دست بازیکنان) ──
     # مبنا از st_c1 (بعد ساخت کاربرا) خونده میشه، اینجا دیگه کاربر تازه‌ای ساخته نمیشه
-    gr0 = _stat_int(st_c1, "🌱 در حال رشد")
-    tot0, bk0 = _stat_ints(st_c1, "💰 تی‌پوینت کل محله")
+    gr0 = _stat_int(st_c1, "🌱 محصولات در حال رشد:")
+    tot0 = _stat_int(st_c1, "💵 تی‌پوینت کل:")
+    bk0 = _stat_int(st_c1, "🏦 موجودی بانک:")
+    hd0 = _stat_int(st_c1, "💸 دست بازیکنان:")
     async with session_scope() as s:
         u_f = await users.get_by_tg(s, 7301)
         _now = now_utc()
@@ -2879,10 +3038,16 @@ async def main() -> None:
         await s.commit()
     st_d1 = await admin_h._stats_text()
     check("در حال رشد فقط رشد واقعی (ready_at نگذشته) رو میشمره",
-          _stat_int(st_d1, "🌱 در حال رشد") == gr0 + 1, f"{_stat_int(st_d1, '🌱 در حال رشد')}")
-    tot1, bk1 = _stat_ints(st_d1, "💰 تی‌پوینت کل محله")
-    check("تی‌پوینت کل محله جمع نقد و بانکه و بخش بانکیش دقیقه",
-          tot1 == tot0 + 10000 and bk1 == bk0 + 5000, f"{tot0}->{tot1} ب:{bk0}->{bk1}")
+          _stat_int(st_d1, "🌱 محصولات در حال رشد:") == gr0 + 1,
+          f"{_stat_int(st_d1, '🌱 محصولات در حال رشد:')}")
+    tot1 = _stat_int(st_d1, "💵 تی‌پوینت کل:")
+    bk1 = _stat_int(st_d1, "🏦 موجودی بانک:")
+    hd1 = _stat_int(st_d1, "💸 دست بازیکنان:")
+    check("تی‌پوینت کل جمع نقد و بانکه و هر بخش دقیقه",
+          tot1 == tot0 + 10000 and bk1 == bk0 + 5000 and hd1 == hd0 + 5000,
+          f"{tot0}->{tot1} ب:{bk0}->{bk1} د:{hd0}->{hd1}")
+    check("کل تی‌پوینت برابر جمع بانک و دست بازیکنانه",
+          tot1 == bk1 + hd1, f"{tot1} vs {bk1}+{hd1}")
 
     # ── ⚙️ زمان پردازش داخلی + 🚦 چراغ latency ──
     common_h._PROC_TIMES.clear()
@@ -2900,8 +3065,9 @@ async def main() -> None:
     _exp_ms = int(round(sum(common_h._PROC_TIMES) / len(common_h._PROC_TIMES) * 1000.0))
     st_proc = await admin_h._stats_text()
     _prl = [l for l in st_proc.splitlines() if "پردازش داخلی:" in l][0]
-    check("میانگین آخرین نمونه‌ها با تعدادشون تو آمار فنی میان",
-          f"{_exp_ms}ms" in _prl and "(میانگین آخرین 20 دستور)" in _prl, _prl)
+    _subl = [l for l in st_proc.splitlines() if l.startswith("└ میانگین")][0]
+    check("میانگین آخرین نمونه‌ها با تعدادشون تو خط زیرین آمار فنی میاد",
+          f"{_exp_ms}ms" in _prl and _subl == "└ میانگین 20 دستور اخیر", f"{_prl} | {_subl}")
     check("چراغ latency آستانه‌هاش درسته (۵۰۰ و ۱۵۰۰ میلی‌ثانیه)",
           common_h.proc_light(499) == "🟢 تند" and common_h.proc_light(500) == "🟡 وسط"
           and common_h.proc_light(1500) == "🔴 کند" and common_h.proc_light(None) == "➖ نامعلوم")
@@ -6752,6 +6918,38 @@ async def main() -> None:
               notes_lu2 and any("🔓 آیتم های جدید باز شدن" in n for n in notes_lu2),
               str([n[:50] for n in notes_lu2]))
         await s.commit()
+
+    # ── بذرهای افسانه‌ای دیگه تو متن لول‌آپ نمیان و کاشتشون برای همه آزاده ──
+    check("لول بازشدنی جهنم و ابلیس روی ۱ـه (کاشت برای همه آزاد، فقط جستجو/کاروان بهشون میرسه)",
+          config.SEEDS["jahannam"]["min_level"] == 1 and config.SEEDS["eblis"]["min_level"] == 1)
+    async with session_scope() as s:
+        lv12, _ = await users.get_or_create(s, tg(7360, "lv12", "دوازدهی"))
+        lv12.level, lv12.xp = 11, 0
+        n12 = users.add_xp(lv12, economy.xp_need(11))
+        _j12 = "\n".join(n12 or [])
+        check("تو متن لول 12 اسم بذر جهنم نیس ولی سلاح و زره همون لول هستن",
+              n12 and "جهنم" not in _j12 and "شلیک‌کن پلاسما" in _j12 and "زره تیتانیومی" in _j12,
+              _j12[:120])
+        lv18, _ = await users.get_or_create(s, tg(7361, "lv18", "هجدهی"))
+        lv18.level, lv18.xp = 17, 0
+        n18 = users.add_xp(lv18, economy.xp_need(17))
+        _j18 = "\n".join(n18 or [])
+        check("تو متن لول 18 اسم بذر ابلیس نیس",
+              n18 and "ابلیس" not in _j18, _j18[:120])
+        await s.commit()
+
+    # ── لول‌های بدون آنلاک (مثل 9 و 18) خط دلگرمی می‌گیرن که متن خالی به نظر نرسه ──
+    async with session_scope() as s:
+        lv9, _ = await users.get_or_create(s, tg(7362, "lv9", "نُهی"))
+        lv9.level, lv9.xp = 8, 0
+        n9 = users.add_xp(lv9, economy.xp_need(8))
+        _j9 = "\n".join(n9 or [])
+        check("لول 9 هیچ آیتمی باز نمی‌کنه (درسته) ولی به جای سکوت خط دلگرمی میاد",
+              n9 and n9[0].startswith("🎉 تبریک، لول‌آپ شدی (8←9)")
+              and "🔓 آیتم های جدید باز شدن" not in _j9 and "💪" in _j9, _j9[:150])
+        await s.commit()
+    check("لول 18 هم چون فقط بذر ابلیس داشت الان خط دلگرمی می‌گیره",
+          "💪" in _j18 and "🔓 آیتم های جدید باز شدن" not in _j18, _j18[:150])
 
     # ── پنل ادمین: ایموجی مخصوص هر کامند و botoff/boton ته لیست ──
     pan = admin_h._panel_text(SimpleNamespace(cash=0, level=1, xp=0))

@@ -624,7 +624,7 @@ def _buildings_text(team) -> str:
     lines.append("")
     lines += _line("🛡", "ساختمان دفاع", team.def_bld or 0, config.TEAM_DEF_BONUS_PER_LEVEL)
     lines.append("")
-    lines.append(f"🏦 بانک تیم: {money(team.bank)}")
+    lines.append(f"🏦 موجودی بانک تیم: {money(team.bank)}")
     lines.append("")
     lines.append("👑 ارتقا فقط با رهبره، دستورش: «تیم ارتقا حمله» / «تیم ارتقا دفاع»")
     lines.append("💰 کمک مالی اعضا: «تیم واریز 1200»")
@@ -724,7 +724,7 @@ async def team_deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     if not ok:
         return await respond(update, msg)
-    await respond(update, f"<b>{esc(msg)}</b>\n\n🏦 موجودی بانک تیم {money(bank)}")
+    await respond(update, f"<b>{esc(msg)}</b>\n\n🏦 موجودی بانک تیم: {money(bank)}")
 
 
 # ───────── ارتقای ساختمان («تیم ارتقا حمله/دفاع» + دکمه‌ها) ─────────
@@ -761,7 +761,7 @@ async def _building_confirm_payload(update: Update, kind: str) -> tuple[str, obj
         f"<b>🏗 ارتقای {title}، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
         f"💸 هزینه {money(cost)} از بانک تیم\n"
         f"📈 {effect} همه اعضا +{fa_num(pct_next)}% میشه\n"
-        f"🏦 موجودی بانک تیم {money(team.bank)}\n\n"
+        f"🏦 موجودی بانک تیم: {money(team.bank)}\n\n"
         "انجامش بدیم؟"
     )
     return text, kb.team_bld_confirm_kb(kind, tg)

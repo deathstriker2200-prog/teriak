@@ -282,7 +282,11 @@ def add_xp(user: User, amount: int) -> list[str]:
             return name if any(ord(c) >= 0x2500 for c in name) else f"🔪 {name}"
 
         unlocks: list[str] = []
-        unlocks += [f"🌾 {c['name']}" for c in config.SEEDS.values() if c["min_level"] == user.level]
+        # بذرهای افسانه‌ای عمداً تو لیست نمیان، ملت فکر می‌کنن تو شاپ باز شدن در حالی که فقط از جستجو/کاروان پیداشون می‌کنن
+        unlocks += [
+            f"🌾 {c['name']}" for c in config.SEEDS.values()
+            if c["min_level"] == user.level and not c.get("legendary")
+        ]
         unlocks += [_whead(w["name"]) for w in config.WEAPONS.values() if w["min_level"] == user.level]
         unlocks += [f"🛡 {a['name']}" for a in config.ARMORS.values() if a["min_level"] == user.level]
         unlocks += [f"🐕 {d['name']}" for d in config.DOGS.values() if d["min_level"] == user.level]
@@ -296,6 +300,9 @@ def add_xp(user: User, amount: int) -> list[str]:
             unlocks.append("🏴 ساخت تیم")
         if unlocks:
             note += "\n\n🔓 آیتم های جدید باز شدن\n\n" + "\n".join(unlocks)
+        else:
+            # بعضی لولا (مثل 9 و 17 و 19) آیتمی باز نمی‌کنن، بدون این خط متن لول‌آپ خالی به نظر می‌رسه
+            note += "\n\n💪 این لول آیتم جدیدی باز نمیشه ولی قوی‌تر شدی، لول بعد پرخبره"
 
         notes.append(note)
 

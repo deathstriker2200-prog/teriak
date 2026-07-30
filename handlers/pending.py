@@ -42,9 +42,22 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     is_group = chat is not None and chat.type in ("group", "supergroup")
 
+    # فعالیت فقط با «دستور» سنجیده میشه، چت عادی ملت تو گروه حساب نمیشه:
+    # پیشوند تریاکی/تریاک/تی، کلیدواژه‌های شناخته‌شده و «لغو» دستور حساب میشن
+    norm = normalize_fa(text)
+    is_cmd = (
+        norm.startswith(("تریاکی ", "تریاک ", "تی "))
+        or norm == "لغو"
+        or norm in _KNOWN_TEXTS
+        or norm.startswith(_KNOWN_PREFIXES)
+    )
+    if is_cmd:
+        from handlers.common import note_cmd
+        note_cmd()  # نرخ سراسری «میانگین دستور تو دقیقه» آمار ادمین، گروه و پی‌وی فرقی نداره
+
     async with session_scope() as s:
-        # ردیابی فعالیت گروه، برای اعلان آب و هوا و اسپون کاروان
-        if is_group:
+        # ردیابی فعالیت گروه فقط وقتی دستوره، برای اعلان آب و هوا و اسپون کاروان و آمار ادمین
+        if is_group and is_cmd:
             from services import world as world_svc
             await world_svc.touch_group(
                 s, chat.id, getattr(chat, "title", None), user_tg=update.effective_user.id
@@ -55,7 +68,6 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if user is None or not user.pending_action:
             return
 
-        norm = normalize_fa(text)
         if norm.startswith(("تریاکی ", "تریاک ", "تی ")):
             return  # دستور با پیشوند رو نباید به عنوان ورودی معلق قورت بدن
         # اما «تریاک»/«تریاکی»/«تی» تنهایی دستور نیستن و می‌تونن اسم تیم یا سگ باشن
@@ -162,7 +174,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             if ok:
                 await update.message.reply_html(
-                    f"<b>{esc(res)}</b>\n\n🏦 موجودی بانک {money(bal)}\n💵 نقدینگی {money(cash)}"
+                    f"<b>{esc(res)}</b>\n\n🏦 موجودی بانک: {money(bal)}\n💵 نقدینگی: {money(cash)}"
                 )
             else:
                 await update.message.reply_html(res)

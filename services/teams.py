@@ -898,7 +898,7 @@ async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tupl
     cost = building_cost(level + 1)
     if team.bank < cost:
         return False, (
-            f"❌ ارتقا {money(cost)} می‌خواد ولی بانک تیم {money(team.bank)} ـه\n"
+            f"❌ ارتقا {money(cost)} می‌خواد ولی موجودی بانک تیم {money(team.bank)} ـه\n"
             "اعضا با «تیم واریز 1200» کمک کنن یا کنده‌کاری تیمی بزنین"
         )
 

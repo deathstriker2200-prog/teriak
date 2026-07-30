@@ -40,7 +40,7 @@ async def render_farm(update: Update, extra: str | None = None, alert: str | Non
             lines.append("هنوز زمینی نداری")
 
         text = "<b>🌱 مزرعه من</b>\n\n" + "\n".join(lines)
-        text += f"\n\n💵 نقدینگی {money(user.cash)}"
+        text += f"\n\n💵 نقدینگی: {money(user.cash)}"
 
         cd_left = farming.harvest_cooldown_left(user)
         if cd_left:

@@ -463,6 +463,11 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # ── 📊 آمار ربات ──
     if kind == "stats":
         text = await _stats_text(context.bot)
+        # آخرین پیام آمار یادش می‌مونه تا جاب ساعتی خودکار ادیتش کنه
+        _m = update.callback_query.message if update.callback_query else None
+        _cid, _mid = getattr(_m, "chat_id", None), getattr(_m, "message_id", None)
+        if _cid is not None and _mid is not None:
+            await _remember_stats_msg(_cid, _mid)
         return await respond(update, text, kb.admin_stats_kb())
 
     # ── 📢 عضویت اجباری ──
@@ -560,31 +565,73 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ───────── 📊 آمار ربات ─────────
 
+# کلید متا برای آدرس آخرین پیام آمار، تا جاب ساعتی خودکار ادیتش کنه
+STATS_MSG_META_KEY = "admin_stats_msg"
+
+
+async def _remember_stats_msg(chat_id: int, message_id: int) -> None:
+    """آدرس آخرین پیام آمار رو تو متا نگه می‌داره (کامیت همینجاست)"""
+    async with session_scope() as s:
+        await team_svc.meta_set(s, STATS_MSG_META_KEY, f"{chat_id}:{message_id}")
+        await s.commit()
+
+
+async def stats_autoedit_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    هر ۱ ساعت یه بار آخرین پیام آمار ادمین رو بی‌صدا ادیت می‌کنه
+    سبکه، فقط یه خوندن متا + رندر + یه ادیت، اگه پیام پاک شده باشه بی‌صدا رد میشه
+    """
+    async with session_scope() as s:
+        ref = await team_svc.meta_get(s, STATS_MSG_META_KEY)
+        await s.commit()
+    if not ref or ":" not in ref:
+        return
+    try:
+        chat_id, message_id = (int(x) for x in ref.split(":", 1))
+    except ValueError:
+        return
+    try:
+        text = await _stats_text(context.bot)
+        await context.bot.edit_message_text(
+            text, chat_id=chat_id, message_id=message_id,
+            parse_mode="HTML", reply_markup=kb.admin_stats_kb(),
+        )
+    except Exception:
+        pass  # پیام پاک شده یا دسترسی نیس، دور بعد سر فرصت
+
+
 async def _stats_text(bot=None) -> str:
     """آمار کلی ربات برای ادمین"""
     from datetime import timedelta
 
     from sqlalchemy import func, select
 
-    from handlers.common import proc_avg_ms, proc_light
+    from handlers.common import cmd_per_min, proc_avg_ms
     from models import ActionEvent, Dog, GroupActivity, Plot, Team, User
     from utils import now_utc
 
     async with session_scope() as s:
+        hour_ago = now_utc() - timedelta(hours=1)
         day_ago = now_utc() - timedelta(hours=24)
-        # آمار بازیکنان: فعال و جدید روی پنجره ۲۴ ساعت اخیر + کل
+        # آمار بازیکنان: فعال ۱ ساعته و ۲۴ ساعته و جدید + کل
         users_n = (await s.execute(select(func.count(User.id)))).scalar() or 0
+        active_h = (await s.execute(
+            select(func.count(User.id)).where(User.last_seen_at >= hour_ago)
+        )).scalar() or 0
         active_d = (await s.execute(
             select(func.count(User.id)).where(User.last_seen_at >= day_ago)
         )).scalar() or 0
         new_d = (await s.execute(
             select(func.count(User.id)).where(User.created_at >= day_ago)
         )).scalar() or 0
+        groups_active_h = (await s.execute(
+            select(func.count(GroupActivity.chat_id)).where(GroupActivity.last_active_at >= hour_ago)
+        )).scalar() or 0
         groups_active_d = (await s.execute(
             select(func.count(GroupActivity.chat_id)).where(GroupActivity.last_active_at >= day_ago)
         )).scalar() or 0
         groups_n = (await s.execute(select(func.count(GroupActivity.chat_id)))).scalar() or 0
-        # فعال‌ترین گروه‌های ساعت جاری ایران، با شمارنده پیام ساعتی که touch_group نگه می‌داره
+        # فعال‌ترین گروه‌های ساعت جاری ایران، با شمارنده دستورهای ساعتی که touch_group نگه می‌داره
         from utils import now_iran as _nir
         _ir = _nir()
         bucket = f"{_ir.date().isoformat()}-{_ir.hour:02d}"
@@ -609,6 +656,10 @@ async def _stats_text(bot=None) -> str:
         )).scalar() or 0
         bank_sum = (await s.execute(
             select(func.coalesce(func.sum(User.bank_balance), 0))
+        )).scalar() or 0
+        # فقط نقد دست بازیکن‌ها، برای بخش اقتصاد
+        hands_sum = (await s.execute(
+            select(func.coalesce(func.sum(User.cash), 0))
         )).scalar() or 0
         teams_n = (await s.execute(select(func.count(Team.id)))).scalar() or 0
         dogs_n = (await s.execute(select(func.count(Dog.id)))).scalar() or 0
@@ -642,49 +693,95 @@ async def _stats_text(bot=None) -> str:
             ping_ms = None
     avg_proc_ms, proc_count = proc_avg_ms()
 
-    # ── متن فنی ──
-    if ping_ms is None:
-        ping_line = "📡 پینگ API تلگرام: ➖ نامعلوم"
-    else:
-        ping_line = f"📡 پینگ API تلگرام: {fa_num(ping_ms)}ms {proc_light(ping_ms)}"
-    if avg_proc_ms is None:
-        proc_line = "⚙️ پردازش داخلی: هنوز نمونه‌ای نیس"
-    else:
-        proc_line = (
-            f"⚙️ پردازش داخلی: {fa_num(avg_proc_ms)}ms {proc_light(avg_proc_ms)} "
-            f"(میانگین آخرین {fa_num(proc_count)} دستور)"
-        )
+    # ── متن فنی: زمان پاسخ ربات = پینگ تلگرام + پردازش داخلی، چراغش از سر همین جمعه ──
+    def _light(ms: float) -> str:
+        if ms < config.PROC_LIGHT_GOOD_MS:
+            return "🟢"
+        if ms < config.PROC_LIGHT_WARN_MS:
+            return "🟡"
+        return "🔴"
 
-    # بالاتر از همه پینگ و آمار بازیکنای ۲۴ ساعت اخیر، بعد خلاصه بازی و تهش آمار گروه‌ها
+    if ping_ms is not None and avg_proc_ms is not None:
+        resp_ms = int(ping_ms + avg_proc_ms)
+        resp_line = f"🚀 زمان پاسخ ربات: {fa_num(resp_ms)}ms {_light(resp_ms)}"
+    else:
+        resp_line = "🚀 زمان پاسخ ربات: ➖ نامعلوم"
+    if ping_ms is None:
+        ping_line = "📡 پینگ تلگرام: ➖ نامعلوم"
+    else:
+        ping_line = f"📡 پینگ تلگرام: {fa_num(ping_ms)}ms"
+    if avg_proc_ms is None:
+        proc_lines = ["⚙️ پردازش داخلی: هنوز نمونه‌ای نیس"]
+    else:
+        proc_lines = [
+            f"⚙️ پردازش داخلی: {fa_num(avg_proc_ms)}ms",
+            f"└ میانگین {fa_num(proc_count)} دستور اخیر",
+        ]
+    # نرخ دستورهای کاربرا رو پنجره اخیر (چت عادی تو گروه حساب نیس، فقط دستوره)
+    rate_cmd, _cmd_n = cmd_per_min()
+    if rate_cmd is None:
+        cmd_line = "⌨️ میانگین دستور تو دقیقه: هنوز نمونه‌ای نیس"
+    else:
+        rate_txt = f"{rate_cmd:.1f}".rstrip("0").rstrip(".")
+        cmd_line = f"⌨️ میانگین دستور تو دقیقه: {rate_txt}"
+
+    # نرخ فعالیت: چند درصد بازیکن‌ها تو ۲۴ ساعت اخیر سر زدن
+    rate = round(active_d * 100 / users_n) if users_n else 0
+    attack_n = battle_n + pv_n
+    actions_n = attack_n + mine_n + casino_n
+
+    # قالب بخش‌بندی‌شده: عملکرد و بازیکنان بالا، اقتصاد و فعالیت وسط، گروه‌ها ته لیست
     lines = [
         "<b>📊 آمار زنده ربات</b>",
         "",
+        "<b>⚡️ عملکرد</b>",
+        resp_line,
         ping_line,
-        proc_line,
+        *proc_lines,
+        cmd_line,
         "",
-        f"👥 بازیکنای فعال ۲۴ ساعت اخیر: <b>{fa_num(active_d)}</b> نفر",
-        f"🆕 بازیکنای جدید ۲۴ ساعت اخیر: <b>{fa_num(new_d)}</b> نفر",
-        f"👥 کل بازیکن‌ها: <b>{fa_num(users_n)}</b> نفر",
+        "<b>👥 بازیکنان</b>",
+        f"⚡️ فعال ۱ ساعت اخیر: {fa_num(active_h)}",
+        f"👤 فعال ۲۴ ساعت اخیر: {fa_num(active_d)}",
+        f"🆕 بازیکنان جدید: {fa_num(new_d)}",
+        f"🌍 کل بازیکنان: {fa_num(users_n)}",
+        f"📈 نرخ فعالیت: %{fa_num(rate)}",
         "",
-        f"🏴 تیم‌ها: {fa_num(teams_n)} | 🐕 سگ‌ها: {fa_num(dogs_n)} | 🌱 در حال رشد: {fa_num(growing_n)}",
-        f"💰 تی‌پوینت کل محله: {money(cash_sum)} (تو بانک {money(bank_sum)})",
-        f"🚛 کاروان زنده الان: {fa_num(len(world_svc.CARAVANS))}",
-        f"🔥 اکشن‌های ۲۴ ساعت: ⛏ {fa_num(mine_n)} | ⚔️ {fa_num(battle_n + pv_n)} | 🎰 {fa_num(casino_n)}",
+        "<b>🌍 وضعیت محله</b>",
+        f"🏴 تیم‌ها: {fa_num(teams_n)}",
+        f"🐕 سگ‌ها: {fa_num(dogs_n)}",
+        f"🌱 محصولات در حال رشد: {fa_num(growing_n)}",
+        f"🚛 کاروان‌های فعال: {fa_num(len(world_svc.CARAVANS))}",
         "",
-        f"🏘 گروه‌های فعال ۲۴ ساعت اخیر: <b>{fa_num(groups_active_d)}</b> (کل: {fa_num(groups_n)})",
+        "<b>💰 اقتصاد</b>",
+        f"💵 تی‌پوینت کل: {fa_num(cash_sum)}",
+        f"🏦 موجودی بانک: {fa_num(bank_sum)}",
+        f"💸 دست بازیکنان: {fa_num(hands_sum)}",
+        "",
+        "<b>🔥 فعالیت ۲۴ ساعت اخیر</b>",
+        f"⛏️ استخراج: {fa_num(mine_n)}",
+        f"⚔️ حمله: {fa_num(attack_n)}",
+        f"🎰 قمار: {fa_num(casino_n)}",
+        f"📊 مجموع اکشن‌ها: {fa_num(actions_n)}",
+        "",
+        "<b>🏘 گروه‌ها</b>",
+        f"🟢 فعال ۱ ساعت اخیر: {fa_num(groups_active_h)}",
+        f"👥 فعال ۲۴ ساعت اخیر: {fa_num(groups_active_d)}",
+        f"🌐 کل گروه‌ها: {fa_num(groups_n)}",
     ]
     if top_groups:
+        # شمارنده ساعتی، «دستورهای» این ساعت گروهه نه همه پیام‌ها (فعالیت = دستور)
         lines += ["", "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>"]
         badges = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         for i, g in enumerate(top_groups):
             gname = esc(g.title) if g.title else f"گروه {fa_num(g.chat_id)}"
             lines.append(
-                f"{badges[i]} {gname} 🗨 {fa_num(g.msgs_hour or 0)} پیام"
-                f" | 👥 {fa_num(players_in.get(g.chat_id, 0))} پلیر"
+                f"{badges[i]} {gname} ⌨️ {fa_num(g.msgs_hour or 0)} دستور"
+                f" │ 👥 {fa_num(players_in.get(g.chat_id, 0))}"
             )
     lines += [
         "",
-        "⏱ آمار زنده‌ست، با 🔃 رفرش میشه",
+        "⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
     ]
     return "\n".join(lines)
 
