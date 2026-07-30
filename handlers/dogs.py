@@ -54,9 +54,6 @@ async def _dogs_text(session, user, dogs: list[Dog]) -> str:
                 entry += "\n" + "\n".join(esc(x) for x in trait_lines)
             else:
                 entry += f"\n🎖 {esc(d.cfg.get('trait_line', '—'))}"
-            per = dog_svc.personality_of(d)
-            if per:
-                entry += f"\n💫 شخصیت {per['emoji']} {esc(per['name'])}، {esc(per['desc'])}"
             entry += f"\n{dog_svc.hunger_text(d)}"
             lines.append(entry)
 
@@ -96,11 +93,6 @@ def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
     trait_lines = dog_svc.trait_ability_lines(dog)
     ability_block = "\n".join(esc(x) for x in trait_lines) if trait_lines else f"🎖 {esc(dog.cfg.get('trait_line', '—'))}"
 
-    per = dog_svc.personality_of(dog)
-    per_line = ""
-    if per:
-        per_line = f"\n💫 شخصیت {per['emoji']} {esc(per['name'])}، {esc(per['desc'])}"
-
     food_line = dog_svc.hunger_text(dog)
 
     lvl_line = "👑 لول مکس" if maxed else f"⭐ لول {fa_num(dog.level)}"
@@ -110,7 +102,7 @@ def _dog_card_text(user, dog: Dog, extra: str | None = None) -> str:
         f"{lvl_line}\n"
         f"{xp_line}\n"
         f"💪 قدرت حمله {fa_num(atk)}\n"
-        f"{ability_block}{per_line}\n\n"
+        f"{ability_block}\n\n"
         f"{food_line}"
     )
     if extra:

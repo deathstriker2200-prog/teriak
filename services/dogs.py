@@ -1,6 +1,5 @@
 """منطق سگ‌ها: خرید | غذا دادن | لول‌آپ | قدرت"""
 
-import random
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,56 +14,12 @@ def dog_xp_need(level: int) -> int:
     return int(config.DOG_XP_BASE * (level ** config.DOG_XP_EXP))
 
 
-def personality_of(dog: Dog) -> dict | None:
-    """کانفیگ شخصیت سگ، گرگ سیاه شخصیت نداره"""
-    if not dog.personality:
-        return None
-    return config.DOG_PERSONALITIES.get(dog.personality)
-
-
-def personality_pool(dog_key: str) -> list[str]:
-    """استخر شخصیت‌های مخصوص اون نژاد، گرگ سیاه هیچ شخصیتی نمی‌گیره"""
-    return list(config.DOG_PERSONALITY_POOLS.get(dog_key, []))
-
-
-def ensure_personality(dog: Dog) -> None:
-    """به سگ‌های قدیمی که شخصیت ندارن یا شخصیتشون تو استخر نژادشون نیس یه شخصیت از استخر خودشون بده"""
-    pool = personality_pool(dog.dog_key)
-    if not pool:
-        dog.personality = None
-        return
-    if dog.personality in pool:
-        return
-    dog.personality = random.choice(pool)
-
-
-def roll_personality(dog_key: str) -> str | None:
-    """شخصیت رندوم موقع خرید از استخر خود نژاد، گرگ سیاه با قابلیت‌های خودش می‌مونه"""
-    pool = personality_pool(dog_key)
-    if not pool:
-        return None
-    return random.choice(pool)
-
-
 def dog_attack(dog: Dog) -> int:
-    """قدرت حمله سگ با لول و شخصیتش (وفادار +۵% | جنگجو +۱۰%)"""
+    """قدرت حمله سگ فقط از نژاد و لولش، سیستم شخصیت کامل حذف شده"""
     cfg = config.DOGS.get(dog.dog_key)
     if not cfg:
         return 0
-    atk = cfg["attack"] + cfg["atk_per_level"] * max(0, dog.level - 1)
-    per = personality_of(dog)
-    if per and per.get("atk_mult"):
-        atk = int(atk * (1 + per["atk_mult"]))
-    return atk
-
-
-def dog_defense(dog: Dog) -> int:
-    """دفاع سگ از شخصیتش (سرسخت 🪨)، ویژگی نژادی درصدیه و توی combat_stats اعمال میشه"""
-    dfn = 0
-    per = personality_of(dog)
-    if per and per.get("def_flat"):
-        dfn += per["def_flat"]
-    return dfn
+    return cfg["attack"] + cfg["atk_per_level"] * max(0, dog.level - 1)
 
 
 # ───────── ویژگی نژادها 🎖 (درصدی و مقیاس لول) ─────────
@@ -88,24 +43,13 @@ def _best_trait(dogs: list[Dog], kind: str) -> float:
 
 
 def breed_cooldown_mult(dogs: list[Dog]) -> float:
-    """پیتبول ⚡ + چابک 🌀، کولدان حمله رو کم می‌کنن (بهترین اثر حساب میشه)"""
-    best = 1.0 - _best_trait(dogs, "cooldown")
-    for d in dogs:
-        per = personality_of(d)
-        if per and per.get("cooldown_mult"):
-            best = min(best, per["cooldown_mult"])
-    return max(0.5, best)
+    """پیتبول ⚡، کولدان حمله رو کم می‌کنه (بهترین اثر حساب میشه)"""
+    return max(0.5, 1.0 - _best_trait(dogs, "cooldown"))
 
 
 def battle_xp_mult(dogs: list[Dog]) -> float:
-    """ژرمن شپرد 🎁 + باهوش 🧠 + فرمان‌بردار 🤝، تجربه نبرد بیشتر"""
-    best = 1.0 + _best_trait(dogs, "xp")
-    bonus = 0.0
-    for d in dogs:
-        per = personality_of(d)
-        if per and per.get("xp_mult"):
-            bonus = max(bonus, per["xp_mult"])
-    return best + bonus
+    """ژرمن شپرد 🎁، تجربه نبرد بیشتر"""
+    return 1.0 + _best_trait(dogs, "xp")
 
 
 def trait_atk_pct(dogs: list[Dog]) -> float:
@@ -120,7 +64,7 @@ def trait_def_pct(dogs: list[Dog]) -> float:
 
 def trait_ability_lines(dog: Dog) -> list[str]:
     """
-    خط ویژگی سگ با درصد فعلی لولش، مثل «🎖 ویژگی ⚡ کاهش کولدان حمله 5%»
+    خط ویژگی سگ با درصد فعلی لولش، مثل «🎖 ویژگی: کاهش کولدان حمله 5%»
     گرگ سیاه خط‌های قابلیت خودشو داره
     """
     if config.DOGS.get(dog.dog_key, {}).get("rare"):
@@ -129,7 +73,8 @@ def trait_ability_lines(dog: Dog) -> list[str]:
     if not tr:
         return []
     pct = round(trait_value(dog) * 100)
-    return [f"🎖 ویژگی {tr['emoji']} {tr['title']} {fa_num(pct)}%"]
+    # ایموجی ویژگی از کارت سگ‌های من پاک شد، فقط اسم و درصدش می‌مونه
+    return [f"🎖 ویژگی: {tr['title']} {fa_num(pct)}%"]
 
 
 async def add_battle_xp(dogs: list[Dog], amount: int) -> list[str]:
@@ -170,36 +115,6 @@ def rename_dog(dogs: list[Dog], query: str, new_name: str) -> tuple[bool, str]:
     return True, f"🐕 اسم {old} شد «{display}»"
 
 
-def personality_steal_bonus(dogs: list[Dog]) -> float:
-    """شکارچی 💰، غرامت جنگی ۸%+"""
-    best = 0.0
-    for d in dogs:
-        per = personality_of(d)
-        if per and per.get("steal_bonus"):
-            best = max(best, per["steal_bonus"])
-    return best
-
-
-def personality_steal_cut(dogs: list[Dog]) -> float:
-    """نگهبان 🛡، دزدی از جیبت ۱۰%−"""
-    best = 0.0
-    for d in dogs:
-        per = personality_of(d)
-        if per and per.get("def_steal_cut"):
-            best = max(best, per["def_steal_cut"])
-    return best
-
-
-def search_luck(dogs: list[Dog]) -> float:
-    """خوش‌شانس 🍀، شانس جایزه‌های خوب جستجو بیشتر"""
-    best = 1.0
-    for d in dogs:
-        per = personality_of(d)
-        if per and per.get("luck"):
-            best = max(best, per["luck"])
-    return best
-
-
 def rare_steal_bonus(dogs: list[Dog]) -> float:
     """غرامت بیشتر بهترین گرگ سیاه، تا RARE_DOG_STEAL_MAX (۱۰%) بر اساس لول"""
     best = 0.0
@@ -235,10 +150,7 @@ def rare_ability_lines(dog: Dog) -> list[str]:
 
 async def get_user_dogs(session: AsyncSession, user_id: int) -> list[Dog]:
     q = select(Dog).where(Dog.user_id == user_id).order_by(Dog.id)
-    dogs = list((await session.execute(q)).scalars())
-    for d in dogs:
-        ensure_personality(d)
-    return dogs
+    return list((await session.execute(q)).scalars())
 
 
 def _check_buyable(user: User, dogs: list[Dog], dog_key: str) -> tuple[bool, str]:
@@ -292,9 +204,11 @@ async def buy_dog(
         dog_key=dog_key,
         name=name,
         breed=cfg["breed"],
-        personality=roll_personality(dog_key),
     ))
-    return True, f"🐕 {name} شد رفیق جدیدت"
+    return True, (
+        f"<b>🐕 {name} رفیق جدیدت شد</b>\n\n"
+        f"باهوشه و به اسمش واکنش میده، کافیه بگی «تریاکی آمار {name}»"
+    )
 
 
 # ───────── فلو جدید خرید سگ: اول اسم می‌پرسه → فاکتور تایید → پرداخت ─────────

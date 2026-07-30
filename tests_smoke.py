@@ -333,6 +333,9 @@ async def main() -> None:
         ok, msg = await dog_svc.buy_dog(s, u1, "doberman", custom_name="اصغر")
         check("اسم سگ بعد از تایید فاکتور ثبت شد و پول همونجا کم شد",
               ok and "اصغر" in msg and u1.cash == cash_before - config.DOGS["doberman"]["price"], msg)
+        check("متن خرید سگ قالب جدیده: رفیق جدیدت شد + واکنش به اسم",
+              "اصغر رفیق جدیدت شد" in msg and "باهوشه و به اسمش واکنش میده" in msg
+              and "کافیه بگی «تریاکی آمار اصغر»" in msg, msg[:110])
         check("pending پاک شد", u1.pending_action is None and u1.pending_value is None)
         ok, msg = await dog_svc.buy_dog(s, u1, "doberman", custom_name="تکراری")
         check("نژاد تکراری از همونجا رد میشه", not ok, msg)
@@ -366,18 +369,21 @@ async def main() -> None:
         check("کارت آمار سگ قالب دقیق داره",
               all(x in dob_card for x in ["🐕 آمار", "🐾 نژاد", "⭐ لول", "✨تجربه", "💪 قدرت حمله", "🎖", "🍖 اصغر هنوز گرسنشه"])
               and ("▰" in dob_card or "▱" in dob_card), dob_card.replace("\n", " | ")[:140])
+        check("کارت سگ دیگه شخصیت نداره و خط ویژگی بدون ایموجی خود ویژگی و با دو نقطه‌ست",
+              "💫 شخصیت" not in dob_card and "شخصیت" not in dob_card
+              and "🎖 ویژگی: دفاع بیشتر 1%" in dob_card,
+              dob_card.replace("\n", " | ")[:200])
         check("آیتم سگ‌ها اسم‌شون فقط نژاده",
               all(config.DOGS[k]["name"] == config.DOGS[k]["breed"] for k in config.DOGS),
               str([d["name"] for d in config.DOGS.values()]))
         wolf = next(d for d in dogs if d.dog_key == "blackwolf")
         dob = next(d for d in dogs if d.dog_key == "doberman")
         check("سگ لول ۱ شروع می‌کنه", wolf.level == 1 and wolf.xp == 0)
-        per_dob = dog_svc.personality_of(dob) or {}
-        exp_atk = int(config.DOGS["doberman"]["attack"] * (1 + per_dob.get("atk_mult", 0)))
-        check("قدرت پایه سگ با شخصیتش درسته", dog_svc.dog_attack(dob) == exp_atk,
-              f"{dog_svc.dog_attack(dob)} vs {exp_atk}")
-        check("سگ معمولی شخصیت داره و گرگ سیاه نداره",
-              dob.personality in config.DOG_PERSONALITIES and wolf.personality is None,
+        check("قدرت پایه سگ فقط از نژاد و لولش میاد (شخصیت حذف شده)",
+              dog_svc.dog_attack(dob) == config.DOGS["doberman"]["attack"],
+              str(dog_svc.dog_attack(dob)))
+        check("دیگه هیچ سگی شخصیت نمی‌گیره (موقع خرید نول می‌مونه)",
+              dob.personality is None and wolf.personality is None,
               f"{dob.personality}/{wolf.personality}")
 
         # ── غذا دادن ──
@@ -2883,19 +2889,19 @@ async def main() -> None:
           and {"ix_action_events_action", "ix_action_events_at", "ix_action_events_action_at"} <= ix_e,
           f"{sorted(ix_e)}")
 
-    # ── شخصیت سگ‌ها 💫 ──
-    check("شخصیت‌ها تعریف شدن",
-          set(config.DOG_PERSONALITIES) == {"loyal", "warrior", "furious", "swift", "hunter",
-                                            "wise", "obedient", "guard", "tough", "lucky"})
-    check("گرگ سیاه شخصیت نمی‌گیره", dog_svc.roll_personality("blackwolf") is None)
-    pers = {dog_svc.roll_personality("doberman") for _ in range(200)}
-    check("دوبرمن فقط از استخر خودش شخصیت می‌گیره",
-          pers == {"swift", "hunter"}, str(pers))
-    pers2 = {dog_svc.roll_personality("pitbull") for _ in range(200)}
-    check("پیتبول فقط جنگجو یا خشمگین میشه", pers2 == {"warrior", "furious"}, str(pers2))
-    check("استخر هر نژاد مجزاست",
-          config.DOG_PERSONALITY_POOLS["kangal"] == ["guard", "tough"]
-          and config.DOG_PERSONALITY_POOLS["shepherd"] == ["wise", "obedient"])
+    # ── سیستم شخصیت سگ‌ها کامل حذف شده 💫 ──
+    check("دیگه شخصیتی تو کانفیگ و سرویس سگ نیس",
+          not hasattr(config, "DOG_PERSONALITIES") and not hasattr(config, "DOG_PERSONALITY_POOLS")
+          and not hasattr(dog_svc, "roll_personality") and not hasattr(dog_svc, "personality_of")
+          and not hasattr(dog_svc, "ensure_personality") and not hasattr(dog_svc, "dog_defense")
+          and not hasattr(dog_svc, "personality_steal_bonus") and not hasattr(dog_svc, "search_luck"))
+    check("قیمت غذای سگ‌ها استخون 500 و گوشت 2000 و طلایی 5000 شده",
+          [config.DOG_FOODS[k]["price"] for k in ("bone", "meat", "gold")] == [500, 2000, 5000],
+          str({k: config.DOG_FOODS[k]["price"] for k in config.DOG_FOODS}))
+    check("منحنی لول تیم سخت‌تر شده و نقطه مهاجرت از منحنی قدیمی معلومه",
+          config.TEAM_XP_CURVE_BASE == 1000 and config.TEAM_XP_CURVE_EXP == 1.8
+          and config.TEAM_XP_CURVE_MIGRATION_FROM == (200, 1.6)
+          and team_svc.team_xp_need(1) == 1000)
 
     # ── رها کردن سگ 🕊 ──
     async with session_scope() as s:
@@ -3071,8 +3077,8 @@ async def main() -> None:
               "کانگال", "دفاع بیشتر",
               "گرگ سیاه", "غارت بیشتر",
           ]))
-    check("بخش سگ‌ها استخر شخصیت مخصوص نژاد رو توضیح میده",
-          "شخصیت‌های مخصوص خودش" in dog_sec)
+    check("بخش سگ‌ها دیگه از شخصیت حرف نمی‌زنه (سیستم شخصیت حذف شده)",
+          "شخصیت" not in dog_sec)
     check("بخش سگ‌ها تجربه از نبرد و تغییر اسم رو داره",
           "از نبرد تجربه" in dog_sec and "اسم سگ" in dog_sec)
     check("بخش شرکت و منابع و مخفیگاه تو هلپ هستن",
@@ -4919,16 +4925,11 @@ async def main() -> None:
               and round(dog_svc.trait_def_pct(
                   [SimpleNamespace(dog_key="doberman", level=config.DOG_MAX_LEVEL, personality=None)]), 3) == 0.10)
         kang = [d for d in dd if d.dog_key == "kangal"][0]
-        kang.personality = None
-        check("دفاع سگ بدون شخصیت سرسخت صفره",
-              dog_svc.dog_defense(kang) == 0)
-        kang.personality = "tough"
-        check("شخصیت سرسخت دفاع میده",
-              dog_svc.dog_defense(kang) == config.DOG_PERSONALITIES["tough"]["def_flat"])
-        check("خط ویژگی با درصد فعلی لوله",
+        check("کانگال هم شخصیت نداره (همه نولن)", kang.personality is None)
+        check("خط ویژگی با درصد فعلی لوله (بدون ایموجی خود ویژگی، با دو نقطه)",
               dog_svc.trait_ability_lines(
                   SimpleNamespace(dog_key="pitbull", level=config.DOG_MAX_LEVEL, personality=None))
-              == ["🎖 ویژگی ⚡ کاهش کولدان حمله 10%"],
+              == ["🎖 ویژگی: کاهش کولدان حمله 10%"],
               str(dog_svc.trait_ability_lines(SimpleNamespace(dog_key="pitbull", level=10, personality=None))))
         pit = SimpleNamespace(dog_key="pitbull", level=1, xp=0, personality=None, name="x")
         notes_d = await dog_svc.add_battle_xp([d for d in dd], config.DOG_BATTLE_XP_HIT)
@@ -5516,6 +5517,12 @@ async def main() -> None:
               t2 is not None and "جایزه اولین کاشت" in t2
               and t3 is not None and "جایزه اولین برداشت" in t3
               and ob.first_plant_at is not None and ob.first_harvest_at is not None)
+        check("برداشت اول بسته چوب و آهن شروع میده (کافی برای اولین سلاح)",
+              ob.wood == config.FIRST_HARVEST_WOOD and ob.iron == config.FIRST_HARVEST_IRON
+              and config.FIRST_HARVEST_WOOD == 20 and config.FIRST_HARVEST_IRON == 10
+              and config.FIRST_HARVEST_IRON >= config.WEAPONS["colt"]["iron"]
+              and "چوب" in t3 and "آهن" in t3,
+              f"wood={ob.wood} iron={ob.iron}")
         check("تکرار کاشت و برداشت جایزه نمیده",
               await onb.first_plant(s, ob) is None and await onb.first_harvest(s, ob) is None)
 
@@ -5866,8 +5873,9 @@ async def main() -> None:
     check("خروجی /update گزارش کامل به‌روزرسانیه",
           "🔄 وضعیت بازی به‌روز شد" in utxt and "⚙️ کانفیگ دوباره لود شد" in utxt
           and "📈 بازار" in utxt and "👥 ظرفیت" in utxt and "🧹 کش" in utxt
-          and "🌦 آب‌وهوا دست‌نخورده موند" in utxt and "سرریز ظرفیت نیس" in utxt,
-          utxt.replace("\n", " | ")[:260])
+          and "🌦 آب‌وهوا دست‌نخورده موند" in utxt and "سرریز ظرفیت نیس" in utxt
+          and "⭐ سطح" in utxt and "بازنشانی شد" in utxt and "🐕" in utxt,
+          utxt.replace("\n", " | ")[:320])
     from datetime import datetime as _dtu
     async with session_scope() as s:
         left_mu = (_dtu.fromisoformat(await world_svc._meta(s, "market_until")) - now_utc()).total_seconds()
@@ -5885,6 +5893,35 @@ async def main() -> None:
         await s.commit()
     check("کش عضویت بعد /update خالیه و مرور بعدی تازه چک میشه",
           len(fj_svc._MEMBER_CACHE) == 0)
+
+    # ── ⭐ مهاجرت لول تیم به منحنی سخت‌تر: لول ۱۰ قدیمی مستقیم میشه لول ۵ جدید، یه‌بارمصرف ──
+    async with session_scope() as s:
+        mg, _ = await users.get_or_create(s, tg(7358, "mgtm", "رهبرمهاجر"))
+        mg.level = 12
+        mg.cash = 200000
+        ok_mg, _ = await team_svc.create_team(s, mg, "مهاجرها")
+        assert ok_mg
+        t_mg = await team_svc.get_team_of(s, mg.id)
+        t_mg.level, t_mg.xp = 10, 100  # سناریوی تیم قدیمی: لول ۱۰ با منحنی قبلی
+        await team_svc.meta_set(s, "team_lvl_v2", "")  # فلگ خالی که مهاجرت مستقیم تست بشه
+        await s.commit()
+        ob_o, oe_o = config.TEAM_XP_CURVE_MIGRATION_FROM
+        tot_mg = 100 + sum(int(ob_o * (lv ** oe_o)) for lv in range(1, 10))
+        lv_mg, rem_mg = 1, tot_mg
+        while lv_mg < config.TEAM_MAX_LEVEL and rem_mg >= team_svc.team_xp_need(lv_mg):
+            rem_mg -= team_svc.team_xp_need(lv_mg)
+            lv_mg += 1
+        n_mig = await team_svc.migrate_team_levels(s)
+        check("مهاجرت لول ۱۰ قدیمی دقیق روی منحنی جدید بازنشانی میشه (میشه لول ۵)",
+              n_mig >= 1 and t_mg.level == lv_mg and t_mg.xp == rem_mg and lv_mg == 5,
+              f"lvl={t_mg.level} xp={t_mg.xp} انتظار {lv_mg}/{rem_mg}")
+        check("فلگ مهاجرت بعد از اجرا ست شده",
+              (await team_svc.meta_get(s, "team_lvl_v2")) == "1")
+        n_again = await team_svc.migrate_team_levels(s)
+        check("اجرای دوباره مهاجرت هیچ کاری نمی‌کنه (یدمپوتنت)",
+              n_again == 0 and t_mg.level == lv_mg and t_mg.xp == rem_mg,
+              f"{n_again} lvl={t_mg.level}")
+        await s.commit()
 
     # ═══ این دور: addxpgroup | اسم تیم «تریاک» | نامرئی کامل | جایزه اولین زمین | تبریک پایان مأموریت | ریست مثل روز اول ═══
     check("ظرفیت‌های جدول تیم دقیقاً جدول کاربره (۱۰،۱۲،۱۴،۱۶،۱۸،۲۱،۲۳،۲۵،۲۷،۳۰)",

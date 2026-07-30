@@ -33,7 +33,7 @@ def weapon_power(item_keys, user_level: int) -> int:
 def combat_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
     """
     (حمله, دفاع) = پایه بر اساس لول + بهترین سلاح (با لول ارتقا) + سگ‌ها / بهترین زره
-    بونس شخصیت سگ‌ها داخل dog_attack لحاظ شده، بونس تیم و آب و هوا توی services.battle
+    سگ‌ها فقط قدرت حمله میدن (شخصیت حذف شده)، بونس تیم و آب و هوا توی services.battle
     آرتیفکت‌ها (قلب اژدها/سنگ نگهبان) درصدی روی مجموع اثر می‌ذارن
     """
     levels = _levels_map(item_keys)
@@ -53,7 +53,6 @@ def combat_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
     dfn += _effective_bonus(armor_bonus, user.level)
 
     atk += sum(dog_svc.dog_attack(d) for d in dogs)
-    dfn += sum(dog_svc.dog_defense(d) for d in dogs)
 
     # ویژگی نژادی سگ‌ها: کانگال 💥 حمله و دوبرمن 🛡 دفاع رو درصدی بیشتر می‌کنن
     atk = int(atk * (1 + dog_svc.trait_atk_pct(dogs)))

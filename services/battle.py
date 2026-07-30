@@ -74,7 +74,7 @@ async def cooldown_left(session: AsyncSession, user: User) -> int:
 async def battle_powers(session: AsyncSession, attacker: User, target: User) -> tuple[int, int, dict]:
     """
     (حمله مهاجم, دفاع مدافع, اطلاعات مادیفایرها)
-    حمله: پایه + سلاح + لول + سگ + شخصیت سگ + هوا + ساختمان حمله تیم
+    حمله: پایه + سلاح + لول + سگ + هوا + ساختمان حمله تیم
     دفاع: پایه + زره + لول + هوا + ساختمان دفاع تیم + قابلیت‌های ویژه (گرگ دفاع رو خرد می‌کنه)
     """
     a_items = await user_svc.get_item_keys(session, attacker.id)
@@ -163,16 +163,11 @@ def steal_for_hit(
     pct = config.BATTLE_STEAL_MAX_PCT * min(1.0, dmg / max(1, victim_max_hp))
     amount = float(victim_cash) * pct
 
-    bonus = dog_svc.rare_steal_bonus(attacker_dogs) + dog_svc.personality_steal_bonus(attacker_dogs)
+    bonus = dog_svc.rare_steal_bonus(attacker_dogs)
     bonus += user_svc.artifact_steal_bonus(user_svc.artifact_keys(attacker_items or []))
     if bonus:
         amount *= 1 + bonus
         meta["bonus"] = bonus
-
-    cut = dog_svc.personality_steal_cut(victim_dogs)
-    if cut:
-        amount *= 1 - cut
-        meta["cut"] = cut
 
     if combat.has_legend_armor(victim_items) and amount > 0:
         amount *= 0.5

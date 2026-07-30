@@ -26,7 +26,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
         dogs = await dog_svc.get_user_dogs(s, user.id)
-        luck = dog_svc.search_luck(dogs)
+        luck = 1.0  # شانس جستجو قبلاً از شخصیت سگ میومد، با حذف شخصیت برای همه خنثیه
         artis = users.artifact_keys(await users.get_item_keys(s, user.id))
         luck = max(luck, users.artifact_luck(artis))
         res = await world_svc.do_search(s, user, luck=luck)

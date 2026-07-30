@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import InventoryItem, Plot, User
-from utils import now_utc
+from utils import fa_num, now_utc
 
 
 # ───────── تیکه اول زنجیره 🎉 (جایزه‌های اولین تجربه) ─────────
@@ -47,15 +47,21 @@ async def first_plant(session: AsyncSession, user: User) -> str | None:
 
 
 async def first_harvest(session: AsyncSession, user: User) -> str | None:
-    """اولین برداشت موفق، جایزه + راهنمای قدم بعدی (کامیت با صدا‌کننده‌ست)"""
+    """
+    اولین برداشت موفق، جایزه تی‌پوینت + یه بسته چوب و آهن شروع (کامیت با صدا‌کننده‌ست)
+    چوب و آهن اینجا داده میشن تا بازیکن بدون تکیه به دراپ شانسی بتونه اولین سلاحش رو بخره
+    """
     if user.first_harvest_at is not None:
         return None
     from utils import money
     user.first_harvest_at = now_utc()
     user.cash += config.FIRST_HARVEST_BONUS
+    user.wood = (user.wood or 0) + config.FIRST_HARVEST_WOOD
+    user.iron = (user.iron or 0) + config.FIRST_HARVEST_IRON
     return (
         "<b>💰 تبریک، الان وارد اقتصاد بازی شدی</b>\n\n"
-        f"💵 +{money(config.FIRST_HARVEST_BONUS)} جایزه اولین برداشت\n\n"
+        f"💵 +{money(config.FIRST_HARVEST_BONUS)} جایزه اولین برداشت\n"
+        f"🪵 +{fa_num(config.FIRST_HARVEST_WOOD)} چوب و ⛏️ +{fa_num(config.FIRST_HARVEST_IRON)} آهن برای شروع\n\n"
         "🎯 قدم بعد: اولین سلاحت رو بخر\n"
         "از «🛒 فروشگاه» یه کلت بگیر تا برای نبرد آماده بشی"
     )

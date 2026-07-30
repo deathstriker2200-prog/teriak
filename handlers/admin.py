@@ -155,6 +155,14 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     async with session_scope() as s:
         market_rolled = await world_svc.ensure_market(s, force=True)
+        # سطح تیم‌های قدیمی روی منحنی سخت‌تر بازنشانی میشه (فقط یه بار اجرا میشه)
+        migrated_n = await team_svc.migrate_team_levels(s)
+        # شخصیت سگ‌ها هم با همین آپدیت پاک میشه (سیستم شخصیت حذف شده)
+        from models import Dog as _Dog
+        from sqlalchemy import update as sa_update
+        dogs_wiped = (await s.execute(
+            sa_update(_Dog).where(_Dog.personality.isnot(None)).values(personality=None)
+        )).rowcount or 0
         # ظرفیت تیم‌ها داینامیک از لول حساب میشه؛ اینجا بازخوانی و گزارش سرریز
         all_teams = (await s.execute(sa_select(Team))).scalars().all()
         over: list[tuple[str, int, int]] = []
@@ -176,6 +184,14 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"📈 بازار: {'رول فوری انجام شد و قیمت‌ها تازه حساب شدن' if market_rolled else 'بدون تغییر'}",
         f"👥 ظرفیت {fa_num(len(all_teams))} تیم بازخوانی شد",
     ]
+    if migrated_n:
+        lines.append(f"⭐ سطح {fa_num(migrated_n)} تیم روی منحنی سخت‌تر بازنشانی شد")
+    else:
+        lines.append("✅ سطح تیم‌ها از قبل روی منحنی جدیده")
+    if dogs_wiped:
+        lines.append(f"🐕 شخصیت {fa_num(dogs_wiped)} سگ پاک شد (سیستم شخصیت حذف شده)")
+    else:
+        lines.append("🐕 سگ‌ها دیگه شخصیت ندارن")
     if over:
         lines.append(
             f"⚠️ {fa_num(len(over))} تیم سرریز ظرفیت دارن: "

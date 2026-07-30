@@ -466,7 +466,7 @@ def search_cooldown_left(user: User) -> int:
 async def do_search(session: AsyncSession, user: User, luck: float = 1.0) -> dict:
     """
     اجرای جستجو، نتیجه کاملاً تصادفی با شانس‌های مستقل
-    luck (شخصیت خوش‌شانس 🍀): وزن نتایج خوب رو زیاد و دزد رو کم می‌کنه
+    شانس جستجو: وزن نتایج خوب رو زیاد و دزد رو کم می‌کنه
     خروجی دیکشنری با status: cooldown | money | seed_* | thief
     """
     left = search_cooldown_left(user)

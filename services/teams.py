@@ -70,6 +70,43 @@ async def give_team_xp(session: AsyncSession, team: Team, amount: int) -> list[s
     return await apply_team_xp(session, team, amount)
 
 
+def _need_with_curve(base: int, exp: float, level: int) -> int:
+    """xp لازم با یه منحنی دلخواه، فقط برای تبدیل منحنی قدیمی"""
+    return int(base * (level ** exp))
+
+
+async def migrate_team_levels(session: AsyncSession) -> int:
+    """
+    سطح تیم‌های موجود رو از منحنی قدیمی (TEAM_XP_CURVE_MIGRATION_FROM) به منحنی فعلی تبدیل می‌کنه
+    چون مجموع تجربه گرفته‌شده فقط از شمار لول‌های عبور‌کرده قدیمی + xp فعلی بازسازی میشه
+    یه‌بارمصرفه؛ فلگ game_meta جلو اجرای دوباره رو می‌گیره، خروجی: تعداد تیم‌های تبدیل‌شده
+    """
+    flag = await meta_get(session, "team_lvl_v2")
+    if flag:
+        return 0
+    base_old, exp_old = config.TEAM_XP_CURVE_MIGRATION_FROM
+    teams = list((await session.execute(select(Team))).scalars())
+    changed = 0
+    for t in teams:
+        level = t.level or 1
+        xp = t.xp or 0
+        if level <= 1 and xp <= 0:
+            continue
+        total = xp
+        for lv in range(1, level):
+            total += _need_with_curve(base_old, exp_old, lv)
+        t.level, t.xp = 1, 0
+        # ری‌پلی لول‌آپ با منحنی جدید
+        remaining = total
+        while t.level < config.TEAM_MAX_LEVEL and remaining >= team_xp_need(t.level):
+            remaining -= team_xp_need(t.level)
+            t.level += 1
+        t.xp = remaining
+        changed += 1
+    await meta_set(session, "team_lvl_v2", "1")
+    return changed
+
+
 async def add_team_xp(session: AsyncSession, user: User, amount: int) -> list[str]:
     """
     سهم تیم از تجربه‌ای که هر عضو می‌گیره (کنده‌کاری | حمله | برداشت و…)
