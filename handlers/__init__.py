@@ -118,6 +118,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("user", admin.user_cmd))
     app.add_handler(CommandHandler("hideboard", admin.hideboard_cmd))
     app.add_handler(CommandHandler("update", admin.update_cmd))
+    app.add_handler(CommandHandler("addxpgroup", admin.addxpgroup_cmd))
     app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
     app.add_handler(CommandHandler("detp", admin.detp_cmd))

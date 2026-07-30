@@ -46,7 +46,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # ردیابی فعالیت گروه، برای اعلان آب و هوا و اسپون کاروان
         if is_group:
             from services import world as world_svc
-            await world_svc.touch_group(s, chat.id)
+            await world_svc.touch_group(s, chat.id, getattr(chat, "title", None))
             await s.commit()
 
         user = await users.get_by_tg(s, update.effective_user.id)
@@ -54,8 +54,9 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         norm = normalize_fa(text)
-        if norm in ("تریاکی", "تریاک", "تی") or norm.startswith(("تریاکی ", "تریاک ", "تی ")):
+        if norm.startswith(("تریاکی ", "تریاک ", "تی ")):
             return  # دستور با پیشوند رو نباید به عنوان ورودی معلق قورت بدن
+        # اما «تریاک»/«تریاکی»/«تی» تنهایی دستور نیستن و می‌تونن اسم تیم یا سگ باشن
         if norm != "لغو" and (norm in _KNOWN_TEXTS or norm.startswith(_KNOWN_PREFIXES)):
             return  # دستوره، بذار بقیه هندلرها بگیرنش
 
@@ -265,7 +266,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_html(
                 f"<b>🏴 ساخت تیم «{esc(display)}»</b>\n\n"
                 f"💸 هزینه ساخت {money(config.TEAM_CREATE_COST)}\n"
-                f"👑 تو رهبرش میشی و {fa_num(config.TEAM_CAP_BASE)} نفر جا داره\n"
+                f"👑 تو رهبرش میشی و {fa_num(config.TEAM_CAP_TABLE[0])} نفر جا داره\n"
                 "لول تیم که با تجربه اعضا بره بالا جای اعضا بیشتر میشه\n\n"
                 "می‌سازیمش؟",
                 reply_markup=kb.team_create_confirm_kb(update.effective_user.id),

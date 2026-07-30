@@ -61,6 +61,21 @@ async def first_harvest(session: AsyncSession, user: User) -> str | None:
     )
 
 
+async def first_plot(session: AsyncSession, user: User) -> str | None:
+    """اولین خرید زمین موفق، جایزه + راهنمای قدم بعدی (کامیت با صدا‌کننده‌ست)"""
+    if user.first_plot_at is not None:
+        return None
+    from utils import money
+    user.first_plot_at = now_utc()
+    user.cash += config.FIRST_PLOT_BONUS
+    return (
+        "<b>🏡 زمینت رو گرفتی، عالیه</b>\n\n"
+        f"💰 +{money(config.FIRST_PLOT_BONUS)} جایزه اولین زمین\n\n"
+        "🎯 قدم بعد: یه بذر بخر و بکار روش\n"
+        "«🌱 مزرعه من» رو بزن و اولین محصولت رو شروع کن"
+    )
+
+
 async def first_weapon(session: AsyncSession, user: User, kind: str) -> str | None:
     """
     خرید اولین سلاح (نتیجه موفق purchase صدا زده میشه)
@@ -82,6 +97,30 @@ async def first_weapon(session: AsyncSession, user: User, kind: str) -> str | No
         "تو گروه ریپلای بزن رو هرکی که می‌خوای و بنویس «حمله»\n"
         "یا تو پی‌وی با «تریاکی حمله» یه هدف پیدا کن و سیستم مبارزه رو تجربه کن"
     )
+
+
+# ───────── تبریک پایان مأموریت شروع 🎉 ─────────
+
+CONGRATS_TEXT = (
+    "<b>🎉 تبریک، آموزش اولیه رو با موفقیت تموم کردی</b>\n\n"
+    "حالا با تمام بخش‌های اصلی بازی آشنا شدی؛ وقتشه ربات رو به گروه خودت اضافه کنی "
+    "و همراه دوستات رقابت، معامله و مبارزه رو شروع کنی\n"
+    "🔥 بازی واقعی تازه از اینجا شروع میشه"
+)
+
+
+async def maybe_congrats(session: AsyncSession, user: User) -> str | None:
+    """
+    اگه همه مرحله‌های مأموریت شروع تازه‌کارم دیگه تیک خورده باشن و تبریک هنوز گفته نشده
+    متن تبریک پایانی رو میده و علامتش رو می‌زنه که فقط یه بار بیاد (کامیت با صدا‌کننده‌ست)
+    """
+    if user.onb_done_at is not None:
+        return None
+    rows = await mission_rows(session, user)
+    if not all(done for _, _, done in rows):
+        return None
+    user.onb_done_at = now_utc()
+    return CONGRATS_TEXT
 
 
 # ───────── کارت مأموریت شروع 🎯 ─────────

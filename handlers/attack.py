@@ -155,6 +155,7 @@ async def _own_shield_view(update: Update, target_id: int, own_left: float, brea
 async def _run_attack(update: Update, context, target_id: int, break_shield: bool = False, own_shield_ok: bool = False) -> None:
     """حمله روی هدف پیش‌نمایش‌شده، با کولدان و تاییدیه شکستن سپر خودی/قربانی و دی‌ام قربانی"""
     dq_done, dq_left, uname = [], 0, ""
+    congrats = None
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -166,7 +167,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
             return await pv_panel(update, alert=f"⏳ {fa_num(cd)} ثانیه دیگه می‌تونی حمله کنی")
 
         victim = await s.get(User, target_id)
-        if victim is None:
+        if victim is None or victim.lb_hidden:  # نامرئی‌های /hideboard هدف حمله نمیشن
             await s.commit()
             return await pv_panel(update, alert="🤷 هدف گم شد، یه هدف دیگه بگیر")
 
@@ -205,6 +206,8 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         from services import quests as dq_svc
         dq_done, dq_left = await dq_svc.track(s, user, "attack")
         uname = users.display_name(user)
+        from services import onboarding as onb
+        congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
         victim_tg = victim.telegram_id
         victim_dm = _victim_text(uname, result)
         await s.commit()
@@ -232,7 +235,8 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
 
     await respond(update, text, kb.pv_attack_kb())
     from handlers.common import announce_notes
-    await announce_notes(update, result.get("notes"))
+    notes_out = (result.get("notes") or []) + ([congrats] if congrats else [])
+    await announce_notes(update, notes_out)
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 

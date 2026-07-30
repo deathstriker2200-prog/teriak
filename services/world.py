@@ -16,18 +16,31 @@ import config
 from models import GameMeta, GroupActivity, Plot, SeedSale, SeedStock, User
 from services.farming import get_stock, add_seed_stock
 from services.users import add_xp
-from utils import esc, fa_dur, fa_num, money, now_utc
+from utils import esc, fa_dur, fa_num, money, now_iran, now_utc
 
 
 # ═════════ فعالیت گروه‌ها ═════════
 
-async def touch_group(session: AsyncSession, chat_id: int) -> None:
-    """آپدیت آخرین فعالیت گروه، موجب میشه گروه تو لیست اعلان آب و هوا و کاروان بمونه"""
+async def touch_group(session: AsyncSession, chat_id: int, title: str | None = None) -> None:
+    """
+    آپدیت آخرین فعالیت گروه، موجب میشه گروه تو لیست اعلان آب و هوا و کاروان بمونه
+    اسم گروه و شمارنده پیام‌های ساعت جاری ایران هم برای آمار ادمین نگه داشته میشه
+    """
+    ir = now_iran()
+    bucket = f"{ir.date().isoformat()}-{ir.hour:02d}"
     row = await session.get(GroupActivity, chat_id)
     if row:
         row.last_active_at = now_utc()
     else:
-        session.add(GroupActivity(chat_id=chat_id))
+        row = GroupActivity(chat_id=chat_id)
+        session.add(row)
+    if title:
+        row.title = title[:128]
+    if row.hour_key != bucket:
+        row.hour_key = bucket
+        row.msgs_hour = 1
+    else:
+        row.msgs_hour = (row.msgs_hour or 0) + 1
 
 
 async def active_group_ids(session: AsyncSession, hours: float) -> list[int]:
@@ -58,6 +71,23 @@ def weather_of(key: str) -> dict:
     return config.WEATHERS.get(key) or config.WEATHERS["normal"]
 
 
+_IRAN_OFFSET = timedelta(hours=3, minutes=30)
+
+
+def _next_weather_boundary(now) -> object:
+    """
+    مرز بعدی تغییر آب و هوا به UTC، هوا سر ساعت‌های ایرانی WEATHER_BOUNDARY_HOURS (۲۴، ۶، ۱۲ و ۱۸) عوض میشه
+    """
+    ir = now + _IRAN_OFFSET
+    for h in config.WEATHER_BOUNDARY_HOURS:
+        cand = ir.replace(hour=h, minute=0, second=0, microsecond=0)
+        if cand > ir:
+            return cand - _IRAN_OFFSET
+    first = config.WEATHER_BOUNDARY_HOURS[0]
+    cand = (ir.replace(hour=first, minute=0, second=0, microsecond=0) + timedelta(days=1))
+    return cand - _IRAN_OFFSET
+
+
 def _effect_emoji(line: str) -> str:
     """ایموجی خط افکت اعلان آب و هوا بر اساس موضوعش"""
     if "رشد" in line:
@@ -84,17 +114,17 @@ def _weather_lines(key: str, field: str, pct: int | None) -> list[str]:
     return [t.format(p=p) for t in weather_of(key).get(field, [])]
 
 
-def weather_announce_text(key: str, pct: int | None = None) -> str:
-    """پیام اعلان آب و هوای جدید برای گروه‌ها، افکت با درصد همین رول گفته میشه"""
+def weather_announce_text(key: str, pct: int | None = None, left: int | None = None) -> str:
+    """پیام اعلان آب و هوای جدید برای گروه‌ها، افکت با درصد همین رول و مهلت واقعی تا مرز بعدی"""
     w = weather_of(key)
-    hours = config.WEATHER_ROLL_SECONDS // 3600
+    span = fa_dur(left) if left else f"{fa_num(config.WEATHER_ROLL_SECONDS // 3600)} ساعت"
     lines = ["<b>🌦 وضعیت آب و هوای جدید</b>", ""]
     if key == "normal":
         lines.append("🏙️ هوای محله صافِ صاف شد الان دیگه هیچ افکت خاصی فعال نیست")
     else:
         lines.append(f"{w['emoji']} {w['name']} آغاز شد")
         for b in _weather_lines(key, "announce", pct):
-            lines.append(f"{_effect_emoji(b)} {b}، تا {fa_num(hours)} ساعت آینده")
+            lines.append(f"{_effect_emoji(b)} {b}، تا {span} آینده")
     return "\n".join(lines)
 
 
@@ -142,7 +172,8 @@ async def ensure_weather(session: AsyncSession, force: bool = False) -> tuple[st
         pct = int(round(base * f * crowd))
         pct = max(config.WEATHER_MIN_PCT, min(config.WEATHER_MAX_PCT, pct))
 
-    new_until = now + timedelta(seconds=config.WEATHER_ROLL_SECONDS)
+    # رول بعدی سر ساعت‌های ایرانی ۲۴/۶/۱۲/۱۸ میفته نه ۶ ساعت بعد از این لحظه
+    new_until = _next_weather_boundary(now)
     await _meta_set(session, "weather_key", key)
     await _meta_set(session, "weather_until", new_until.isoformat())
     await _meta_set(session, "weather_pct", str(pct or 0))

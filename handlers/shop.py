@@ -356,6 +356,7 @@ async def buy_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         _, alert = await shop_svc.purchase(s, user, kind, key)
         from services import onboarding as onb
         chain = await onb.first_weapon(s, user, kind)  # راهنمای نبرد بعد خرید اولین سلاح
+        congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
         await s.commit()
     # اسلحه برمی‌گرده به دسته خودش (سرد | گرم | ویژه)
     if kind == "weap" and key in config.WEAPONS:
@@ -364,7 +365,7 @@ async def buy_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await render_section(update, kind, alert=alert)
     # زنجیره آنبوردینگ پیام جدا میاد تا فاکتور خرید شلوغ نشه
     from handlers.common import announce_notes
-    await announce_notes(update, [chain] if chain else [])
+    await announce_notes(update, [x for x in (chain, congrats) if x])
 
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────

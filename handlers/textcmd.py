@@ -131,11 +131,14 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         cash = user.cash
         from services import onboarding as onb
         chain = await onb.first_weapon(s, user, kind)  # راهنمای نبرد بعد خرید اولین سلاح
+        congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
         await s.commit()
 
     text = f"<b>{esc(alert)}</b>\n\n💵 نقدینگی {money(cash)}"
     if chain:
         text += f"\n\n{chain}"
+    if congrats:
+        text += f"\n\n{congrats}"
     await respond(update, text, kb.home_kb())
 
 
@@ -150,6 +153,7 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     dq_done, dq_left, uname = [], 0, ""
     chain = None
+    congrats = None
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
 
@@ -173,11 +177,12 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 uname = users.display_name(user)
                 from services import onboarding as onb
                 chain = await onb.first_plant(s, user)  # جایزه و راهنمای اولین کاشت
+                congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
         await s.commit()
 
     await respond(update, f"<b>🌱 کاشت</b>\n\n{esc(msg)}", kb.home_kb())
     from handlers.common import announce_notes
-    await announce_notes(update, [chain] if chain else [])
+    await announce_notes(update, [x for x in (chain, congrats) if x])
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
@@ -197,6 +202,9 @@ async def harvest_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             chain = await onb.first_harvest(s, user)  # جایزه و راهنمای اولین برداشت
             if chain:
                 notes.insert(0, chain)
+            congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
+            if congrats:
+                notes.append(congrats)
         await s.commit()
 
     if not ok:

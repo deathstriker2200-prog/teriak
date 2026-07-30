@@ -30,7 +30,12 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     # ── /start تو پیوی ──
-    if created:
+    # اکانت ریست‌شده با /clearacc هم مثل روز اول پیام خوش‌آمد می‌گیره
+    fresh = created or (
+        user.level == 1 and user.first_mine_at is None and user.last_mine_at is None
+        and user.last_attack_at is None and user.last_harvest_at is None
+    )
+    if fresh:
         # خوش‌آمد تازه‌کار فقط یه قدم مشخص میده، بقیه آموزش‌ها تو بخش راهنما می‌مونه
         text = (
             f"<b>🔥 سلام {name}، به بازی تریاکی خوش اومدی</b>\n\n"
@@ -236,7 +241,7 @@ HELP_SECTIONS: dict[str, str] = {
         "📈 بازار سیاه، قیمت فروش هر محصول دست خود بازیکناس؛ هر فروشی رو قیمتش اثر می‌ذاره\n"
         "کمیاب بشه گرون‌تر و اشباع بشه ارزون‌تر میشه، قیمت‌ها هر یک ساعت یه حرکت کوچیک دارن\n"
         "همه محصولات از روز اول با قیمتشون دیده میشن و قبل فروش بهتره یه نگاه به وضعیت بازار بندازی\n\n"
-        "🌦 آب‌وهوا، هر 6 ساعت عوض میشه و شدت افکتش هم هر بار یه کم فرق می‌کنه؛ بیشتر وقتا عادیه ولی گاهی یکی از این‌ها میاد:\n"
+        "🌦 آب‌وهوا، ساعت 6 و 12 و 18 و 24 به وقت ایران عوض میشه و شدت افکتش هم هر بار یه کم فرق می‌کنه؛ بیشتر وقتا عادیه ولی گاهی یکی از این‌ها میاد:\n"
         "🌧 باران، رشد گیاه سریع‌تر | ☀️ گرمای شدید، رشد کندتر\n"
         "❄️ سرمای شدید، رشد کندتر | 🌫 مه، دفاع همه بیشتر\n"
         "🌪 طوفان، حمله همه کمتر | 🌈 جشن برداشت، قیمت فروش بیشتر\n"
@@ -321,7 +326,7 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # گروه رو فعال ثبت کن (اعلان آب و هوا و کاروان بهش میرسه)
     from services import world as world_svc
     async with session_scope() as s:
-        await world_svc.touch_group(s, cm.chat.id)
+        await world_svc.touch_group(s, cm.chat.id, cm.chat.title)
         await s.commit()
 
 

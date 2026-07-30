@@ -65,7 +65,14 @@ _NEW_COLUMNS = {
         ("first_mine_at", "DATETIME"),
         ("first_plant_at", "DATETIME"),
         ("first_harvest_at", "DATETIME"),
+        ("first_plot_at", "DATETIME"),
+        ("onb_done_at", "DATETIME"),
         ("lb_hidden", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "group_activity": [
+        ("title", "VARCHAR(128)"),
+        ("msgs_hour", "INTEGER NOT NULL DEFAULT 0"),
+        ("hour_key", "VARCHAR(16)"),
     ],
         "inventory": [
         ("level", "INTEGER NOT NULL DEFAULT 1"),

@@ -49,7 +49,8 @@ async def weather_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if not rolled:
         return
-    text = world_svc.weather_announce_text(key, rolled.get("pct"))
+    left = max(0, int((rolled["until"] - world_svc.now_utc()).total_seconds())) if rolled.get("until") else None
+    text = world_svc.weather_announce_text(key, rolled.get("pct"), left)
     for gid in groups:
         if gid in offs:
             continue  # گروه خاموشه (/botoff)

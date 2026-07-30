@@ -99,6 +99,8 @@ class User(Base):
     first_mine_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     first_plant_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     first_harvest_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    first_plot_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    onb_done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # حالت نامرئی لیدربرد (فقط ادمین ربات) — ۱ یعنی تو هیچ لیدربردی دیده نمیشه
     lb_hidden: Mapped[int] = mapped_column(Integer, default=0)
@@ -293,6 +295,9 @@ class GroupActivity(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     last_active_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     last_caravan_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    title: Mapped[str | None] = mapped_column(String(128), nullable=True)      # اسم گروه برای آمار ادمین
+    msgs_hour: Mapped[int] = mapped_column(Integer, default=0)                  # پیام‌های ساعت فعلی ایران
+    hour_key: Mapped[str | None] = mapped_column(String(16), nullable=True)     # کلید سطل ساعتی ایران «روز-ساعت»
 
 
 class GameMeta(Base):

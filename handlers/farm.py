@@ -88,11 +88,17 @@ async def buy_plot_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def buy_plot_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    notes = []
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        _, alert = await farming.buy_plot(s, user)
+        ok, alert = await farming.buy_plot(s, user)
+        if ok:
+            from services import onboarding as onb
+            notes = [x for x in (await onb.first_plot(s, user), await onb.maybe_congrats(s, user)) if x]
         await s.commit()
     await render_farm(update, alert=alert)
+    from handlers.common import announce_notes
+    await announce_notes(update, notes)
 
 
 # ───────── کاشت ─────────
@@ -164,6 +170,7 @@ async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     _, _, plot_id, seed_key = parts(update)
     dq_done, dq_left, uname = [], 0, ""
     chain = None
+    congrats = None
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         plot = await farming.get_plot(s, user.id, int(plot_id))
@@ -177,10 +184,11 @@ async def plant_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 uname = users.display_name(user)
                 from services import onboarding as onb
                 chain = await onb.first_plant(s, user)  # جایزه و راهنمای اولین کاشت
+                congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
         await s.commit()
     await render_farm(update, alert=alert)
     from handlers.common import announce_notes
-    await announce_notes(update, [chain] if chain else [])
+    await announce_notes(update, [x for x in (chain, congrats) if x])
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 
@@ -218,6 +226,9 @@ async def harvest_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             chain = await onb.first_harvest(s, user)  # جایزه و راهنمای اولین برداشت
             if chain:
                 notes.insert(0, chain)
+            congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
+            if congrats:
+                notes.append(congrats)
         await s.commit()
     await render_farm(update, extra=extra, alert=alert)
     # لول‌آپ به‌صورت پیام جدا میاد

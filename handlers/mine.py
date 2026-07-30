@@ -102,6 +102,9 @@ async def _do_roll(update: Update) -> None:
             chain = await onb.first_mine(s, user)  # جایزه و راهنمای اولین کنده‌کاری
             if chain:
                 notes.insert(0, chain)
+            congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت شروع، فقط یه بار
+            if congrats:
+                notes.append(congrats)
             from services import teams as team_svc
             notes += await team_svc.add_team_xp(s, user, loot["xp"])
 

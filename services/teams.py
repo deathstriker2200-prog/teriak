@@ -37,9 +37,37 @@ def team_xp_need(level: int) -> int:
 
 
 def team_capacity(team) -> int:
-    """ظرفیت اعضا بر اساس لول تیم، از ۱۰ نفر شروع میشه و هر لول +۱۰"""
+    """ظرفیت اعضا بر اساس لول تیم، جدول دستی کانفیگ: ۱۰ نفر شروع تا ۳۰ نفر لول ۱۰"""
     level = getattr(team, "level", 1) or 1
-    return config.TEAM_CAP_BASE + config.TEAM_CAP_PER_LEVEL * (level - 1)
+    idx = min(max(level, 1), len(config.TEAM_CAP_TABLE)) - 1
+    return config.TEAM_CAP_TABLE[idx]
+
+
+async def apply_team_xp(session: AsyncSession, team: Team, amount: int) -> list[str]:
+    """
+    دادن خام xp به یه تیم مشخص + پردازش لول‌آپ‌ها
+    خروجی: لیست پیام‌های تبریک لول‌آپ تیم
+    """
+    if amount <= 0 or team is None:
+        return []
+    notes: list[str] = []
+    team.xp = (team.xp or 0) + int(amount)
+    while (team.level or 1) < config.TEAM_MAX_LEVEL and team.xp >= team_xp_need(team.level):
+        team.xp -= team_xp_need(team.level)
+        team.level += 1
+        notes.append(
+            f"🎉 <b>تیم «{team.name}» لول {fa_num(team.level)} شد</b>\n\n"
+            f"👥 ظرفیت اعضا شد {fa_num(team_capacity(team))} نفر\n"
+            f"🏗 ساختمان‌ها تا لول {fa_num(team.level)} ارتقا پیدا می‌کنن"
+        )
+        if team.level >= config.TEAM_MAX_LEVEL:
+            notes.append("👑 تیمتون به مکس لول رسید")
+    return notes
+
+
+async def give_team_xp(session: AsyncSession, team: Team, amount: int) -> list[str]:
+    """xp ادمینی به تیم (/addxpgroup)، دقیقاً همون مقدار بدون ضریب سهم"""
+    return await apply_team_xp(session, team, amount)
 
 
 async def add_team_xp(session: AsyncSession, user: User, amount: int) -> list[str]:
@@ -52,20 +80,7 @@ async def add_team_xp(session: AsyncSession, user: User, amount: int) -> list[st
     team = await get_team_of(session, user.id)
     if not team:
         return []
-
-    notes: list[str] = []
-    team.xp = (team.xp or 0) + int(amount * config.TEAM_XP_SHARE)
-    while (team.level or 1) < config.TEAM_MAX_LEVEL and team.xp >= team_xp_need(team.level):
-        team.xp -= team_xp_need(team.level)
-        team.level += 1
-        notes.append(
-            f"🎉 <b>تیم «{team.name}» لول {fa_num(team.level)} شد</b>\n\n"
-            f"👥 ظرفیت اعضا شد {fa_num(team_capacity(team))} نفر\n"
-            f"🏗 ساختمان‌ها تا لول {fa_num(team.level)} ارتقا پیدا می‌کنن"
-        )
-        if team.level >= config.TEAM_MAX_LEVEL:
-            notes.append("👑 تیمتون به مکس لول رسید")
-    return notes
+    return await apply_team_xp(session, team, int(amount * config.TEAM_XP_SHARE))
 
 
 # ───────── کوئری پایه ─────────
@@ -416,7 +431,7 @@ async def team_stats_data(session: AsyncSession, team: Team) -> dict:
         if m.role == "owner":
             for u in users:
                 if u.id == m.user_id:
-                    owner_name = u.first_name or u.username or "؟"
+                    owner_name = "👻 نامرئی" if u.lb_hidden else (u.first_name or u.username or "؟")
             break
 
     by_id = {u.id: u for u in users}
@@ -443,8 +458,15 @@ async def team_stats_data(session: AsyncSession, team: Team) -> dict:
 
 
 async def top_teams(session: AsyncSession, limit: int = 10) -> list[tuple[Team, int]]:
-    """برترین تیم‌ها بر اساس خزانه"""
-    q = select(Team).order_by(Team.bank.desc(), Team.total_kills.desc()).limit(limit)
+    """برترین تیم‌ها بر اساس خزانه، تیم‌هایی که رهبرشون نامرئیه (/hideboard) نمیان توی لیست"""
+    q = (
+        select(Team)
+        .join(TeamMember, (TeamMember.team_id == Team.id) & (TeamMember.role == "owner"))
+        .join(User, User.id == TeamMember.user_id)
+        .where(User.lb_hidden == 0)
+        .order_by(Team.bank.desc(), Team.total_kills.desc())
+        .limit(limit)
+    )
     teams = list((await session.execute(q)).scalars())
     return [(t, await member_count(session, t.id)) for t in teams]
 

@@ -161,6 +161,7 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     tg_attacker = update.effective_user
     dq_done, dq_left, uname = [], 0, ""
+    congrats = None
 
     async with session_scope() as s:
         tg_target, err = await _resolve_target(update, context, s)
@@ -178,12 +179,22 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         target, _ = await users.get_or_create(s, tg_target)  # پروفایل اولیه خودکار
         target_name = esc(users.display_name(target))
 
-        result = await battle.execute_hit(s, user, target)
-        if result["ok"] and not result.get("nodmg"):
-            from services import quests as dq_svc
-            dq_done, dq_left = await dq_svc.track(s, user, "attack")
-            uname = users.display_name(user)
+        result = {}
+        if target.lb_hidden:
+            err_hide = True  # نامرئی‌های /hideboard هدف حمله نمیشن، انگار وجود ندارن
+        else:
+            err_hide = False
+            result = await battle.execute_hit(s, user, target)
+            if result["ok"] and not result.get("nodmg"):
+                from services import quests as dq_svc
+                dq_done, dq_left = await dq_svc.track(s, user, "attack")
+                uname = users.display_name(user)
+                from services import onboarding as onb
+                congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
         await s.commit()
+
+    if err_hide:
+        return await respond(update, NOT_FOUND_TEXT)
 
     if not result["ok"]:
         reason = result["reason"]
@@ -205,7 +216,8 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await respond(update, hit_text(result, target_name))
     # لول‌آپ به‌صورت پیام جدا میاد
     from handlers.common import announce_notes
-    await announce_notes(update, result.get("notes"))
+    notes_out = (result.get("notes") or []) + ([congrats] if congrats else [])
+    await announce_notes(update, notes_out)
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 

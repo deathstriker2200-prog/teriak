@@ -93,7 +93,7 @@ async def weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         for b in view["effect_lines"]:
             lines.append(f"▫️ {b}")
     lines.append("")
-    lines.append("🌦 هر 6 ساعت عوض میشه و شدت افکتش هم هر بار فرق می‌کنه، تو گروه‌های فعال اعلام میشه")
+    lines.append("🌦 سر ساعت‌های 6-12-18-24 به وقت ایران عوض میشه و شدت افکتش هم هر بار فرق می‌کنه، تو گروه‌های فعال اعلام میشه")
     await respond(update, "\n".join(lines), kb.home_kb())
 
 

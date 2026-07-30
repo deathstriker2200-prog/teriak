@@ -766,9 +766,14 @@ async def main() -> None:
         check("تیم تو پروفایل اسمش دیده میشه", team.name == "فوتبالیست‌ها")
         team_id = team.id
         check("ظرفیت تیم لول ۱ ده نفره", team_svc.team_capacity(team) == 10)
-        check("هر لول تیم +۱۰ ظرفیت",
-              team_svc.team_capacity(SimpleNamespace(level=2)) == 20
-              and team_svc.team_capacity(SimpleNamespace(level=10)) == 100)
+        check("جدول ظرفیت دقیقه: لول ۲ = ۱۲ و لول ۱۰ = ۳۰",
+              team_svc.team_capacity(SimpleNamespace(level=2)) == 12
+              and team_svc.team_capacity(SimpleNamespace(level=10)) == 30)
+        check("جدول ظرفیت وسط‌ها: لول ۵ = ۱۸ و لول ۶ = ۲۱",
+              team_svc.team_capacity(SimpleNamespace(level=5)) == 18
+              and team_svc.team_capacity(SimpleNamespace(level=6)) == 21)
+        check("بالاتر از جدول همون آخری می‌مونه",
+              team_svc.team_capacity(SimpleNamespace(level=15)) == 30)
         check("تیم تازه لول ۱ و xp صفره", (team.level or 1) == 1 and (team.xp or 0) == 0)
         await s.commit()
 
@@ -1981,7 +1986,8 @@ async def main() -> None:
         key, rolled = await world_svc.ensure_weather(s)
         check("آب و هوای منقضی رول میشه", rolled is not None and key in config.WEATHERS, key)
         key2, left = await world_svc.current_weather(s)
-        check("هوا تا رول بعد ثابته و تایمر داره", key2 == key and left > 7000, f"{key2}/{left}")
+        check("هوا تا رول بعد ثابته و تایمرش بین صفر و ۶ ساعته (مرز ساعت ایران)",
+              key2 == key and 0 < left <= 21600, f"{key2}/{left}")
         check("باران رشد 30%+ | گرما 20%− | سرما زمان بیشتر",
               world_svc.weather_grow_speed("rain") == 1.30
               and world_svc.weather_grow_speed("heat") == 0.80
@@ -2009,6 +2015,22 @@ async def main() -> None:
         check("ویوی آب و هوا ساخته میشه", view["key"] in config.WEATHERS and view["left"] > 0)
         await s.commit()
 
+    # ── مرزهای رول هوا: ساعت ۲۴ و ۶ و ۱۲ و ۱۸ به‌وقت ایران، نه هر ۶ ساعت از لحظه رول ──
+    from datetime import datetime as _dtw
+    check("مرز بعدی هوا سر ساعت ۱۲ ایران میفته (UTC 03:00 ← UTC 08:30)",
+          world_svc._next_weather_boundary(_dtw(2026, 7, 29, 3, 0)) == _dtw(2026, 7, 29, 8, 30))
+    check("بعد از ساعت ۲۴ ایران مرز بعدی ۶ صبح روز بعده (UTC 21:00 ← روز بعد 02:30)",
+          world_svc._next_weather_boundary(_dtw(2026, 7, 29, 21, 0)) == _dtw(2026, 7, 30, 2, 30))
+    check("دقیقاً سر مرز، مرز بعدی میاد نه همون لحظه (UTC 02:30 ← UTC 08:30)",
+          world_svc._next_weather_boundary(_dtw(2026, 7, 29, 2, 30)) == _dtw(2026, 7, 29, 8, 30))
+    check("مرزهای کانفیگ دقیقاً ۲۴ و ۶ و ۱۲ و ۱۸ به‌وقت ایرانه",
+          config.WEATHER_BOUNDARY_HOURS == (0, 6, 12, 18))
+    span_left = 5 * 3600 + 20 * 60
+    ann_left = world_svc.weather_announce_text("rain", 30, left=span_left)
+    check("اعلان هوا با مهلت واقعی تا مرز بعدی (نه ۶ ساعت ثابت)",
+          f"تا {fa_dur(span_left)} آینده" in ann_left and "تا 6 ساعت آینده" not in ann_left,
+          ann_left.replace("\n", " | ")[-90:])
+
     # صفحه «وضعیت آب و هوا» با افکت‌های فعلی (متن هندلر واقعی)
     from handlers import world as world_h
     async with session_scope() as s:
@@ -2023,7 +2045,7 @@ async def main() -> None:
           "<b>🌦 وضعیت آب و هوا</b>" in wtxt and "☀️ گرمای شدید" in wtxt
           and "دیگه عوض میشه" in wtxt and "افکت‌های فعلی:" in wtxt
           and "▫️ سرعت رشد منفی 20%" in wtxt
-          and "هر 6 ساعت عوض میشه و شدت افکتش هم هر بار فرق می‌کنه، تو گروه‌های فعال اعلام میشه" in wtxt,
+          and "سر ساعت‌های 6-12-18-24 به وقت ایران عوض میشه و شدت افکتش هم هر بار فرق می‌کنه، تو گروه‌های فعال اعلام میشه" in wtxt,
           wtxt.replace("\n", " | ")[:180])
     async with session_scope() as s:
         await world_svc._meta_set(s, "weather_key", "normal")
@@ -2630,13 +2652,20 @@ async def main() -> None:
         await s.commit()
     check("حذف کانال گیت رو کامل پاک می‌کنه", not off)
 
-    # ── 📊 آمار پنل ادمین ──
+    # ── 📊 آمار پنل ادمین (قالب جدید: پینگ و بازیکنا بالا، ۱ ساعته، فعال‌ترین گروه‌ها) ──
     from handlers import admin as admin_h
     stats_txt = await admin_h._stats_text()
-    check("آمار پنل ادمین بخش‌های کلیدی رو داره",
-          all(x in stats_txt for x in ["📊 آمار ربات", "کاربرا:", "فعال 24 ساعت اخیر",
-                                       "تیم‌ها:", "سگ‌ها:", "کاروان زنده الان",
-                                       "مجموع تی‌پوینت"]), stats_txt[:60])
+    check("آمار پنل ادمین بخش‌های کلیدی قالب جدید رو داره",
+          all(x in stats_txt for x in ["📊 آمار زنده ربات", "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
+                                       "👥 بازیکنای فعال ۱ ساعت اخیر", "🆕 جوین ۱ ساعت اخیر",
+                                       "🏘 گروه‌های فعال ۱ ساعت اخیر", "🏴 تیم‌ها:", "🐕 سگ‌ها:",
+                                       "🌱 در حال رشد:", "🚛 کاروان زنده الان", "💰 تی‌پوینت کل محله",
+                                       "🔥 اکشن‌های ۲۴ ساعت"]), stats_txt[:60])
+    check("پینگ و پردازش بالاتر از آمار بازیکنان اومدن",
+          stats_txt.index("📡 پینگ API تلگرام:") < stats_txt.index("👥 بازیکنای فعال ۱ ساعت اخیر")
+          and stats_txt.index("⚙️ پردازش داخلی:") < stats_txt.index("👥 بازیکنای فعال ۱ ساعت اخیر"))
+    check("آمار به خط رفرش زنده ختم میشه",
+          stats_txt.endswith("⏱ آمار زنده‌ست، با 🔃 رفرش میشه"))
 
     # ── 📊 بخش‌های جدید آمار پنل ادمین ──
     import re as _re
@@ -2649,9 +2678,11 @@ async def main() -> None:
     from services import actionlog as alog
 
     def _stat_ints(text: str, key: str) -> list[int]:
-        """عددهای خطی که key توشه (کاما حذف میشه)، پیدا نشد لیست خالی"""
+        """عددهای بعد از key تو خطش (کاما حذف میشه)، پیدا نشد لیست خالی
+        فقط بعد از لیبل گرفته میشن که عدد فارسی لیبل (مثل «۲۴ ساعت») یا شماره‌های قبلش تو خط جمع‌بندی جمع نخوره"""
         for line in text.splitlines():
             if key in line:
+                line = line[line.index(key) + len(key):]
                 return [int(x.replace(",", "")) for x in _re.findall(r"[\d,]+", line)]
         return []
 
@@ -2660,16 +2691,43 @@ async def main() -> None:
         return nums[0] if nums else None
 
     st_all = await admin_h._stats_text()
-    check("بخش‌های چهارگانه جدید آمار (اقتصاد/فعالیت/لول/فنی) همه تو پیامن",
+    check("بخش‌های خلاصه آمار قالب جدید همه تو پیامن",
           all(x in st_all for x in [
-              "📦 اقتصاد و اقلام", "مجموع انبار", "بذر کاشته‌شده فعال:",
-              "پول داخل بانک‌ها:", "نقد بیرون بانک",
-              "🔥 فعالیت 24 ساعت اخیر", "نبردها:", "کنده‌کاری:",
-              "دست‌های قمارخانه:", "کاربر جدید:",
-              "📈 لول و پیشرفت", "میانگین لول", "بالاترین لول",
-              "🛠 فنی", "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
+              "📡 پینگ API تلگرام:", "⚙️ پردازش داخلی:",
+              "👥 بازیکنای فعال ۱ ساعت اخیر", "🆕 جوین ۱ ساعت اخیر", "🏘 گروه‌های فعال ۱ ساعت اخیر",
+              "🏴 تیم‌ها:", "🐕 سگ‌ها:", "💰 تی‌پوینت کل محله", "(تو بانک",
+              "🔥 اکشن‌های ۲۴ ساعت: ⛏", "⏱ آمار زنده‌ست، با 🔃 رفرش میشه",
           ]) and st_all.endswith("⏱ آمار زنده‌ست، با 🔃 رفرش میشه"))
     check("بدون بات، پینگ نامعلومه و کرش نمی‌ده", "پینگ API تلگرام: ➖ نامعلوم" in st_all)
+
+    # ── 🏆 فعال‌ترین گروه‌های این ساعت تو آمار ادمین (سطل ساعت جاری ایران) ──
+    from utils import now_iran as _nir_stat
+    _bucket_now = f"{_nir_stat().date().isoformat()}-{_nir_stat().hour:02d}"
+    async with session_scope() as s:
+        g1s = await s.get(GroupActivity, -99000101)
+        if g1s is None:
+            g1s = GroupActivity(chat_id=-99000101)
+            s.add(g1s)
+        g1s.title, g1s.hour_key, g1s.msgs_hour = "گروه داغ محله", _bucket_now, 777
+        g2s = await s.get(GroupActivity, -99000202)
+        if g2s is None:
+            g2s = GroupActivity(chat_id=-99000202)
+            s.add(g2s)
+        g2s.title, g2s.hour_key, g2s.msgs_hour = "گروه دوم بازار", _bucket_now, 12
+        g3s = await s.get(GroupActivity, -99000303)
+        if g3s is None:
+            g3s = GroupActivity(chat_id=-99000303)
+            s.add(g3s)
+        g3s.title, g3s.hour_key, g3s.msgs_hour = "گروه کهنه دیشب", "2000-01-01-00", 9999  # سطل قدیمی
+        await s.commit()
+    st_top = await admin_h._stats_text()
+    check("بخش فعال‌ترین گروه‌های این ساعت با مدال و شمارنده پیام میاد",
+          "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>" in st_top
+          and "🥇 گروه داغ محله 🗨 777 پیام" in st_top
+          and "گروه دوم بازار 🗨 12 پیام" in st_top,
+          " | ".join(st_top.splitlines()[7:13])[:220])
+    check("گروه سطل قدیمی ساعت دیگه تو فعال‌ترین‌ها نمیاد",
+          "گروه کهنه دیشب" not in st_top)
 
     class _FakeBot:
         async def get_me(self):
@@ -2692,10 +2750,9 @@ async def main() -> None:
           and 'actionlog.log(session, "casino")' in _src["services/world.py"]
           and 'actionlog.log(s, "mine")' in _src["handlers/mine.py"])
 
-    # ── شمارش رویدادهای ۲۴ ساعته، فقط COUNT توی SQL ──
+    # ── شمارش رویدادهای ۲۴ ساعته، فقط COUNT توی SQL (خط جمع‌بندی جدید) ──
     st_b0 = await admin_h._stats_text()
-    bt0, bg0, bp0 = _stat_ints(st_b0, "نبردها:")
-    mn0, cs0 = _stat_int(st_b0, "کنده‌کاری:"), _stat_int(st_b0, "دست‌های قمارخانه:")
+    a0 = _stat_ints(st_b0, "🔥 اکشن‌های ۲۴ ساعت")  # [⛏ کنده‌کاری، ⚔️ نبرد (گروهی+پی‌وی)، 🎰 قمار]
     async with session_scope() as s:
         await alog.log(s, "battle")
         await alog.log(s, "battle")
@@ -2707,12 +2764,9 @@ async def main() -> None:
         s.add(ActionEvent(action="mine", at=now_utc() - timedelta(days=2)))  # قدیمی، نباید شمرده شه
         await s.commit()
     st_b1 = await admin_h._stats_text()
-    bt1, bg1, bp1 = _stat_ints(st_b1, "نبردها:")
-    check("نبردهای ۲۴ساعته: گروهی و پی‌وی جدا و جمع‌شون درسته",
-          (bt1, bg1, bp1) == (bt0 + 3, bg0 + 2, bp0 + 1), f"{(bt1, bg1, bp1)} vs {(bt0, bg0, bp0)}")
-    check("کنده‌کاری ۲۴ساعته فقط تازه‌ها رو میشمره، رویداد دیروزی نه",
-          _stat_int(st_b1, "کنده‌کاری:") == mn0 + 3)
-    check("دست‌های قمارخانه ۲۴ساعته", _stat_int(st_b1, "دست‌های قمارخانه:") == cs0 + 1)
+    a1 = _stat_ints(st_b1, "🔥 اکشن‌های ۲۴ ساعت")
+    check("اکشن‌های ۲۴ساعته: کنده‌کاری تازه‌ها + نبرد گروهی و پی‌وی جمع‌شده + قمار رو همون خط میاد",
+          a1 == [a0[0] + 3, a0[1] + 3, a0[2] + 1], f"{a0} -> {a1}")
 
     # ── اکشن ناشناس نادیده گرفته میشه ──
     async with session_scope() as s:
@@ -2745,43 +2799,30 @@ async def main() -> None:
         await s.commit()
     check("پاکسازی: ردیف‌های قدیمی‌تر از نگه‌داری رویداد حذف میشن", left_old == 0, f"مونده: {left_old}")
 
-    # ── 🆕 تازه‌واردها + ⭐ میانگین لول فعال‌ها + 🏆 مکس لول ──
-    async with session_scope() as s:
-        _day_ago = now_utc() - timedelta(hours=24)
-        s_lvl0 = (await s.execute(
-            select(_func.coalesce(_func.sum(User.level), 0)).where(User.last_seen_at >= _day_ago)
-        )).scalar() or 0
-        c_lvl0 = (await s.execute(
-            select(_func.count(User.id)).where(User.last_seen_at >= _day_ago)
-        )).scalar() or 0
-        await s.commit()
-    new0 = _stat_int(st_b1, "کاربر جدید:")
+    # ── 🆕 تازه‌واردها و فعال‌های ۱ ساعت اخیر (پنجره ساعتی جدید آمار بازیکنان) ──
+    act0 = _stat_int(st_b1, "👥 بازیکنای فعال ۱ ساعت اخیر")
+    new0 = _stat_int(st_b1, "🆕 جوین ۱ ساعت اخیر")
     async with session_scope() as s:
         u_new, _ = await users.get_or_create(s, tg(7309, "newb", "تازه‌وارد"))
         u_new.level = 10
         u_old, _ = await users.get_or_create(s, tg(7305, "oldb", "کهنه‌کار"))
         u_old.level = 40
         u_old.created_at = now_utc() - timedelta(days=2)
-        u_old.last_seen_at = now_utc() - timedelta(days=2)  # غیرفعال، تو میانگین و تازه‌وارد نمیاد
+        u_old.last_seen_at = now_utc() - timedelta(days=2)  # غیرفعال، تو هیچکدوم از آمارهای ۱ ساعته نمیاد
         u_f0, _ = await users.get_or_create(s, tg(7301, "farmx", "کشاورز"))  # تازه‌وارد + لول ۱ فعال
         await s.commit()
     st_c1 = await admin_h._stats_text()
-    check("کاربر جدید ۲۴ساعته فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
-          _stat_int(st_c1, "کاربر جدید:") == new0 + 2, f"{_stat_int(st_c1, 'کاربر جدید:')} vs {new0}")
-    _avg_exp = (s_lvl0 + 10 + 1) / (c_lvl0 + 2)  # تازه‌وارد (۱۰) + کشاورز (۱)، کهنه‌کار غیرفعاله
-    _avg_line = [l for l in st_c1.splitlines() if "میانگین لول" in l][0]
-    _avg_got = float(_re.search(r"[\d.]+", _avg_line.split(":")[-1]).group(0))
-    check("میانگین لول فقط روی فعال‌های ۲۴ساعته حساب میشه",
-          abs(_avg_got - _avg_exp) < 0.06, f"{_avg_got} vs {_avg_exp:.2f}")
-    check("بالاترین لول ثبت‌شده کاربر غیرفعال رو هم پوشش میده",
-          _stat_int(st_c1, "بالاترین لول") == 40, str(_stat_int(st_c1, "بالاترین لول")))
+    check("جوین ۱ ساعت اخیر فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
+          _stat_int(st_c1, "🆕 جوین ۱ ساعت اخیر") == new0 + 2,
+          f"{_stat_int(st_c1, '🆕 جوین ۱ ساعت اخیر')} vs {new0}")
+    check("فعال ۱ ساعت اخیر فقط تازه‌فعالا رو میشمره نه کهنه‌کار غیرفعال",
+          _stat_int(st_c1, "👥 بازیکنای فعال ۱ ساعت اخیر") == act0 + 2,
+          f"{_stat_int(st_c1, '👥 بازیکنای فعال ۱ ساعت اخیر')} vs {act0}")
 
-    # ── 🌱 پلات در حال رشد + 🎒 انبار + 🏦 بانک/نقد ──
+    # ── 🌱 پلات در حال رشد + 💰 تی‌پوینت کل محله و بخش بانکیش ──
     # مبنا از st_c1 (بعد ساخت کاربرا) خونده میشه، اینجا دیگه کاربر تازه‌ای ساخته نمیشه
-    gr0 = _stat_int(st_c1, "بذر کاشته‌شده فعال:")
-    wd0 = _stat_int(st_c1, "مجموع انبار")
-    bk0 = _stat_int(st_c1, "پول داخل بانک‌ها:")
-    ot0 = _stat_int(st_c1, "نقد بیرون بانک")
+    gr0 = _stat_int(st_c1, "🌱 در حال رشد")
+    tot0, bk0 = _stat_ints(st_c1, "💰 تی‌پوینت کل محله")
     async with session_scope() as s:
         u_f = await users.get_by_tg(s, 7301)
         _now = now_utc()
@@ -2790,19 +2831,15 @@ async def main() -> None:
         s.add(Plot(user_id=u_f.id, status="growing", crop="marijuana",
                    planted_at=_now - timedelta(hours=9), ready_at=_now - timedelta(hours=1)))  # آماده‌ست نه رشد
         s.add(Plot(user_id=u_f.id, status="empty"))
-        u_f.wood = 100
-        u_f.iron = 50
-        u_f.bank_balance += 5000  # فقط واریز به بانک، نقد دست‌نخورده
+        u_f.cash += 5000
+        u_f.bank_balance += 5000  # واریز تازه به بانک
         await s.commit()
     st_d1 = await admin_h._stats_text()
-    check("بذر کاشته‌شده فعال فقط رشد واقعی (ready_at نگذشته) رو میشمره",
-          _stat_int(st_d1, "بذر کاشته‌شده فعال:") == gr0 + 1, f"{_stat_int(st_d1, 'بذر کاشته‌شده فعال:')}")
-    check("انبار، جمع چوب و آهن مستقیم تو SQL",
-          _stat_int(st_d1, "مجموع انبار") == wd0 + 150, f"{_stat_int(st_d1, 'مجموع انبار')} vs {wd0}")
-    check("پول بانک جدا از نقد: بانک زیاد میشه ولی نقد ثابت می‌مونه",
-          _stat_int(st_d1, "پول داخل بانک‌ها:") == bk0 + 5000
-          and _stat_int(st_d1, "نقد بیرون بانک") == ot0,
-          f"ب:{_stat_int(st_d1, 'پول داخل بانک‌ها:')} ن:{_stat_int(st_d1, 'نقد بیرون بانک')}")
+    check("در حال رشد فقط رشد واقعی (ready_at نگذشته) رو میشمره",
+          _stat_int(st_d1, "🌱 در حال رشد") == gr0 + 1, f"{_stat_int(st_d1, '🌱 در حال رشد')}")
+    tot1, bk1 = _stat_ints(st_d1, "💰 تی‌پوینت کل محله")
+    check("تی‌پوینت کل محله جمع نقد و بانکه و بخش بانکیش دقیقه",
+          tot1 == tot0 + 10000 and bk1 == bk0 + 5000, f"{tot0}->{tot1} ب:{bk0}->{bk1}")
 
     # ── ⚙️ زمان پردازش داخلی + 🚦 چراغ latency ──
     common_h._PROC_TIMES.clear()
@@ -5051,7 +5088,7 @@ async def main() -> None:
         check("ساخت تیم برای تست لول تیم", ok_tt)
         ttx = await team_svc.get_team_of(s, txu.id)
         check("تیم از لول ۱ با ۱۰ ظرفیت شروع می‌کنه",
-              (ttx.level or 1) == 1 and team_svc.team_capacity(ttx) == config.TEAM_CAP_BASE)
+              (ttx.level or 1) == 1 and team_svc.team_capacity(ttx) == config.TEAM_CAP_TABLE[0])
         check("xp صفر چیزی نمی‌ده", (await team_svc.add_team_xp(s, txu, 0)) == [])
         need1 = team_svc.team_xp_need(1)
         notes_tx = await team_svc.add_team_xp(s, txu, 50)
@@ -5070,7 +5107,7 @@ async def main() -> None:
         notes_lv = await team_svc.add_team_xp(s, txu2, add_now)
         check("تیم با تجربه اعضا لول‌آپ می‌کنه و پیام داره",
               ttx2.level == 2 and any("لول 2" in n for n in notes_lv), f"{ttx2.level} {notes_lv}")
-        check("ظرفیت تیم با لول رشد کرد", team_svc.team_capacity(ttx2) == 20)
+        check("ظرفیت تیم با لول رشد کرد (۱۰ ← ۱۲)", team_svc.team_capacity(ttx2) == 12)
         ttx2.level = config.TEAM_MAX_LEVEL
         ttx2.xp = 0
         notes_mx = await team_svc.add_team_xp(s, txu2, 99999)
@@ -5792,7 +5829,7 @@ async def main() -> None:
           world_svc.weather_grow_speed("rain") == 1.30
           and world_svc.weather_combat_mods("storm") == (-0.10, 0.0))
 
-    # ── /update ادمین: رول فوری بازار و هوا + بازخوانی ظرفیت + ریست کش ──
+    # ── /update ادمین: ریلود کانفیگ + رول فوری بازار + بازخوانی ظرفیت + ریست کش، بدون دست زدن به هوا ──
     upd_una = _text_update("/update", uid=7333, uname="memr", fname="عضو ساده")
     await admin_h.update_cmd(upd_una, None)
     check("/update برای غیرادمین کاملاً بی‌صداس", len(upd_una.message.calls) == 0)
@@ -5806,29 +5843,284 @@ async def main() -> None:
 
     async with session_scope() as s:
         await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=3000)).isoformat())
+        # هوا رو پین می‌کنیم: وقتی /update بزنیم نباید هیچ‌کدوم از اینا عوض بشه
+        pin_wu = (now_utc() + timedelta(seconds=7200)).isoformat()
+        await world_svc._meta_set(s, "weather_key", "heat")
+        await world_svc._meta_set(s, "weather_until", pin_wu)
+        await world_svc._meta_set(s, "weather_pct", "20")
         await s.commit()
-    upd_up = _text_update("/update", uid=1001, uname="adm1", fname="ادمین یک")
-    await admin_h.update_cmd(upd_up, SimpleNamespace(bot=_UpBot()))
+
+    # ریلود کانفیگ رو منکی‌پچ می‌کنیم که هم صداش اصالت سنجی کنیم هم فایل واقعی دست‌نخورده بمونه
+    import importlib as _ilib
+    _orig_reload = _ilib.reload
+    _reload_seen = []
+    _ilib.reload = lambda m: _reload_seen.append(m)
+    try:
+        upd_up = _text_update("/update", uid=1001, uname="adm1", fname="ادمین یک")
+        await admin_h.update_cmd(upd_up, SimpleNamespace(bot=_UpBot()))
+    finally:
+        _ilib.reload = _orig_reload
+    check("/update کانفیگ رو واقعاً به‌روز لود می‌کنه (ظرفیتای تغییرکرده سریع اعمال میشن)",
+          _reload_seen and _reload_seen[0] is config)
     utxt = upd_up.message.calls[-1][1]
     check("خروجی /update گزارش کامل به‌روزرسانیه",
-          "🔄 وضعیت بازی به‌روز شد" in utxt and "📈 بازار" in utxt and "🌦 آب‌وهوا" in utxt
-          and "👥 ظرفیت" in utxt and "🧹 کش" in utxt, utxt.replace("\n", " | ")[:220])
+          "🔄 وضعیت بازی به‌روز شد" in utxt and "⚙️ کانفیگ دوباره لود شد" in utxt
+          and "📈 بازار" in utxt and "👥 ظرفیت" in utxt and "🧹 کش" in utxt
+          and "🌦 آب‌وهوا دست‌نخورده موند" in utxt and "سرریز ظرفیت نیس" in utxt,
+          utxt.replace("\n", " | ")[:260])
     from datetime import datetime as _dtu
     async with session_scope() as s:
         left_mu = (_dtu.fromisoformat(await world_svc._meta(s, "market_until")) - now_utc()).total_seconds()
         check("بازار فورس رول شد و تایمر یک ساعته ریست شد",
               abs(left_mu - 3600) < 30, str(left_mu))
-        raw_wp = await world_svc._meta(s, "weather_pct")
-        left_wu = (_dtu.fromisoformat(await world_svc._meta(s, "weather_until")) - now_utc()).total_seconds()
-        check("آب و هوا هم فورس رول شد و تایمر ۶ ساعته ریست شد",
-              raw_wp is not None and abs(left_wu - 21600) < 30, f"{raw_wp}/{left_wu}")
-        # برگشت هوا به حالت عادی دیترمینیستیک برای ادامه سوییت
+        check("/update به آب و هوا دست نمی‌زنه (کی و درصد و تا کِی، همه مثل قبل)",
+              (await world_svc._meta(s, "weather_key")) == "heat"
+              and (await world_svc._meta(s, "weather_pct")) == "20"
+              and (await world_svc._meta(s, "weather_until")) == pin_wu,
+              f"{await world_svc._meta(s, 'weather_key')} {await world_svc._meta(s, 'weather_until')}")
+        # برگشت هوا به حالت عادی با تا ختم‌شدنش سر مرز بعدی، دیترمینیستیک برای ادامه سوییت
         await world_svc._meta_set(s, "weather_key", "normal")
-        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=21600)).isoformat())
+        await world_svc._meta_set(s, "weather_until", world_svc._next_weather_boundary(now_utc()).isoformat())
         await world_svc._meta_set(s, "weather_pct", "0")
         await s.commit()
     check("کش عضویت بعد /update خالیه و مرور بعدی تازه چک میشه",
           len(fj_svc._MEMBER_CACHE) == 0)
+
+    # ═══ این دور: addxpgroup | اسم تیم «تریاک» | نامرئی کامل | جایزه اولین زمین | تبریک پایان مأموریت | ریست مثل روز اول ═══
+    check("ظرفیت‌های جدول تیم دقیقاً جدول کاربره (۱۰،۱۲،۱۴،۱۶،۱۸،۲۱،۲۳،۲۵،۲۷،۳۰)",
+          config.TEAM_CAP_TABLE == [10, 12, 14, 16, 18, 21, 23, 25, 27, 30])
+    check("جایزه اولین خرید زمین 200 تی‌پوینته", config.FIRST_PLOT_BONUS == 200)
+
+    # ── ✨ /addxpgroup: دادن مستقیم xp به تیم (با اسم چندکلمه‌ای یا آیدی) ──
+    async with session_scope() as s:
+        gx, _ = await users.get_or_create(s, tg(7351, "gxown", "رهبرایکس"))
+        gx.level = 12
+        gx.cash = 100000
+        ok_gx, _ = await team_svc.create_team(s, gx, "تیم ایکس گروپ")
+        assert ok_gx
+        t_gx = await team_svc.get_team_of(s, gx.id)
+        notes_svc = await team_svc.give_team_xp(s, t_gx, 30)
+        check("give_team_xp سرویسی دقیقاً همون مقدار رو میده (بدون ضریب سهم اعضا)",
+              t_gx.xp == 30 and not notes_svc, str(t_gx.xp))
+        await s.commit()
+    upd_g0 = _text_update("/addxpgroup", uid=7333, uname="memr", fname="عضو ساده")
+    await admin_h.addxpgroup_cmd(upd_g0, SimpleNamespace(args=["تیم", "ایکس", "گروپ", "50"]))
+    check("/addxpgroup برای غیرادمین کاملاً بی‌صداس", len(upd_g0.message.calls) == 0)
+    upd_g1 = _text_update("/addxpgroup", uid=1001, uname="adm1", fname="ادمین یک")
+    await admin_h.addxpgroup_cmd(upd_g1, SimpleNamespace(args=["تیم", "ایکس", "گروپ"]))
+    check("/addxpgroup بدون مقدار فرم درست رو میگه",
+          "فرم درست" in upd_g1.message.calls[-1][1], upd_g1.message.calls[-1][1][:70])
+    async with session_scope() as s:
+        t_gx = await team_svc.get_team_by_name(s, "تیم ایکس گروپ")
+        xp_b4 = t_gx.xp
+        await s.commit()
+    upd_g2 = _text_update("/addxpgroup", uid=1001, uname="adm1", fname="ادمین یک")
+    await admin_h.addxpgroup_cmd(upd_g2, SimpleNamespace(args=["تیم", "ایکس", "گروپ", "50"]))
+    async with session_scope() as s:
+        t_gx = await team_svc.get_team_by_name(s, "تیم ایکس گروپ")
+        check("/addxpgroup با اسم چندکلمه‌ای xp دقیق داد",
+              t_gx.xp == xp_b4 + 50, f"{xp_b4}->{t_gx.xp}")
+        await s.commit()
+    g2_txt = upd_g2.message.calls[-1][1]
+    check("خروجی /addxpgroup لول و ظرفیت تیم رو گزارش می‌ده",
+          "تیم «تیم ایکس گروپ»" in g2_txt and "لول تیم الان" in g2_txt and "ظرفیت اعضا" in g2_txt,
+          g2_txt.replace("\n", " | ")[:160])
+    async with session_scope() as s:
+        t_gx = await team_svc.get_team_by_name(s, "تیم ایکس گروپ")
+        tid_gx = t_gx.id
+        need_now = team_svc.team_xp_need(t_gx.level) - t_gx.xp
+        await s.commit()
+    upd_g3 = _text_update("/addxpgroup", uid=1001, uname="adm1", fname="ادمین یک")
+    await admin_h.addxpgroup_cmd(upd_g3, SimpleNamespace(args=[str(tid_gx), str(need_now)]))
+    async with session_scope() as s:
+        t_gx = await team_svc.get_team_by_name(s, "تیم ایکس گروپ")
+        lv_gx = t_gx.level
+        await s.commit()
+    check("/addxpgroup با آیدی عددی تیم کار می‌کنه و لول‌آپ دقیق می‌خوره",
+          lv_gx == 2 and len(upd_g3.message.calls) >= 2, f"lvl={lv_gx} calls={len(upd_g3.message.calls)}")
+    check("نوت لول‌آپ تیم پیام جدا اومد و ظرفیت جدید رو می‌گه",
+          any("لول 2 شد" in c[1] and "ظرفیت اعضا شد 12 نفر" in c[1] for c in upd_g3.message.calls),
+          str([c[1][:60] for c in upd_g3.message.calls]))
+    upd_g4 = _text_update("/addxpgroup", uid=1001, uname="adm1", fname="ادمین یک")
+    await admin_h.addxpgroup_cmd(upd_g4, SimpleNamespace(args=["همچین", "تیمی", "نیس", "100"]))
+    check("/addxpgroup تیم ناشناخته رو گزارش می‌ده",
+          "پیدا نشد" in upd_g4.message.calls[-1][1])
+    _init2_src = open(os.path.join(_base_dir, "handlers", "__init__.py"), encoding="utf-8").read()
+    check("ثبت /addxpgroup تو رجیستری هندلرها", 'CommandHandler("addxpgroup"' in _init2_src)
+
+    # ── اسم تیم «تریاک» و «تریاکی» دیگه به دستور اشتباه گرفته نمیشه ──
+    async with session_scope() as s:
+        tn, _ = await users.get_or_create(s, tg(7352, "tnam", "نام‌تیم"))
+        tn.level = 12
+        tn.cash = 200000
+        tn.pending_action = "teamname"
+        await s.commit()
+    upd_tn = _text_update("تریاک", uid=7352, uname="tnam", fname="نام‌تیم")
+    try:
+        await pending_h.capture(upd_tn, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        tn2 = await users.get_by_tg(s, 7352)
+        pend_tn = (tn2.pending_action, tn2.pending_value)
+        await s.commit()
+    check("«تریاک» به عنوان اسم تیم قبول میشه و فاکتور ساخت میاد",
+          upd_tn.message.calls and "ساخت تیم «تریاک»" in upd_tn.message.calls[-1][1]
+          and pend_tn == ("teamcf", "تریاک"),
+          f"{pend_tn} | {str(upd_tn.message.calls[-1][1])[:80]}")
+    upd_tb = _text_update("تریاکی بازار", uid=7352, uname="tnam", fname="نام‌تیم")
+    await pending_h.capture(upd_tb, None)
+    check("«تریاکی بازار» هنوز دستور اصلیه و ورودی معلق نمیشه",
+          not upd_tb.message.calls, str(upd_tb.message.calls))
+    async with session_scope() as s:
+        tn3 = await users.get_by_tg(s, 7352)
+        tn3.pending_action = None
+        tn3.pending_value = None
+        await s.commit()
+
+    # ── 👻 نامرئی کامل: هدف هیچ حمله‌ای نیس، تیمش هم تو لیدربرد و کارت ماسکه ──
+    from services import pvattack as pvattack_svc
+    async with session_scope() as s:
+        hi, _ = await users.get_or_create(s, tg(7353, "ghst", "روح‌پنهان"))
+        hi.level = 15
+        hi.cash = 200000
+        hi.lb_hidden = 1
+        ok_h, _ = await team_svc.create_team(s, hi, "روح‌های شب")
+        assert ok_h
+        t_roh = await team_svc.get_team_of(s, hi.id)
+        atkr, _ = await users.get_or_create(s, tg(7354, "hugh", "مهاجم‌عادی"))
+        atkr.level = 15
+        atkr.energy = config.MAX_ENERGY
+        atkr.last_attack_at = None
+        atkr.pv_attack_at = None
+        await s.flush()
+        hid_db = hi.id
+        picked = await pvattack_svc.pick_random_target(s, atkr)
+        check("هدف شانسی هرگز کاربر نامرئی رو نمیاره",
+              picked is None or picked.telegram_id != 7353,
+              str(picked.telegram_id if picked else None))
+        tops_b = await team_svc.top_teams(s, 50)
+        check("تیم رهبر نامرئی تو لیدربرد تیم نمیاد",
+              all(t.id != t_roh.id for t, _ in tops_b), str([t.name for t, _ in tops_b]))
+        data_h = await team_svc.team_stats_data(s, t_roh)
+        check("رهبر نامرئی تو کارت تیم با 👻 ماسک میشه",
+              data_h["owner_name"] == "👻 نامرئی", data_h["owner_name"])
+        await s.commit()
+
+    # حمله گروهی به نامرئی مثل آدم ناشناخته جواب می‌شنوه (محض احتیاط اسمش هم لو نره)
+    async with session_scope() as s:
+        hi1 = await users.get_by_tg(s, 7353)
+        hp_b4_hide = hi1.hp
+        await s.commit()
+    gh_tg = SimpleNamespace(id=7353, username="ghst", first_name="روح‌پنهان", is_bot=False)
+    upd_gh = _tgroup("حمله", 7354, "hugh", "مهاجم‌عادی", reply_user=gh_tg)
+    await battle_h3.attack_cmd(upd_gh, None)
+    check("حمله گروهی به نامرئی با متن «پیدا نکردم» برگشت می‌خوره",
+          upd_gh.message.calls and upd_gh.message.calls[-1][1] == battle_h3.NOT_FOUND_TEXT,
+          str(upd_gh.message.calls[-1][1])[:80] if upd_gh.message.calls else "-")
+    async with session_scope() as s:
+        hi2 = await users.get_by_tg(s, 7353)
+        check("به نامرئی واقعاً ضربه‌ای نخورد (HP و وضعیت دست‌نخورده)",
+              hi2.hp == hp_b4_hide and hi2.dead_until is None, str(hi2.hp))
+        await s.commit()
+
+    # حمله پی‌وی به نامرئی هم الرت «هدف گم شد» می‌ده
+    upd_pv = _fake_update(f"patt:hit:{hid_db}", uid=7354)
+    await attack_h2.target_hit_cb(upd_pv, SimpleNamespace(bot=_UpBot()))
+    check("حمله پی‌وی به نامرئی الرت «هدف گم شد» می‌ده",
+          any(c[0] == "answer" and any("هدف گم شد" in str(x) for x in c[1])
+              for c in upd_pv.callback_query.calls),
+          str(upd_pv.callback_query.calls[:2]))
+    async with session_scope() as s:
+        atkr2 = await users.get_by_tg(s, 7354)
+        check("حمله ردشده روی نامرئی کولدان پی‌وی نمی‌سوزونه",
+              atkr2.pv_attack_at is None, str(atkr2.pv_attack_at))
+        await s.commit()
+
+    # ── 🏡 جایزه اولین خرید زمین برگشت (فقط یه بار، زنجیره بذر رو میاره) ──
+    async with session_scope() as s:
+        fp, _ = await users.get_or_create(s, tg(7355, "fplot", "زمین‌اولی"))
+        c0_fp = fp.cash
+        t_fp = await onb.first_plot(s, fp)
+        check("اولین خرید زمین جایزه 200 تی‌پوینتی و زنجیره بذر رو داره",
+              t_fp is not None and "جایزه اولین زمین" in t_fp
+              and "بذر" in t_fp and fp.cash - c0_fp == 200
+              and fp.first_plot_at is not None,
+              f"+{fp.cash - c0_fp} | {str(t_fp)[:80]}")
+        check("جایزه اولین زمین فقط یه باره",
+              await onb.first_plot(s, fp) is None)
+        await s.commit()
+
+    # ── 🎉 تبریک پایان مأموریت با قالب دقیق کاربر، فقط یه بار ──
+    from models import InventoryItem as _InvCg
+    async with session_scope() as s:
+        cg, _ = await users.get_or_create(s, tg(7356, "grat", "تبریکی"))
+        cg.first_mine_at = now_utc()
+        cg.first_plant_at = now_utc()
+        cg.first_harvest_at = now_utc()
+        cg.last_attack_at = now_utc()
+        s.add(_InvCg(user_id=cg.id, item_key="colt"))
+        await s.flush()
+        check("تا یه قدم از مأموریت مونده (اولین زمین)، تبریک پایانی نمیاد",
+              await onb.maybe_congrats(s, cg) is None)
+        await onb.first_plot(s, cg)  # تیک اولین زمین + جایزه
+        s.add(Plot(user_id=cg.id, status="empty"))
+        await s.flush()
+        cg_txt = await onb.maybe_congrats(s, cg)
+        check("پیام تبریک پایان مأموریت دقیقاً قالب کاربره",
+              cg_txt is not None
+              and "🎉 تبریک" in cg_txt
+              and "آموزش اولیه رو با موفقیت تموم کردی" in cg_txt
+              and "حالا با تمام بخش‌های اصلی بازی آشنا شدی؛ وقتشه ربات رو به گروه خودت اضافه کنی و همراه دوستات رقابت، معامله و مبارزه رو شروع کنی" in cg_txt
+              and "🔥 بازی واقعی تازه از اینجا شروع میشه" in cg_txt,
+              str(cg_txt)[:110])
+        check("تبریک پایان مأموریت فقط یه بار گفته میشه و دی‌بی علامت خورد",
+              await onb.maybe_congrats(s, cg) is None and cg.onb_done_at is not None)
+        await s.commit()
+
+    # ── 🧨 /clearacc: کوئست‌ها و آنبوردینگ پاک، استارت دوباره مثل سلامای اول کاری ──
+    async with session_scope() as s:
+        wc, _ = await users.get_or_create(s, tg(7357, "wcl", "ریستی"))
+        wc.level = 7
+        wc.cash = 88888
+        wc.first_mine_at = wc.first_plant_at = wc.first_harvest_at = now_utc()
+        wc.first_plot_at = now_utc()
+        wc.onb_done_at = now_utc()
+        wc.last_mine_at = now_utc()
+        wc.last_attack_at = now_utc()
+        wc.dq_date = "2026-01-01"
+        wc.dq_data = '[{"kind": "mine", "target": 20}]'
+        await s.commit()
+    upd_cw = _fake_update("cacc:ok:7357", uid=1001)
+    await admin_h.clearacc_cb(upd_cw, SimpleNamespace(bot=_UpBot()))
+    async with session_scope() as s:
+        wc2 = await users.get_by_tg(s, 7357)
+        check("ریست اکانت دیتای آنبوردینگ رو پاک می‌کنه (first_* و تبریک)",
+              wc2.first_mine_at is None and wc2.first_plant_at is None
+              and wc2.first_harvest_at is None and wc2.first_plot_at is None
+              and wc2.onb_done_at is None,
+              f"{wc2.first_mine_at} {wc2.first_plot_at} {wc2.onb_done_at}")
+        check("کوئست‌های روزانه فعلی بعد ریست پاک شدن (مثل روز اول)",
+              wc2.dq_date is None and wc2.dq_data is None, f"{wc2.dq_date}/{wc2.dq_data}")
+        await s.commit()
+    from handlers import start as start_h
+    upd_sw = _text_update("/start", uid=7357, uname="wcl", fname="ریستی")
+    await start_h.start_cmd(upd_sw, None)
+    sw_txt = upd_sw.message.calls[0][1] if upd_sw.message.calls else ""
+    check("بعد ریست، استارت دقیقاً همون خوش‌آمد روز اول کاری رو می‌گه",
+          "به بازی تریاکی خوش اومدی" in sw_txt and "کنده کاری" in sw_txt
+          and "سرمایه شروع می‌کنی" in sw_txt, sw_txt[:90])
+    async with session_scope() as s:
+        wc3 = await users.get_by_tg(s, 7357)
+        wc3.level = 6
+        wc3.last_mine_at = now_utc()
+        await s.commit()
+    upd_sw2 = _text_update("/start", uid=7357, uname="wcl", fname="ریستی")
+    await start_h.start_cmd(upd_sw2, None)
+    sw2_txt = upd_sw2.message.calls[0][1] if upd_sw2.message.calls else ""
+    check("بازیکن فعال دیگه خوش‌آمد تازه‌کار نمی‌گیره (برگشتی)",
+          "به بازی تریاکی خوش اومدی" not in sw2_txt and "خوب شد که دوباره اومدی" in sw2_txt,
+          sw2_txt[:80])
 
     # ── دکمه آپدیت مزرعه + حذف رفرش پروفایل ──
     from keyboards import keyboards as kb3

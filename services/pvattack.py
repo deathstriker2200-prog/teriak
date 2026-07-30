@@ -80,6 +80,7 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
         User.level >= user.level - rng,
         User.level <= user.level + rng,
         (User.shield_until.is_(None)) | (User.shield_until <= now_utc()),
+        User.lb_hidden == 0,  # نامرئی‌های /hideboard هدف حمله نمیشن
     ]
     if exclude_id:
         conds.append(User.id != exclude_id)

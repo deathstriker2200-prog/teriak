@@ -77,7 +77,7 @@ def _team_stats_text(data: dict) -> str:
         if not u or shown >= 12:
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
-        name = u.first_name or u.username or "؟"
+        name = "👻 نامرئی" if u.lb_hidden else (u.first_name or u.username or "؟")
         lines.append(f"{tag} {esc(name)} | لول {fa_num(u.level)}")
         shown += 1
     if data["count"] > shown:

@@ -90,6 +90,10 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     user.shield_until = user.pv_attack_at = None
     user.dead_until = None
     user.dq_date = user.dq_data = None
+    # آنبوردینگ هم برمی‌گرده روز اول: جایزه اولین‌ها و کارت مأموریت و تبریک پایانی، همه دوباره فعال میشن
+    user.first_mine_at = user.first_plant_at = user.first_harvest_at = None
+    user.first_plot_at = None
+    user.onb_done_at = None
     user.medals = 0
     user.medals_day = 0
     user.medals_day_date = None

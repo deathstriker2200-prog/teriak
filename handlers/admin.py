@@ -35,11 +35,12 @@ def _panel_text(user, extra: str | None = None) -> str:
         "👤 <code>/user @username</code> یا <code>/user 123456789</code> یا بخشی از اسم، پیداش کن، پروفایلش رو ببین و از همونجا پول/XP بده\n"
         "💵 <code>/addtp 123456789 5000</code>، واریز مستقیم تی‌پوینت\n"
         "✨ <code>/addxp 123456789 100</code>، دادن مستقیم تجربه\n"
+        "🏴 <code>/addxpgroup اسم تیم 500</code>، دادن مستقیم XP به یه تیم (آیدی عددی تیم هم قبوله)\n"
         "💸 <code>/detp 123456789 5000</code> و <code>/dexp 123456789 100</code>، کم کردن مستقیم سکه و تجربه\n"
         "🧨 <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
         "🔧 /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
         "👻 /hideboard، نامرئی شدن از همه لیدربردها (دوباره بزنی برمی‌گرده)\n"
-        "🔄 /update، به‌روزرسانی فوری وضعیت بازی: رول بازار و آب‌وهوا، بازخوانی ظرفیت تیم‌ها و ریست کش‌ها\n"
+        "🔄 /update، به‌روزرسانی فوری وضعیت بازی: لود دوباره کانفیگ، رول بازار، بازخوانی ظرفیت تیم‌ها و ریست کش‌ها (آب‌وهوا دست نمی‌خوره)\n"
         "💾 /backup و /upload_backup، بک‌آپ و ری‌استور\n"
         "🔌 /botoff و /boton توی گروه، خاموش و روشن کردن ربات فقط تو همون گروه"
     )
@@ -134,19 +135,26 @@ async def hideboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     🔄 /update، فقط ادمین: به‌روزرسانی فوری وضعیت بازی
-    رول فوری بازار و آب‌وهوا (با اعلان گروهی)، بازخوانی ظرفیت تیم‌ها و ریست کش‌های حافظه
-    برای موقعی که تنظیمات کانفیگ عوض شده ولی وضعیت قبلی هنوز اعمال نشده
+    کانفیگ رو از روی فایل دوباره لود می‌کنه (تغییرای دستی سریع اعمال بشن)،
+    بازار رو فورس رول می‌کنه، ظرفیت تیم‌ها رو بازخوانی می‌کنه و کش‌های حافظه رو ریست
+    آب‌وهوا دست‌نخورده می‌مونه و سر مرزهای ساعت ایران خودش عوض میشه
     """
     if not _is_admin(update):
         return  # غیرادمین کاملاً بی‌صدا
 
+    import importlib
+
     from sqlalchemy import func as sa_func, select as sa_select
     from models import Team, TeamMember
-    from services import power as power_svc
+
+    reload_ok = True
+    try:
+        importlib.reload(config)  # عددهای config.py بدون ری‌استارت اعمال بشن
+    except Exception:
+        reload_ok = False
 
     async with session_scope() as s:
         market_rolled = await world_svc.ensure_market(s, force=True)
-        wkey, wrec = await world_svc.ensure_weather(s, force=True)
         # ظرفیت تیم‌ها داینامیک از لول حساب میشه؛ اینجا بازخوانی و گزارش سرریز
         all_teams = (await s.execute(sa_select(Team))).scalars().all()
         over: list[tuple[str, int, int]] = []
@@ -161,31 +169,11 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     fj_svc.invalidate_settings()
     fj_svc.invalidate_members()
 
-    # اعلان هوای تازه به گروه‌های فعال، مثل weather_job
-    sent = 0
-    if wrec:
-        async with session_scope() as s:
-            groups = await world_svc.active_group_ids(s, config.WEATHER_GROUP_ACTIVE_HOURS)
-            offs = await power_svc.off_group_ids(s)
-            await s.commit()
-        wtext = world_svc.weather_announce_text(wkey, wrec["pct"])
-        for gid in groups:
-            if gid in offs:
-                continue  # گروه خاموشه (/botoff)
-            try:
-                await context.bot.send_message(gid, wtext, parse_mode="HTML")
-                sent += 1
-            except Exception:
-                pass
-
-    w = world_svc.weather_of(wkey)
     lines = [
         "<b>🔄 وضعیت بازی به‌روز شد</b>",
         "",
+        "⚙️ کانفیگ دوباره لود شد" if reload_ok else "⚠️ لود دوباره کانفیگ خطا داد، مقادیر قبلی موندن",
         f"📈 بازار: {'رول فوری انجام شد و قیمت‌ها تازه حساب شدن' if market_rolled else 'بدون تغییر'}",
-        f"🌦 آب‌وهوا: {w['emoji']} {w['name']}"
-        + (f" با قدرت {fa_num(wrec['pct'])}%" if wrec and wrec.get("pct") else "")
-        + f"، اعلان به {fa_num(sent)} گروه فعال",
         f"👥 ظرفیت {fa_num(len(all_teams))} تیم بازخوانی شد",
     ]
     if over:
@@ -196,7 +184,51 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     else:
         lines.append("✅ هیچ تیمی سرریز ظرفیت نیس")
     lines.append("🧹 کش تنظیمات گیت و عضویت کاربرا ریست شد")
+    lines.append("🌦 آب‌وهوا دست‌نخورده موند، سر مرزهای ساعت ایران عوض میشه")
     await update.message.reply_html("\n".join(lines))
+
+
+async def addxpgroup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    ✨ /addxpgroup [اسم تیم] [مقدار]، فقط ادمین: دادن مستقیم XP به یه تیم
+    اسم تیم می‌تونه چندکلمه‌ای باشه، مقدار آخرین آرگومانه؛ با آیدی عددی تیم هم کار می‌کنه
+    """
+    if not _is_admin(update):
+        return
+    args = context.args or []
+    amount = parse_amount(args[-1]) if len(args) >= 2 else None
+    if amount is None or amount <= 0:
+        return await update.message.reply_html(
+            "❌ فرم درست: <code>/addxpgroup اسم تیم 500</code>\n"
+            "اسم تیم (چندکلمه‌ای هم اوکی) یا آیدی عددیش + مقدار xp آخرش"
+        )
+
+    from models import Team
+
+    query = " ".join(args[:-1])
+    async with session_scope() as s:
+        team = None
+        if query.isdigit():
+            team = await s.get(Team, int(query))
+        if team is None:
+            team = await team_svc.get_team_by_name(s, query)
+        if team is None:
+            await s.commit()
+            return await update.message.reply_html(f"🤷 تیمی با اسم «{esc(query)}» پیدا نشد")
+        notes = await team_svc.give_team_xp(s, team, int(amount))
+        t_name, t_level, t_xp, t_cap = team.name, team.level or 1, team.xp or 0, team_svc.team_capacity(team)
+        await s.commit()
+
+    lines = [
+        f"✨ <b>{fa_num(int(amount))}</b> XP به تیم «{esc(t_name)}» دادی",
+        "",
+        f"⭐ لول تیم الان {fa_num(t_level)} ـه (✨ {fa_num(t_xp)})",
+        f"👥 ظرفیت اعضا {fa_num(t_cap)} نفر",
+    ]
+    await update.message.reply_html("\n".join(lines))
+    # تبریک لول‌آپ تیم (اگه لول‌آپ کرد) به‌صورت پیام جدا
+    if notes:
+        await update.message.reply_html("\n\n".join(notes))
 
 
 async def addtp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -523,35 +555,42 @@ async def _stats_text(bot=None) -> str:
     from utils import now_utc
 
     async with session_scope() as s:
+        hour_ago = now_utc() - timedelta(hours=1)
         day_ago = now_utc() - timedelta(hours=24)
         users_n = (await s.execute(select(func.count(User.id)))).scalar() or 0
-        active_n = (await s.execute(
-            select(func.count(User.id)).where(User.last_seen_at >= day_ago)
+        # آمار بازیکنان و جوین‌ها روی پنجره ۱ ساعت اخیره
+        active_h = (await s.execute(
+            select(func.count(User.id)).where(User.last_seen_at >= hour_ago)
         )).scalar() or 0
+        new_h = (await s.execute(
+            select(func.count(User.id)).where(User.created_at >= hour_ago)
+        )).scalar() or 0
+        groups_active_h = (await s.execute(
+            select(func.count(GroupActivity.chat_id)).where(GroupActivity.last_active_at >= hour_ago)
+        )).scalar() or 0
+        groups_n = (await s.execute(select(func.count(GroupActivity.chat_id)))).scalar() or 0
+        # فعال‌ترین گروه‌های ساعت جاری ایران، با شمارنده پیام ساعتی که touch_group نگه می‌داره
+        from utils import now_iran as _nir
+        _ir = _nir()
+        bucket = f"{_ir.date().isoformat()}-{_ir.hour:02d}"
+        top_groups = list((await s.execute(
+            select(GroupActivity).where(GroupActivity.hour_key == bucket)
+            .order_by(GroupActivity.msgs_hour.desc()).limit(5)
+        )).scalars())
+
         cash_sum = (await s.execute(
             select(func.coalesce(func.sum(User.cash + User.bank_balance), 0))
         )).scalar() or 0
+        bank_sum = (await s.execute(
+            select(func.coalesce(func.sum(User.bank_balance), 0))
+        )).scalar() or 0
         teams_n = (await s.execute(select(func.count(Team.id)))).scalar() or 0
         dogs_n = (await s.execute(select(func.count(Dog.id)))).scalar() or 0
-        plots_n = (await s.execute(select(func.count(Plot.id)))).scalar() or 0
-        groups_n = (await s.execute(select(func.count(GroupActivity.chat_id)))).scalar() or 0
-
-        # ── اقتصاد و اقلام، همه با SUM/COUNT مستقیم توی SQL ──
-        res_row = (await s.execute(select(
-            func.coalesce(func.sum(User.wood), 0),
-            func.coalesce(func.sum(User.iron), 0),
-        ))).one()
-        wood_sum, iron_sum = int(res_row[0]), int(res_row[1])
         # فقط پلات‌هایی که واقعاً در حال رشدن (ready_at نگذشته)، فیلتر روی status ایندکس‌دار
         growing_n = (await s.execute(
             select(func.count(Plot.id)).where(
                 Plot.status == "growing", Plot.ready_at > now_utc())
         )).scalar() or 0
-        # پول بانک‌ها جدا از نقد، تا نسبت پول امن و در معرض خطر معلوم بشه
-        bank_sum = (await s.execute(
-            select(func.coalesce(func.sum(User.bank_balance), 0))
-        )).scalar() or 0
-        stay_sum = cash_sum - bank_sum
 
         # ── فعالیت ۲۴ ساعت اخیر، COUNT گروه‌بندی‌شده روی ایندکس (action, at) ──
         ev_rows = (await s.execute(
@@ -564,16 +603,6 @@ async def _stats_text(bot=None) -> str:
         pv_n = int(ev.get("pvattack", 0))
         mine_n = int(ev.get("mine", 0))
         casino_n = int(ev.get("casino", 0))
-        # تازه‌واردها نه فقط فعال‌ها، فیلتر روی created_at ایندکس‌دار
-        new_n = (await s.execute(
-            select(func.count(User.id)).where(User.created_at >= day_ago)
-        )).scalar() or 0
-
-        # ── لول و پیشرفت، AVG و MAX مستقیم توی SQL ──
-        avg_lvl = (await s.execute(
-            select(func.avg(User.level)).where(User.last_seen_at >= day_ago)
-        )).scalar()
-        max_lvl = (await s.execute(select(func.max(User.level)))).scalar() or 0
         await s.commit()
 
     # ── فنی، پینگ API تلگرام با یه فراخوانی سبک (بدون bot، نامعلومه) ──
@@ -599,36 +628,34 @@ async def _stats_text(bot=None) -> str:
             f"⚙️ پردازش داخلی: {fa_num(avg_proc_ms)}ms {proc_light(avg_proc_ms)} "
             f"(میانگین آخرین {fa_num(proc_count)} دستور)"
         )
-    avg_lvl_txt = f"{avg_lvl:.1f}" if avg_lvl is not None else "➖ نامعلوم"
 
-    return (
-        "<b>📊 آمار ربات</b>\n\n"
-        f"👥 کاربرا: {fa_num(users_n)} نفر\n"
-        f"🟢 فعال 24 ساعت اخیر: {fa_num(active_n)} نفر\n"
-        f"🏘 گروه‌های فعال: {fa_num(groups_n)}\n"
-        f"🏴 تیم‌ها: {fa_num(teams_n)}\n"
-        f"🐕 سگ‌ها: {fa_num(dogs_n)}\n"
-        f"🗺 زمین‌ها: {fa_num(plots_n)}\n"
-        f"💰 مجموع تی‌پوینت کل بازیکنا: {money(cash_sum)}\n"
-        f"🚛 کاروان زنده الان: {fa_num(len(world_svc.CARAVANS))}\n\n"
-        "<b>📦 اقتصاد و اقلام</b>\n\n"
-        f"🎒 مجموع انبار کل بازیکنا: {fa_num(wood_sum + iron_sum)} (چوب {fa_num(wood_sum)} | آهن {fa_num(iron_sum)})\n"
-        f"🌱 بذر کاشته‌شده فعال: {fa_num(growing_n)} پلات\n"
-        f"🏦 پول داخل بانک‌ها: {money(bank_sum)}\n"
-        f"💵 نقد بیرون بانک (در معرض خطر): {money(stay_sum)}\n\n"
-        "<b>🔥 فعالیت 24 ساعت اخیر</b>\n\n"
-        f"⚔️ نبردها: {fa_num(battle_n + pv_n)} (گروهی {fa_num(battle_n)} | پی‌وی {fa_num(pv_n)})\n"
-        f"⛏ کنده‌کاری: {fa_num(mine_n)}\n"
-        f"🎰 دست‌های قمارخانه: {fa_num(casino_n)}\n"
-        f"🆕 کاربر جدید: {fa_num(new_n)} نفر\n\n"
-        "<b>📈 لول و پیشرفت</b>\n\n"
-        f"⭐ میانگین لول فعال‌های 24 ساعت اخیر: {avg_lvl_txt}\n"
-        f"🏆 بالاترین لول ثبت‌شده: {fa_num(max_lvl)}\n\n"
-        "<b>🛠 فنی</b>\n\n"
-        f"{ping_line}\n"
-        f"{proc_line}\n\n"
-        "⏱ آمار زنده‌ست، با 🔃 رفرش میشه"
-    )
+    # بالاتر از همه پینگ و آمار بازیکنای ۱ ساعت اخیر، بعد فعال‌ترین گروه‌ها و خلاصه بقیه
+    lines = [
+        "<b>📊 آمار زنده ربات</b>",
+        "",
+        ping_line,
+        proc_line,
+        "",
+        f"👥 بازیکنای فعال ۱ ساعت اخیر: <b>{fa_num(active_h)}</b> نفر (کل: {fa_num(users_n)})",
+        f"🆕 جوین ۱ ساعت اخیر: {fa_num(new_h)} نفر",
+        f"🏘 گروه‌های فعال ۱ ساعت اخیر: {fa_num(groups_active_h)} (کل: {fa_num(groups_n)})",
+    ]
+    if top_groups:
+        lines += ["", "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>"]
+        badges = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+        for i, g in enumerate(top_groups):
+            gname = esc(g.title) if g.title else f"گروه {fa_num(g.chat_id)}"
+            lines.append(f"{badges[i]} {gname} 🗨 {fa_num(g.msgs_hour or 0)} پیام")
+    lines += [
+        "",
+        f"🏴 تیم‌ها: {fa_num(teams_n)} | 🐕 سگ‌ها: {fa_num(dogs_n)} | 🌱 در حال رشد: {fa_num(growing_n)}",
+        f"💰 تی‌پوینت کل محله: {money(cash_sum)} (تو بانک {money(bank_sum)})",
+        f"🚛 کاروان زنده الان: {fa_num(len(world_svc.CARAVANS))}",
+        f"🔥 اکشن‌های ۲۴ ساعت: ⛏ {fa_num(mine_n)} | ⚔️ {fa_num(battle_n + pv_n)} | 🎰 {fa_num(casino_n)}",
+        "",
+        "⏱ آمار زنده‌ست، با 🔃 رفرش میشه",
+    ]
+    return "\n".join(lines)
 
 
 # ───────── 📢 عضویت اجباری ─────────
