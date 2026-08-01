@@ -13,7 +13,7 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import parts, respond, strip_bot_cmd
+from handlers.common import chat_id_of, parts, respond, strip_bot_cmd
 from handlers import dogs as dogs_h
 from handlers import farm as farm_h
 from handlers import profile as profile_h
@@ -67,7 +67,7 @@ async def buy_dog_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not custom_name:
         async with session_scope() as s:
             user, _ = await users.get_or_create(s, update.effective_user)
-            ok, alert = await dog_svc.hold_dog(s, user, key)
+            ok, alert = await dog_svc.hold_dog(s, user, key, chat_id_of(update))
             await s.commit()
         if not ok:
             return await respond(update, alert)
@@ -154,6 +154,7 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     dq_done, dq_left, uname = [], 0, ""
     chain = None
     congrats = None
+    tq = None
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
 
@@ -178,11 +179,13 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 from services import onboarding as onb
                 chain = await onb.first_plant(s, user)  # جایزه و راهنمای اولین کاشت
                 congrats = await onb.maybe_congrats(s, user)  # تبریک پایان مأموریت، فقط یه بار
+                from services import teams as team_svc
+                tq = await team_svc.record_plant(s, user)  # کوئست تیمی کاشت
         await s.commit()
 
     await respond(update, f"<b>🌱 کاشت</b>\n\n{esc(msg)}", kb.home_kb())
     from handlers.common import announce_notes
-    await announce_notes(update, [x for x in (chain, congrats) if x])
+    await announce_notes(update, [x for x in (chain, congrats, tq) if x])
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
 

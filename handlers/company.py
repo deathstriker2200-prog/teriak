@@ -38,7 +38,7 @@ async def company_action_confirm(update: Update, context: ContextTypes.DEFAULT_T
         if action == "build":
             tp, wood = company_svc.build_cost(key)
             title = f"🔨 ساخت {cfg['emoji']} {esc(cfg['name'])}"
-            gain = "هر ۱۰ دقیقه منابع تولید می‌کنه"
+            gain = "تولید تو انبار خودش جمع میشه و 12 ساعته پر میشه، با دکمه 📥 برداشت ببرش تو انبارت"
         else:
             tp, wood = company_svc.upgrade_cost(key, lv + 1)
             title = f"⬆️ ارتقای {cfg['emoji']} {esc(cfg['name'])}"
@@ -66,6 +66,20 @@ async def company_action_execute(update: Update, context: ContextTypes.DEFAULT_T
             _, alert = await company_svc.upgrade(s, user, key)
         got = await company_svc.settle(s, user)
         text = company_svc.company_text(user, got)
+        markup = kb.company_kb(user)
+        await s.commit()
+    await respond(update, text, markup, alert=alert)
+
+
+async def company_collect_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """📥 برداشت تولید انبار کارخونه به انبار خود بازیکن"""
+    _, _, key = parts(update)  # comp:col:<key>
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        await company_svc.settle(s, user)
+        ok, alert = await company_svc.collect(s, user, key)
+        got = await company_svc.settle(s, user)
+        text = company_svc.company_text(user, got if (got["wood"] or got["iron"]) else None)
         markup = kb.company_kb(user)
         await s.commit()
     await respond(update, text, markup, alert=alert)

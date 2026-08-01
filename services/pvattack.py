@@ -2,7 +2,8 @@
 حمله پی‌وی کلاسیک ⚔️، سیستم قدیمی بدون HP
 
 قدرت حمله مهاجم با دفاع حریف مقایسه میشه و شانس برد درصدی درمیاد
-هدف‌ها فقط حوالی لول خودتن (±۲ لول) | بعد هر حمله قربانی 12 ساعت مصونیت می‌گیره
+هدف‌ها اول حوالی لول خودتن (±۴ لول)، هدف نبود فالبک: اول بالاترها بعد پایین‌ترها
+بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره
 و از لیست حمله‌های پی‌وی خارج میشه
 ماژولاره: همه ضرایب توی config بخش «حمله پی‌وی کلاسیک» قابل تغییره
 """
@@ -51,6 +52,14 @@ def reroll_cost(level: int) -> int:
     return int(lo + (hi - lo) * (lv - 1) / span)
 
 
+def spy_cost(level: int) -> int:
+    """هزینه دکمه جاسوسی، خطی با لول جست‌وجوگر بین حداقل و حداکثر کانفیگ"""
+    lo, hi = config.PV_SPY_MIN_COST, config.PV_SPY_MAX_COST
+    lv = max(1, min(config.MAX_LEVEL, level))
+    span = max(1, config.MAX_LEVEL - 1)
+    return int(lo + (hi - lo) * (lv - 1) / span)
+
+
 # ───────── قدرت و شانس 🎲 ─────────
 
 async def powers(session: AsyncSession, user: User) -> tuple[int, int]:
@@ -70,21 +79,31 @@ def win_chance(a_atk: int, t_dfn: int) -> float:
 
 async def pick_random_target(session: AsyncSession, user: User, exclude_id: int | None = None) -> User | None:
     """
-    یه هدف شانسی حوالی لول کاربر (±۲)، خودش و کسایی که مصونیت دارن حذف میشن
+    یه هدف شانسی حوالی لول کاربر (±۴)، خودش و کسایی که مصونیت دارن حذف میشن
+    توی رنج کسی نبود فالبک وسیع: اول شانسی بین همه بالاترلولی‌ها، نبود بین پایین‌ترلولی‌ها
     exclude_id آیدی هدف فعلی پیش‌نمایشه که دکمه «هدف دیگه» باید ردش کنه
     هدفی نبود None برمی‌گرده
     """
     rng = config.PV_ATTACK_LEVEL_RANGE
-    conds = [
+    base = [
         User.id != user.id,
-        User.level >= user.level - rng,
-        User.level <= user.level + rng,
         (User.shield_until.is_(None)) | (User.shield_until <= now_utc()),
         User.lb_hidden == 0,  # نامرئی‌های /hideboard هدف حمله نمیشن
     ]
     if exclude_id:
-        conds.append(User.id != exclude_id)
-    q = select(User).where(*conds).order_by(func.random()).limit(1)
+        base.append(User.id != exclude_id)
+    # اول رنج ±۴ لول
+    q = select(User).where(*base, User.level >= user.level - rng, User.level <= user.level + rng)         .order_by(func.random()).limit(1)
+    t = (await session.execute(q)).scalar_one_or_none()
+    if t is not None:
+        return t
+    # فالبک: هرکی بالاتره
+    q = select(User).where(*base, User.level > user.level).order_by(func.random()).limit(1)
+    t = (await session.execute(q)).scalar_one_or_none()
+    if t is not None:
+        return t
+    # فالبک آخر: هرکی پایین‌تره
+    q = select(User).where(*base, User.level < user.level).order_by(func.random()).limit(1)
     return (await session.execute(q)).scalar_one_or_none()
 
 
@@ -93,16 +112,12 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
 async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     """
     همه چک‌ها + رول شانس + تغییرات دیتابیس یه حمله پی‌وی (بدون کامیت)
-    reason: self | level | shield | energy | cooldown
-    هر حمله، برد یا باخت، قربانی رو 12 ساعت مصون می‌کنه
+    reason: self | shield | energy | cooldown
+    هر حمله، برد یا باخت، قربانی رو ۶ ساعت مصون می‌کنه
     کولدان مهاجم ثبت میشه و به قربانی هم یه تجربه ناچیز میرسه
     """
     if victim.id == attacker.id:
         return {"ok": False, "reason": "self"}
-
-    rng = config.PV_ATTACK_LEVEL_RANGE
-    if abs(victim.level - attacker.level) > rng:
-        return {"ok": False, "reason": "level"}
 
     sl = shield_left(victim)
     if sl:

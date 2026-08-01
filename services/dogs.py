@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import Dog, User
+from services import users
 from utils import fa_num, iran_today, money, normalize_fa, now_utc
 
 
@@ -85,7 +86,9 @@ async def add_battle_xp(dogs: list[Dog], amount: int) -> list[str]:
         while d.level < config.DOG_MAX_LEVEL and d.xp >= dog_xp_need(d.level):
             d.xp -= dog_xp_need(d.level)
             d.level += 1
-            notes.append(f"🐕 {d.name} رسید به لول {fa_num(d.level)}")
+            notes.append(
+                f"🆙 آفرین، {d.name} لول‌آپ شد و الان قدرتش {fa_num(dog_attack(d))} شد"
+            )
     return notes
 
 
@@ -206,14 +209,15 @@ async def buy_dog(
         breed=cfg["breed"],
     ))
     return True, (
-        f"<b>🐕 {name} رفیق جدیدت شد</b>\n\n"
-        f"باهوشه و به اسمش واکنش میده، کافیه بگی «تریاکی آمار {name}»"
+        f"🐕 مبارکه، {name} رفیق جدیدت شد\n\n"
+        f"باهوشه و به اسمش واکنش میده، کافیه بگی «تریاکی آمار {name}»\n\n"
+        f"💵 نقدینگی: {money(user.cash)}"
     )
 
 
 # ───────── فلو جدید خرید سگ: اول اسم می‌پرسه → فاکتور تایید → پرداخت ─────────
 
-async def hold_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[bool, str]:
+async def hold_dog(session: AsyncSession, user: User, dog_key: str, chat_id: int | None = None) -> tuple[bool, str]:
     """
     شروع فلو خرید سگ، فقط اکشن معلق می‌ذاره و اسم می‌خواد
     هیچ پولی اینجا کم نمیشه، پرداخت بعد از تایید فاکتوره (buy_dog)
@@ -227,8 +231,7 @@ async def hold_dog(session: AsyncSession, user: User, dog_key: str) -> tuple[boo
         return False, alert
 
     cfg = config.DOGS[dog_key]
-    user.pending_action = "dogname"
-    user.pending_value = dog_key
+    users.set_pending(user, "dogname", dog_key, chat_id)
     return True, f"🐕 اسم {cfg['breed']} چی باشه؟ اسمشو بفرست"
 
 
@@ -236,11 +239,10 @@ async def cancel_pending(session: AsyncSession, user: User) -> str:
     """لغو کار معلق، هیچکدوم هنوز پولی جابه‌جا نکردن و فقط اکشن پاک میشه"""
     action = user.pending_action
     if action not in ("dogname", "teamname", "teamcf", "bankdep", "bankwd", "admtp", "admxp",
-                      "ressell", "teamkick", "fjchan", "resbuy"):
+                      "ressell", "teamkick", "fjchan", "resbuy", "bcast", "trf_to", "trf_amt"):
         return "🤷 کاری در جریان نیس که"
 
-    user.pending_action = None
-    user.pending_value = None
+    users.set_pending(user, None)
     if action == "dogname":
         return "😅 خرید سگ لغو شد"
     if action == "ressell":

@@ -1,6 +1,6 @@
 """حمله پی‌وی کلاسیک ⚔️: دکمه 🎯 هدف شانسی → پیش‌نمایش قربانی → یا میزنیش یا هدف دیگه می‌گیری
 هدف دیگه هزینه‌داره (با لول جست‌وجوگر از 25 تا 1000 تی‌پوینت) و هر حمله 1 دقیقه کولدان داره
-قربانی سپر 12 ساعته داشته باشه مهاجم انتخاب داره: با پول بشکنه یا بی‌خیال
+قربانی سپر ۶ ساعته داشته باشه مهاجم انتخاب داره: با پول بشکنه یا بی‌خیال
 بعد حمله، به قربانی تو پی‌وی خبر حمله می‌رسه که چقدر دزدیده شد و چه تجربه کمی گرفت
 سیستم قدیمی: مقایسه قدرت حمله با دفاع حریف و شانس درصدی برد
 نبرد HP فقط توی گروه‌ها با دستورهای جنگ انجام میشه، اینجا سیستم جداست"""
@@ -22,7 +22,8 @@ from utils import esc, fa_dur, fa_num, money
 PV_PANEL_TEXT = (
     "<b>⚔️ حمله پی‌وی</b>\n\n"
     "🎯 هدف شانسی نزدیک لولت رو پیدا کن\n\n"
-    "👀 قبل از حمله مشخصاتش رو می‌بینی و می‌تونی عوضش کنی\n"
+    "👀 قبل از حمله پیش‌نمایشش رو می‌بینی و می‌تونی عوضش کنی\n"
+    "🕵 با جاسوسی جیب و قدرت دفاع و شانس بردت لو میره\n"
     "🎲 نتیجه نبرد بر اساس قدرت حمله و دفاع محاسبه میشه\n"
     "🛡 بعد از حمله حریف مدتی از حمله‌های پی‌وی مصون میشه\n\n"
     "⚔️ نبردهای واقعی با HP فقط داخل گروه‌ها انجام میشن"
@@ -48,20 +49,17 @@ async def attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: s
 
 
 async def _target_view(s, user: User, victim: User) -> tuple[str, object]:
-    """متن و کیبورد پیش‌نمایش هدف، با شانس برد و هزینه هدف دیگه محاسبه‌شده همون لحظه"""
-    a_atk, _ = await pvattack.powers(s, user)
-    _, t_dfn = await pvattack.powers(s, victim)
-    pct = round(pvattack.win_chance(a_atk, t_dfn) * 100)
+    """متن و کیبورد پیش‌نمایش هدف، شانس برد فقط با دکمه جاسوسی (هزینه‌دار) لو میره"""
     name = users.display_name(victim)
     text = (
         "<b>🎯 هدف پیدا شد</b>\n\n"
         f"👤 {esc(name)}\n"
         f"⭐ لول {fa_num(victim.level)}\n"
-        f"🎲 شانس برد {fa_num(pct)} درصد\n"
         f"⚡ هزینه حمله {fa_num(config.PV_ATTACK_ENERGY_COST)} انرژی\n\n"
+        "🕵 با جاسوسی جیب و قدرت دفاع و شانس بردت لو میره\n"
         "می‌زنیش یا یه هدف دیگه می‌خوای؟"
     )
-    return text, kb.pv_target_kb(victim.id, pvattack.reroll_cost(user.level))
+    return text, kb.pv_target_kb(victim.id, pvattack.reroll_cost(user.level), pvattack.spy_cost(user.level))
 
 
 async def target_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -116,6 +114,37 @@ async def target_next_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await respond(update, text, markup)
 
 
+async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """🕵 جاسوسی، با پول جیب و قدرت دفاع و درصد شانس برد طرف لو میره"""
+    target_id = int(parts(update)[2])
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        cur = await s.get(User, target_id)
+        if cur is None:
+            await s.commit()
+            return await respond(update, NO_TARGET_TEXT, kb.pv_attack_kb())
+        cost = pvattack.spy_cost(user.level)
+        if user.cash < cost:
+            text, markup = await _target_view(s, user, cur)
+            await s.commit()
+            return await respond(update, text, markup, alert="💸 پولت برای جاسوسی کمه")
+        user.cash -= cost
+        a_atk, _ = await pvattack.powers(s, user)
+        _, t_dfn = await pvattack.powers(s, cur)
+        pct = round(pvattack.win_chance(a_atk, t_dfn) * 100)
+        cash = cur.cash
+        name = users.display_name(cur)
+        text, markup = await _target_view(s, user, cur)
+        await s.commit()
+    alert = (
+        f"🕵 جاسوسی از «{esc(name)}» گزارش داد\n"
+        f"💰 جیبش {money(cash)}\n"
+        f"🛡 قدرت دفاع {fa_num(t_dfn)}\n"
+        f"🎲 شانس بردت {fa_num(pct)} درصد"
+    )
+    await respond(update, text, markup, alert=alert)
+
+
 async def target_back_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """🔙 بازگشت به پنل حمله پی‌وی"""
     await pv_panel(update)
@@ -137,7 +166,7 @@ def _victim_text(attacker_name: str, result: dict) -> str:
         f"{head}\n"
         f"{money_line}\n"
         f"✨ {fa_num(result['victim_xp'])} تجربه گرفتی\n\n"
-        "🛡 تا 12 ساعت از حملات در امانی"
+        f"🛡 تا {fa_num(config.PV_ATTACK_SHIELD_SECONDS // 3600)} ساعت از حملات در امانی"
     )
 
 
@@ -197,8 +226,6 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
             reason = result["reason"]
             if reason == "cooldown":
                 return await pv_panel(update, alert=f"⏳ {fa_num(result['left'])} ثانیه دیگه می‌تونی حمله کنی")
-            if reason == "level":
-                return await pv_panel(update, alert="⭐ لولتون دیگه حوالی هم نیس")
             if reason == "energy":
                 return await pv_panel(update, alert="⚡ انرژیت برای حمله کمه")
             return await pv_panel(update, alert="🤷 یه مشکلی پیش اومد، دوباره بزن")
@@ -250,7 +277,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
 
 
 async def _shield_view_for(update: Update, target_id: int, victim_name: str, alert: str | None = None) -> None:
-    """صفحه انتخاب شکستن سپر ۱۲ ساعته قربانی"""
+    """صفحه انتخاب شکستن سپر ۶ ساعته قربانی"""
     text = (
         f"<b>🛡 «{esc(victim_name)}» الان سپر داره</b>\n\n"
         f"بعد حمله قبلی {fa_num(config.PV_ATTACK_SHIELD_SECONDS // 3600)} ساعت مصونیت گرفته\n"

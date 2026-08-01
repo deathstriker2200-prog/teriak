@@ -1,12 +1,14 @@
 """
 جاب‌های زمان‌دار بازی (JobQueue):
-آب و هوا هر ۲ ساعت + اعلان به گروه‌های فعال ۱ ساعت اخیر 🌦
+آب و هوا هر ۲ ساعت + اعلان به گروه‌های فعال ۲۴ ساعت اخیر (با مکث بین ارسال) 🌦
 بازار سیاه هر ۴ ساعت 📈 | کاروان برای گروه‌های فعال ۲۴ ساعت اخیر 🚛 (بردش هر ۲ دقیقه رفرش میشه)
-یورش پلیس هر ۲ ساعت به بازیکنان فعال ۲۴ ساعت اخیر 🚔
+یورش پلیس فعلاً به درخواست کارفرما خاموشه (POLICE_ENABLED=False) 🚔
 نبض انرژی هر ۵ دقیقه به همه کاربرا (یه کوئری دسته‌جمعی، بدون حلقه تک‌تک) ⚡
+جاروی ورودی‌های معلق عددی هر چند ثانیه (مهلت ۶۰ ثانیه‌ای واریز/برداشت و خرید منابع) ⏳
 پاکسازی اکانت غیرعضوهای عضویت اجباری (بعد از مهلت مثلاً ۴۸ ساعته) هر ساعت 🧹
 """
 
+import asyncio
 import logging
 import random
 from datetime import timedelta
@@ -55,6 +57,7 @@ async def weather_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         if gid in offs:
             continue  # گروه خاموشه (/botoff)
         await _send(context, gid, text)
+        await asyncio.sleep(config.WEATHER_GROUP_SEND_DELAY)  # پخش یواش، تلگرام محدود نکنه
 
 
 # ───────── بازار سیاه 📈 ─────────
@@ -156,7 +159,36 @@ async def caravan_refresh_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.debug("رفرش برد کاروان %s خطا: %s", chat_id, e)
 
 
-# ───────── یورش پلیس 🚔 ─────────
+# ───────── جاروی ورودی‌های معلق عددی ⏳ ─────────
+
+_NUMERIC_PENDING = ("bankdep", "bankwd", "resbuy", "trf_to", "trf_amt")
+
+
+async def pending_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    ورودی‌های معلق عددی (مبلغ بانک | تعداد خرید منابع) بعد از مهلت کانفیگ خودکار بی‌خیال میشن
+    پیام بی‌خیالی به همون چتی می‌ره که کار شروع شده بود
+    """
+    from services import users as users_svc
+    cutoff = now_utc() - timedelta(seconds=config.PENDING_TIMEOUT_SECONDS)
+    expired: list[tuple[int, int]] = []
+    async with session_scope() as s:
+        q = select(User).where(
+            User.pending_action.in_(_NUMERIC_PENDING),
+            User.pending_at.isnot(None),
+            User.pending_at <= cutoff,
+        )
+        for u in (await s.execute(q)).scalars():
+            expired.append((u.telegram_id, u.pending_chat_id or u.telegram_id))
+            users_svc.set_pending(u, None)
+        await s.commit()
+    for tg, chat in expired:
+        await _send(context, chat, "به دلیل عدم پاسخ، عملیات رو بیخیال شدیم")
+    if expired:
+        logger.info("جاروی ورودی معلق: %d مورد منقضی شد", len(expired))
+
+
+# ───────── یورش پلیس 🚔 (فعلاً غیرفعال) ─────────
 
 async def police_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
@@ -218,7 +250,9 @@ def register_jobs(app) -> None:
     jq.run_repeating(market_job, interval=config.MARKET_ROLL_SECONDS, first=90, name="market")
     jq.run_repeating(caravan_job, interval=config.CARAVAN_TICK_SECONDS, first=30, name="caravan")
     jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
-    jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
+    jq.run_repeating(pending_sweep_job, interval=config.PENDING_SWEEP_SECONDS, first=45, name="pending-sweep")
+    if config.POLICE_ENABLED:
+        jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
     jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
     jq.run_repeating(fj_wipe_job, interval=config.FORCE_JOIN_WIPE_SCAN_SECONDS, first=300, name="fj-wipe")
     # ادیت خودکار آخرین پیام آمار ادمین، هر ۱ ساعت یه بار (سبک، فشار به سرور نمیاره)
@@ -228,4 +262,7 @@ def register_jobs(app) -> None:
         interval=config.STATS_AUTOEDIT_SECONDS, first=config.STATS_AUTOEDIT_SECONDS,
         name="stats-autoedit",
     )
-    logger.info("جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | پلیس | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار")
+    logger.info(
+        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s",
+        " | پلیس" if config.POLICE_ENABLED else "",
+    )

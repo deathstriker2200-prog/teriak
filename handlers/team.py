@@ -19,7 +19,7 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import has_prefix, parts, respond, strip_bot_cmd, strip_home
+from handlers.common import chat_id_of, has_prefix, parts, respond, strip_bot_cmd, strip_home
 from keyboards import keyboards as kb
 from models import TeamMember, TeamRequest, User
 from services import teams, users
@@ -41,7 +41,7 @@ def _no_team_text() -> str:
 
 def _team_stats_text(data: dict) -> str:
     team = data["team"]
-    created = jalali_str(team.created_at) if team.created_at else "—"
+    created = jalali_str(team.created_at) if team.created_at else "-"
 
     lines = [f"<b>🏴 تیم «{esc(team.name)}»</b>"]
     if team.bio:
@@ -50,42 +50,48 @@ def _team_stats_text(data: dict) -> str:
     lines.append(f"👑 رهبر: {esc(data['owner_name'])}")
     tlevel = team.level or 1
     if tlevel >= config.TEAM_MAX_LEVEL:
-        lines.append(f"⭐ لول تیم {fa_num(tlevel)} 👑 مکس")
+        lines.append(f"⭐️ لول {fa_num(tlevel)} 👑 مکس")
     else:
         need = teams.team_xp_need(tlevel)
-        lines.append(f"⭐ لول تیم {fa_num(tlevel)} | ✨ {bar(team.xp or 0, need)} {fa_num(team.xp or 0)}/{fa_num(need)}")
-    lines.append(f"👥 اعضا: {fa_num(data['count'])} از {fa_num(teams.team_capacity(team))}")
+        lines.append(f"⭐️ لول {fa_num(tlevel)} | ✨ {fa_num(team.xp or 0)}/{fa_num(need)}")
+    lines.append(f"👥 اعضا: {fa_num(data['count'])}/{fa_num(teams.team_capacity(team))}")
     lines.append(f"🏦 خزانه: {money(team.bank)}")
     lines.append("")
-    lines.append("━━━━━━ 📊 آمار تیم ━━━━━━")
-    lines.append(f"⚔️ برد اعضا {fa_num(data['wins'])} | ❌ باخت {fa_num(data['losses'])}")
-    lines.append(f"🎖️ مجموع مدال‌ها {fa_num(data['medals']['all'])}")
-    lines.append(f"🎯 کشتارهای تیم {fa_num(team.total_kills)} | 🌾 برداشت‌های تیم {fa_num(team.total_harvests)}")
-    lines.append(f"📅 مدال این هفته {fa_num(data['medals']['week'])} | ☀️ مدال امروز {fa_num(data['medals']['day'])}")
+    lines.append("<b>📊 آمار</b>")
+    lines.append(f"🎖 مدال‌ها: {fa_num(data['medals']['all'])}")
+    lines.append(f"⚔️ برد: {fa_num(data['wins'])} | ❌ باخت: {fa_num(data['losses'])}")
+    lines.append(f"🎯 کشتار: {fa_num(team.total_kills)} | 🌾 برداشت: {fa_num(team.total_harvests)}")
+    lines.append(f"📅 امروز: {fa_num(data['medals']['day'])} | این هفته: {fa_num(data['medals']['week'])}")
+    lines.append("")
+    lines.append("<b>🏗 ساختمان‌ها</b>")
     atk_pct = int(config.TEAM_ATK_BONUS_PER_LEVEL * (team.atk_bld or 0) * 100)
     def_pct = int(config.TEAM_DEF_BONUS_PER_LEVEL * (team.def_bld or 0) * 100)
-    lines.append(f"🏗 ساختمان حمله لول {fa_num(team.atk_bld or 0)} (+{fa_num(atk_pct)}%)")
-    lines.append(f"🛡️ ساختمان دفاع لول {fa_num(team.def_bld or 0)} (+{fa_num(def_pct)}%)")
-    lines.append(f"📅 ساخته شده {created}")
+    lines.append(f"⚔️ حمله: Lv.{fa_num(team.atk_bld or 0)} (+{fa_num(atk_pct)}%)")
+    lines.append(f"🛡 دفاع: Lv.{fa_num(team.def_bld or 0)} (+{fa_num(def_pct)}%)")
     lines.append("")
-    lines.append("━━━━━━ 👥 اعضا ━━━━━━")
+    lines.append("<b>👥 اعضا</b>")
 
     by_id = {u.id: u for u in data["users"]}
+    pairs = [(m, by_id.get(m.user_id)) for m in data["members"]]
+    # اسم‌ها بر اساس لول، از بالا به پایین
+    pairs.sort(key=lambda p: (-(p[1].level if p[1] else 0), -(p[1].wins if p[1] else 0)))
     shown = 0
-    for m in data["members"]:
-        u = by_id.get(m.user_id)
+    for m, u in pairs:
         if not u or shown >= 12:
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = "👻 نامرئی" if u.lb_hidden else (u.first_name or u.username or "؟")
-        lines.append(f"{tag} {esc(name)} | لول {fa_num(u.level)}")
+        temoji, tname = users.title_of(u)
+        lines.append(f"{tag} {temoji} {esc(name)} <b>「{tname}」</b> | لول {fa_num(u.level)}")
         shown += 1
     if data["count"] > shown:
         lines.append(f"🔸 و {fa_num(data['count'] - shown)} نفر دیگه")
 
     lines.append("")
-    lines.append("━━━━━━ 📜 کوئست امروز ━━━━━━")
+    lines.append("<b>🎯 کوئست‌های امروز</b>")
     lines.extend(_quest_lines(data["daily"]))
+    lines.append("")
+    lines.append(f"📅 تأسیس: {created}")
     return "\n".join(lines)
 
 
@@ -93,16 +99,15 @@ def _quest_lines(daily) -> list[str]:
     lines: list[str] = []
     for q in teams.quests_view(daily):
         if q["done"]:
-            state = f"✅ انجام شد، {money(q['reward'])} به همه رسید"
+            lines.append(f"{q['emoji']} {esc(q['title'])} ✅ انجام شد")
         else:
-            state = f"{fa_num(q['progress'])} از {fa_num(q['target'])}"
-        lines.append(f"{q['emoji']} {esc(q['title'])}، {state}")
+            lines.append(f"{q['emoji']} {esc(q['title'])} ({fa_num(q['progress'])}/{fa_num(q['target'])})")
     return lines
 
 
-def _quests_text(team_name: str, daily) -> str:
-    lines = [f"<b>📜 کوئست‌های امروز تیم «{esc(team_name)}»</b>", ""]
-    for q in teams.quests_view(daily):
+def _quests_text(team, daily) -> str:
+    lines = [f"<b>📜 کوئست‌های امروز تیم «{esc(team.name)}»</b>", ""]
+    for q in teams.quests_view(daily, team.level or 1):
         if q["done"]:
             state = "✅ کامل شد"
         else:
@@ -110,7 +115,13 @@ def _quests_text(team_name: str, daily) -> str:
         lines.append(f"{q['emoji']} <b>{esc(q['title'])}</b>")
         lines.append(f"پیشرفت: {state}")
         lines.append(f"🎁 جایزه: {money(q['reward'])} برای هر عضو")
+        if q.get("bank_reward"):
+            lines.append(f"🏦 بانک تیم: {money(q['bank_reward'])}")
         lines.append(f"<i>{esc(q['desc'])}</i>")
+        lines.append("")
+    for q in teams.locked_quests_view(team.level or 1):
+        base = q["title"].format(n=fa_num(q["target"]))
+        lines.append(f"🔒 {q['emoji']} {esc(base)}، لول تیم {fa_num(q['min_level'])} باز میشه")
         lines.append("")
     lines.append("🕛 هر روز ریست میشن، استعلام با «تیم کوئست»")
     return "\n".join(lines)
@@ -304,8 +315,7 @@ async def create_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             if user.pending_action:
                 ok, alert = False, "⏳ اول کار قبلیتو تموم کن یا «لغو» بزن"
             else:
-                user.pending_action = "teamname"
-                user.pending_value = ""
+                users.set_pending(user, "teamname", "", chat_id_of(update))
         await s.commit()
 
     if not ok:
@@ -316,7 +326,7 @@ async def create_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "<b>🏴 اسم تیمت رو بفرست</b>\n\n"
         f"💸 ساخت تیم {money(config.TEAM_CREATE_COST)} هزینه داره\n"
         "هر اسمی دوست داری همینجا بنویس و بفرست، مثلا «فوتبالیست‌ها»\n\n"
-        "❌ پشیمون شدی بنویس «لغو»",
+        "❌ اگر هم پشیمون شدی بنویس «لغو»",
     )
 
 
@@ -331,8 +341,7 @@ async def team_create_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         async with session_scope() as s:
             user, _ = await users.get_or_create(s, update.effective_user)
             if user.pending_action == "teamcf":
-                user.pending_action = None
-                user.pending_value = None
+                users.set_pending(user, None)
             await s.commit()
         return await respond(update, "<b>😅 بی‌خیال شدیم</b>", kb.home_kb())
 
@@ -343,8 +352,7 @@ async def team_create_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return await respond(update, "⏳ این درخواست قدیمیه یا انجام شده، دوباره «ساخت تیم» بزن")
         name = user.pending_value
         ok, res = await teams.create_team(s, user, name)
-        user.pending_action = None
-        user.pending_value = None
+        users.set_pending(user, None)
         await s.commit()
 
     if not ok:
@@ -447,7 +455,7 @@ async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         user, _ = await users.get_or_create(s, update.effective_user)
         if action == "leave":
             ok, res = await teams.leave_team(s, user)
-            msg = f"🚪 از تیم «{res}» رفتی برو بیرون 😅" if ok else res
+            msg = f"🚪 از تیم «{res}» خارج شدی" if ok else res
         elif action == "rename":
             new_name = (context.user_data or {}).pop("pending_team_rename", None)
             if new_name is None:
@@ -463,6 +471,22 @@ async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return await respond(update, msg)
 
     await respond(update, f"<b>{esc(msg)}</b>", kb.home_kb())
+
+
+# ───────── مخفی کردن تیم از لیدربرد ─────────
+
+async def hide_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """👻 «تیم مخفی [اسم]»، فقط ادمین، تاگل نامرئی هر تیم تو لیدربردها (بدون اسم، تیم خودش)"""
+    if update.effective_user.id not in config.ADMIN_IDS:
+        return await respond(update, "🚫 مخفی کردن تیم فقط دست ادمینه")
+    txt = strip_bot_cmd(update.message.text or "")
+    m = re.match(r"^تیم[\s‌]+مخفی(?:[\s‌]+(.+))?$", txt)
+    arg = (m.group(1) or "").strip() if m else ""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        _, msg = await teams.toggle_hidden(s, user, arg or None)
+        await s.commit()
+    await respond(update, msg)
 
 
 # ───────── بیوی تیم ─────────
@@ -532,7 +556,7 @@ async def quests_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
 
         daily = await teams._daily(s, team.id)
-        text = _quests_text(team.name, daily)
+        text = _quests_text(team, daily)
         await s.commit()
 
     await respond(update, text, kb.team_back_kb())
@@ -669,13 +693,16 @@ async def roster_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines = [f"<b>👥 اعضای تیم «{esc(team.name)}»، {fa_num(data['count'])} نفر</b>", ""]
     by_id = {u.id: u for u in data["users"]}
-    for m in data["members"]:
-        u = by_id.get(m.user_id)
+    # اسم‌ها بر اساس لول، از بالا به پایین (مساوی بود، برد بیشتر اول)
+    pairs = [(m, by_id.get(m.user_id)) for m in data["members"]]
+    pairs.sort(key=lambda p: (-(p[1].level if p[1] else 0), -(p[1].wins if p[1] else 0)))
+    for m, u in pairs:
         if not u:
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = esc(u.first_name or u.username or "؟")
-        lines.append(f"{tag} {name} | لول {fa_num(u.level)} | ⚔️ {fa_num(u.wins)} برد")
+        temoji, tname = users.title_of(u)
+        lines.append(f"{tag} {temoji} {name} <b>「{tname}」</b> | لول {fa_num(u.level)} | ⚔️ {fa_num(u.wins)} برد")
     lines.append("")
     lines.append("آمار کامل تیم با «تیم پروفایل»")
     await respond(update, "\n".join(lines), kb.team_back_kb())
@@ -720,11 +747,17 @@ async def team_deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         ok, msg = await teams.team_deposit(s, user, amount)
         team = await teams.get_team_of(s, user.id)
         bank = team.bank if team else 0
+        tq = None
+        if ok:
+            tq = await teams.record_team_deposit(s, user, amount)  # کوئست تیمی واریز به بانک
         await s.commit()
 
     if not ok:
         return await respond(update, msg)
     await respond(update, f"<b>{esc(msg)}</b>\n\n🏦 موجودی بانک تیم: {money(bank)}")
+    if tq:
+        from handlers.common import announce_notes
+        await announce_notes(update, [tq])
 
 
 # ───────── ارتقای ساختمان («تیم ارتقا حمله/دفاع» + دکمه‌ها) ─────────
@@ -971,7 +1004,7 @@ async def team_request_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 KICK_PROMPT = (
     "👢 آیدی عددی یا @یوزرنیم یا بخشی از اسم عضو رو بفرست\n\n"
-    "❌ پشیمون شدی بنویس «لغو»"
+    "❌ اگر هم پشیمون شدی بنویس «لغو»"
 )
 
 
@@ -983,8 +1016,7 @@ async def team_kick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user, m, team = got
     async with session_scope() as s:
         u2 = await users.get_by_tg(s, user.telegram_id)
-        u2.pending_action = "teamkick"
-        u2.pending_value = None
+        users.set_pending(u2, "teamkick", None, chat_id_of(update))
         await s.commit()
     await respond(update, KICK_PROMPT)
 
@@ -1073,6 +1105,101 @@ async def team_kick_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 # ───────── 🛡 مدیر گذاشتن (فقط رهبر) ─────────
+
+# ───────── «تیم اد ادمین X» و «تیم حذف ادمین X» با اسم جزئی + تأییدیه ─────────
+# بخشی از اسم کافیه، حروف بزرگ/کوچیک فرقی نداره، قبل از اجرا تأیید می‌گیریم
+
+async def team_admin_role_text(update: Update, context: ContextTypes.DEFAULT_TYPE, make_admin: bool) -> None:
+    txt = strip_bot_cmd(update.message.text or "")
+    m2 = re.match(r"^تیم[\s‌]+(?:اد|حذف)[\s‌]+ادمین[\s‌]+(.+)$", txt)
+    query = (m2.group(1) if m2 else "").strip()
+    if not query:
+        return await respond(update, "🤷 این‌جوری بنویس: «تیم اد ادمین اسم عضو» یا «تیم حذف ادمین اسم عضو»")
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        if not me or me.role != "owner":
+            await s.commit()
+            return await respond(update, "👑 فقط رهبر می‌تونه مدیر بذاره یا برداره")
+        hit = await teams.find_team_member(s, me.team_id, query)
+        if not hit:
+            await s.commit()
+            return await respond(update, "🤷 عضوی با این مشخصات تو تیم پیدا نشد، دقیق‌تر بنویس")
+        mrow, target = hit
+        if mrow.role == "owner":
+            await s.commit()
+            return await respond(update, "👑 خودت رهبری دیگه")
+        if make_admin and mrow.role == "admin":
+            await s.commit()
+            return await respond(update, "🛡 همین الان مدیره")
+        if not make_admin and mrow.role != "admin":
+            await s.commit()
+            return await respond(update, "👤 اصلا مدیر نیس که بخوای برداریش")
+        member_id = mrow.id
+        name = esc(users.display_name(target))
+        team = await teams.get_team_of(s, user.id)
+        tname = esc(team.name if team else "؟")
+        await s.commit()
+
+    verb = "🛡 مدیر تیم کنم؟" if make_admin else "👤 مدیریتش رو بگیرم؟"
+    text = (
+        f"<b>{verb}</b>\n\n"
+        f"👤 عضو پیدا شده: {name}\n"
+        f"🏴 تیم: «{tname}»\n\n"
+        "مطمئنی؟"
+    )
+    await respond(update, text, kb.team_admin_confirm_kb(member_id, "add" if make_admin else "del"))
+
+
+async def team_admin_add_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await team_admin_role_text(update, context, True)
+
+
+async def team_admin_del_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await team_admin_role_text(update, context, False)
+
+
+async def team_admin_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """تأیید مدیر کردن/برداشتن بعد از پیدا شدن عضو با اسم جزئی"""
+    _, action, member_id = parts(update)
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        mrow = await s.get(TeamMember, int(member_id))
+        if not me or me.role != "owner" or not mrow or mrow.team_id != me.team_id:
+            await s.commit()
+            return await respond(update, "❌ این درخواست دیگه معتبر نیس", kb.team_back_kb())
+        target = await s.get(User, mrow.user_id)
+        name = esc(users.display_name(target)) if target else "؟"
+        if mrow.role == "owner":
+            await s.commit()
+            return await respond(update, "❌ رهبر که نمیشه", kb.team_back_kb())
+        if action == "add":
+            if mrow.role == "admin":
+                await s.commit()
+                return await respond(update, "🛡 همین الان مدیره", kb.team_back_kb())
+            mrow.role = "admin"
+        else:
+            if mrow.role != "admin":
+                await s.commit()
+                return await respond(update, "👤 اصلا مدیر نبود", kb.team_back_kb())
+            mrow.role = "member"
+        target_tg = target.telegram_id if target else None
+        team = await teams.get_team_of(s, user.id)
+        tname = esc(team.name if team else "؟")
+        await s.commit()
+
+    if action == "add":
+        await _dm(context, target_tg, f"<b>🎉 تو تیم «{tname}» مدیر شدی</b>\n\nبخش 👑 مدیریت تیم برات بازه")
+        return await respond(update, f"<b>🛡 «{name}» مدیر تیم شد</b>", kb.team_back_kb())
+    await _dm(context, target_tg, f"<b>👤 مدیریتت تو تیم «{tname}» گرفته شد</b>")
+    await respond(update, f"<b>👤 «{name}» دیگه مدیر نیس</b>", kb.team_back_kb())
+
+
+async def team_admin_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await respond(update, "❌ لغو شد", kb.team_back_kb())
+
 
 async def team_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """«تیم ادمین @یوزر»، عضو عادی ↔ مدیر، فقط رهبر"""

@@ -599,7 +599,7 @@ def shelter_upgrade_min_level(target_level: int) -> int:
 async def upgrade_shelter(session: AsyncSession, user: User) -> tuple[bool, str]:
     """ارتقای پناهگاه از جیب"""
     if user.shelter_level >= config.SHELTER_MAX_LEVEL:
-        return False, "⭐ پناهگاهت مکس لوله"
+        return False, "⭐ انبارت مکس لوله"
     next_level = user.shelter_level + 1
     req = shelter_upgrade_min_level(next_level)
     if user.level < req:
@@ -610,8 +610,7 @@ async def upgrade_shelter(session: AsyncSession, user: User) -> tuple[bool, str]
     user.cash -= price
     user.shelter_level = next_level
     return True, (
-        f"🏚 پناهگاهت رفت رو لول {fa_num(next_level)}\n"
-        f"🛡 خسارت یورش {fa_num(int(shelter_raid_cut(next_level) * 100))}% کمتره\n"
+        f"🏚 انبارت رفت رو لول {fa_num(next_level)}\n"
         f"📦 ظرفیت انبار هر بذر {fa_num(seed_storage_cap(user))} تا شد"
     )
 
@@ -659,7 +658,7 @@ def police_report_text(rec: dict) -> str:
     if rec["dodged"]:
         return (
             "<b>🚔 موج پلیس اومد ولی رد شد</b>\n\n"
-            "🏚 پناهگاهت کاری کرد که چیزی پیدا نکنن 😮‍💨\n"
+            "🏚 انبارت کاری کرد که چیزی پیدا نکنن 😮‍💨\n"
             "محله امنه، به کارت ادامه بده"
         )
     lost = rec["lost"]
@@ -674,9 +673,20 @@ def police_report_text(rec: dict) -> str:
             lines.append(f"▫️ {nm} ×{fa_num(n)}")
         if u.shelter_level:
             lines.append("")
-            lines.append(f"🏚 بدون پناهگاه لول {fa_num(u.shelter_level)} ضررت بیشتر بود")
-        lines.append("💡 پناهگاهتو ارتقا بده تا یورش‌های بعدی کمتر ضرر بزنه")
+            lines.append(f"🏚 بدون انبار لول {fa_num(u.shelter_level)} ضررت بیشتر بود")
+        lines.append("💡 انبارتو ارتقا بده تا یورش‌های بعدی کمتر ضرر بزنه")
     return "\n".join(lines)
+
+
+def search_cooldown_text(left_seconds: float) -> str:
+    """متن کولدان جستجو، قالب درخواستی کارفرما (جمله تبلیغاتی شروع بازی هم آخرشه)"""
+    return (
+        f"⏳ هر {fa_num(config.SEARCH_COOLDOWN_MINUTES)} دقیقه یک بار میتونی جستجو بزنی، {fa_dur(left_seconds)} دیگه برگرد\n\n"
+        "🔥 تریاکی | یه محله‌ست که تو باید پادشاهش بشی\n\n"
+        "زمین بخر، بذر بکار، کنده‌کاری کن، سلاح بگیر و به رقیبات حمله کن\n\n"
+        "با دوستات تیم بزن و تو رقابت‌های گروهی شرکت کن\n\n"
+        "بزن Start و رایگان شروع کن 🚀"
+    )
 
 
 # ═════════ کاروان 🚛 (درون حافظه) ═════════
@@ -685,6 +695,17 @@ def police_report_text(rec: dict) -> str:
 CARAVANS: dict[int, dict] = {}
 # (chat_id, user_id) → last hit datetime
 CARAVAN_HITS: dict[tuple[int, int], object] = {}
+# (chat_id, user_tg) → آخرین کلیک روی دکمه ضربه، برای دیبانس اسپم
+CARAVAN_CLICKS: dict[tuple[int, int], object] = {}
+
+
+def caravan_click_spam(chat_id: int, user_tg: int) -> bool:
+    """کلیک تندتند زیر چند ثانیه اسپمه و بی‌صدا نادیده گرفته میشه (جواب خالی)"""
+    key = (chat_id, user_tg)
+    now = now_utc()
+    last = CARAVAN_CLICKS.get(key)
+    CARAVAN_CLICKS[key] = now
+    return bool(last and (now - last).total_seconds() < config.CARAVAN_HIT_DEBOUNCE_SECONDS)
 
 
 def caravan_spawn(chat_id: int) -> dict:

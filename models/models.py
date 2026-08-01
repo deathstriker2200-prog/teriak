@@ -38,6 +38,8 @@ class User(Base):
     # بانک شخصی — پولی که اینجاست تو حمله دزدیده نمیشه
     bank_balance: Mapped[int] = mapped_column(Integer, default=0)
     bank_level: Mapped[int] = mapped_column(Integer, default=1)
+    # شماره حساب بانکی یکتا (مثل F8L6XS)، برای انتقال وجه بانک‌به‌بانک، اولین لود کاربر ساخته میشه
+    bank_acc: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
 
     # پناهگاه — لول ۰ یعنی نداره | خسارت یورش پلیس رو کم می‌کنه
     shelter_level: Mapped[int] = mapped_column(Integer, default=0)
@@ -54,10 +56,13 @@ class User(Base):
     lumber_level: Mapped[int] = mapped_column(Integer, default=0)
     ironmill_level: Mapped[int] = mapped_column(Integer, default=0)
     company_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    lumber_stock: Mapped[int] = mapped_column(Integer, default=0)     # انبار تولید چوب‌بری، ۱۲ ساعته پر میشه
+    ironmill_stock: Mapped[int] = mapped_column(Integer, default=0)   # انبار تولید کارخانه آهن
 
     # کولدانهای سیستم‌های جهان
     last_search_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_casino_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_trf_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # آخرین انتقال بانکی موفق، برای کولدان ۶۰ ثانیه‌ای
 
     # آخرین فعالیت — یورش پلیس فقط به فعال‌های ۲۴ ساعت اخیر میاد
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
@@ -65,6 +70,9 @@ class User(Base):
     # اکشن معلق بعدی متن کاربر — «dogname» (اسم سگ بعد خرید) | «teamname» (اسم تیم)
     pending_action: Mapped[str | None] = mapped_column(String(16), nullable=True)
     pending_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # زمان و چت شروع ورودی معلق — ورودی‌های عددی فقط تو همون چت جواب داده میشن و ۶۰ ثانیه مهلت دارن
+    pending_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    pending_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     # مصونیت حمله پی‌وی — بعد اینکه بهت حمله شد تا این زمان از لیست حمله‌های پی‌وی خارجی (۱۲ ساعت)
     shield_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -104,6 +112,20 @@ class User(Base):
 
     # حالت نامرئی لیدربرد (فقط ادمین ربات) — ۱ یعنی تو هیچ لیدربردی دیده نمیشه
     lb_hidden: Mapped[int] = mapped_column(Integer, default=0)
+
+    # ⭐️ مهارت‌ها — امتیاز خرج‌نشده (NULL یعنی هنوز پس‌دررو مقداردهی نشده) + لول ۴ قابلیت (۰ تا ۸)
+    skill_points: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    skill_power: Mapped[int] = mapped_column(Integer, default=0)
+    skill_speed: Mapped[int] = mapped_column(Integer, default=0)
+    skill_defense: Mapped[int] = mapped_column(Integer, default=0)
+    skill_loot: Mapped[int] = mapped_column(Integer, default=0)
+
+    # 🛡 تجهیزات — سلاح/زره انتخاب‌شده کاربر (NULL یعنی خودکار همون بهترین)
+    equipped_weapon: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    equipped_armor: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # 💀 سم Viper-X — تا این زمان حمله و دفاع کاربر کمتره
+    poison_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
@@ -235,6 +257,9 @@ class Team(Base):
     atk_bld: Mapped[int] = mapped_column(Integer, default=0)  # لول ساختمان حمله
     def_bld: Mapped[int] = mapped_column(Integer, default=0)  # لول ساختمان دفاع
 
+    # حالت نامرئی تیم («تیم مخفی» رهبر) — ۱ یعنی تو لیدربردهای تیم دیده نمیشه
+    lb_hidden: Mapped[int] = mapped_column(Integer, default=0)
+
     last_team_mine_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
@@ -286,6 +311,11 @@ class TeamDaily(Base):
     harvests: Mapped[int] = mapped_column(Integer, default=0)
     kills_done: Mapped[int] = mapped_column(Integer, default=0)     # 1 = جایزه واریز شده
     harvests_done: Mapped[int] = mapped_column(Integer, default=0)
+
+    # شمارنده‌های همه‌کاره کوئست (JSON دیکشنری کلید→عدد) و کلیدهای تکمیل‌شده (JSON لیست)
+    # برای کوئست‌های جدید که ستون خودشون رو ندارن (mine | search | caravan و…)
+    qprog: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    qdone: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
 class GroupActivity(Base):

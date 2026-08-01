@@ -92,8 +92,10 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
     # آب و هوا روی سرعت رشد اثر می‌ذاره (باران سریع‌تر | گرما/سرما کندتر)، شدت همین رول
     from services import world as world_svc
+    from services import combat as combat_svc
     wkey, wpct, _ = await world_svc.weather_state(session)
     speed = world_svc.weather_grow_speed(wkey, wpct)
+    speed *= 1 + combat_svc.skill_pct(user, "speed")  # مهارت ⚡ سرعت: هر لول ۲% کاشت تندتر
     seconds = max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
     plot.status = "growing"
     plot.crop = seed_key
@@ -105,10 +107,11 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 # ───────── برداشت (همه آماده‌ها، هر ۲ دقیقه یه بار) ─────────
 
 def apply_legendary_cap(seed_key: str, gain: int) -> int:
-    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها (کیفیت/آب‌وهوا/بونس لول)، درخواست کارفرما: بالای ۶۰,۰۰۰ نره"""
-    if config.SEEDS[seed_key].get("legendary") and gain > config.LEGENDARY_SELL_CAP:
-        return config.LEGENDARY_SELL_CAP
-    return gain
+    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها، درخواست کارفرما: عادی‌ها بالای ۶۰,۰۰۰ نرن، جهش‌یافته سقف خودشو داره"""
+    if not config.SEEDS[seed_key].get("legendary"):
+        return gain
+    cap = config.SEEDS[seed_key].get("cap", config.LEGENDARY_SELL_CAP)
+    return min(gain, cap)
 
 def harvest_cooldown_left(user: User) -> int:
     """ثانیه مونده از کولدان برداشت، زمان‌بندی برای هر کاربر جدا ذخیره میشه"""

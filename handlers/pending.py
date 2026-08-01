@@ -23,7 +23,7 @@ _KNOWN_TEXTS = {
     "شاپ", "فروشگاه", "shop", "پروفایل", "profile", "حمله", "برداشت", "برداشت محصول",
     "مزرعه", "زمین هام", "زمین‌ها", "زمین‌های من", "سگ‌های من", "سگهای من",
     "راهنما", "help", "کنده کاری", "کنده کاری تیمی", "استخراج تیمی",
-    "کوئست", "کوئست تیم", "استعلام کوئست", "تیم", "تیم من", "ترک تیم",
+    "کوئست", "کوئست تیم", "کوئست تیمی", "استعلام کوئست", "تیم", "تیم من", "ترک تیم",
     "انحلال تیم", "ساخت تیم", "رتبه", "رتبه بندی", "بانک", "واریز",
     "تیم ساختمان", "تیم ساختمان ها", "تیم ساخت", "تیم پروفایل", "تیم عضویت",
     "تیم لیدربرد", "تیم چالش", "تیم کوئست", "تیم بانک", "تیم واریز",
@@ -31,7 +31,36 @@ _KNOWN_TEXTS = {
     "بازار سیاه", "بازار", "هواشناسی", "پناهگاه", "مخفیگاه", "شرکت", "کارخانه", "قمار", "قمارخانه", "زمین", "لیدربرد", "رتبه بندی",
 }
 
-_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ", "اسم سگ", "شرکت", "مخفیگاه", "آپگرید")
+_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ", "اسم سگ", "شرکت", "مخفیگاه", "آپگرید", "بانک ", "انتقال ")
+
+
+async def capture_bcast_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """پیام همگانی: رسانه (عکس | ویدیو | فایل و… حتی با کپشن) هم ورودیه، capture اصلی فقط متن خالص رو می‌گیره"""
+    msg = update.message
+    if msg is None or msg.text:
+        return  # متن خالص رو capture اصلی می‌گیره
+
+    from handlers.common import chat_id_of
+    chat_id = chat_id_of(update)
+
+    async with session_scope() as s:
+        user = await users.get_by_tg(s, update.effective_user.id)
+        if user is None or user.pending_action != "bcast":
+            return
+        if user.pending_chat_id is not None and chat_id is not None and chat_id != user.pending_chat_id:
+            return
+        if update.effective_user.id not in config.ADMIN_IDS:
+            users.set_pending(user, None)
+            await s.commit()
+            return
+        users.set_pending(user, None)
+        await s.commit()
+
+    await update.message.reply_html(
+        "<b>📣 پیام همگانی</b>\n\nبه کی بفرستمش؟",
+        reply_markup=kb.broadcast_scope_kb(chat_id if chat_id else 0, update.message.message_id),
+    )
+    raise ApplicationHandlerStop()
 
 
 async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -39,7 +68,9 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not text or text.startswith("/"):
         return
 
+    from handlers.common import chat_id_of
     chat = update.effective_chat
+    chat_id = chat_id_of(update)
     is_group = chat is not None and chat.type in ("group", "supergroup")
 
     # فعالیت فقط با «دستور» سنجیده میشه، چت عادی ملت تو گروه حساب نمیشه:
@@ -68,6 +99,10 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if user is None or not user.pending_action:
             return
 
+        # ورودی معلق فقط تو همون چتی جواب داده میشه که شروع شده، چت دیگه کاملاً بی‌صدا رد میشه
+        if user.pending_chat_id is not None and chat_id is not None and chat_id != user.pending_chat_id:
+            return
+
         if norm.startswith(("تریاکی ", "تریاک ", "تی ")):
             return  # دستور با پیشوند رو نباید به عنوان ورودی معلق قورت بدن
         # اما «تریاک»/«تریاکی»/«تی» تنهایی دستور نیستن و می‌تونن اسم تیم یا سگ باشن
@@ -88,8 +123,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             dog_key = user.pending_value or ""
             cfg = config.DOGS.get(dog_key)
             if not cfg:
-                user.pending_action = None
-                user.pending_value = None
+                users.set_pending(user, None)
                 await s.commit()
                 await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از شاپ شروع کن")
                 raise ApplicationHandlerStop()
@@ -101,8 +135,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await update.message.reply_html(why)  # pending می‌مونه تا اسم درست بفرسته
                 raise ApplicationHandlerStop()
 
-            user.pending_action = None
-            user.pending_value = None
+            users.set_pending(user, None)
             await s.commit()
             await update.message.reply_html(
                 f"<b>🐕 خرید {esc(cfg['breed'])}</b>\n\n"
@@ -116,8 +149,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         # ── سرچ عضو برای اخراج (بعد از دکمه 👢 اخراج عضو تو مدیریت تیم) ──
         if action == "teamkick":
-            user.pending_action = None
-            user.pending_value = None
+            users.set_pending(user, None)
             await s.commit()
             from handlers import team as team_h
             await team_h.kick_search_respond(update, context, text)
@@ -128,8 +160,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             res_key = user.pending_value or ""
             info = config.RES_SHOP.get(res_key)
             if not info:
-                user.pending_action = None
-                user.pending_value = None
+                users.set_pending(user, None)
                 await s.commit()
                 await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از شاپ شروع کن")
                 raise ApplicationHandlerStop()
@@ -138,12 +169,11 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if qty is None:
                 await s.commit()
                 await update.message.reply_html(
-                    f"❌ فقط یه عدد صحیح بفرست، مثلا 24\n\n❌ پشیمون شدی بنویس «لغو»"
+                    "❌ فقط یه عدد صحیح بفرست، مثلا: 24\n\n❌ اگر هم پشیمون شدی بنویس «لغو»"
                 )
                 raise ApplicationHandlerStop()
 
-            user.pending_action = None
-            user.pending_value = None
+            users.set_pending(user, None)
             total = info["unit"] * qty
             await s.commit()
             await update.message.reply_html(
@@ -156,15 +186,60 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
             raise ApplicationHandlerStop()
 
+        # ── تعداد بذر (بعد از زدن روی بذر تو شاپ)، مثل فلوی آهن و چوب ──
+        if action == "seedbuy":
+            seed_key = user.pending_value or ""
+            info = config.SEEDS.get(seed_key)
+            if not info or info.get("legendary"):
+                users.set_pending(user, None)
+                await s.commit()
+                await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از شاپ شروع کن")
+                raise ApplicationHandlerStop()
+
+            qty = parse_amount(text)
+            if qty is None:
+                await s.commit()
+                await update.message.reply_html(
+                    "❌ فقط یه عدد صحیح بفرست، مثلا: 5\n\n❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+
+            users.set_pending(user, None)
+            total = info["price"] * qty
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>🧾 فاکتور خرید {info.get('emoji', '🌱')} {esc(info['name'])}</b>\n\n"
+                f"🔢 تعداد: {fa_num(qty)} بذر\n"
+                f"💸 قیمت هر بذر: {money_tp(info['price'])}\n"
+                f"💰 جمع فاکتور: {money(total)}\n"
+                f"⏱ رشد هرکدوم {fa_num(info['grow_min'])} دقیقه | فروش هرساقه {money_tp(info['sell'])}\n\n"
+                "معامله‌ست؟",
+                reply_markup=kb.buyseed_confirm_kb(seed_key, qty),
+            )
+            raise ApplicationHandlerStop()
+
+        # ── پیام همگانی ادمین (📣 از پنل): هر پیامی، دامنه و مدش با دکمه انتخاب میشه ──
+        if action == "bcast":
+            if update.effective_user.id not in config.ADMIN_IDS:
+                users.set_pending(user, None)
+                await s.commit()
+                return
+            users.set_pending(user, None)
+            await s.commit()
+            await update.message.reply_html(
+                "<b>📣 پیام همگانی</b>\n\nبه کی بفرستمش؟",
+                reply_markup=kb.broadcast_scope_kb(chat_id if chat_id else 0, update.message.message_id),
+            )
+            raise ApplicationHandlerStop()
+
         # ── مبلغ واریز/برداشت بانک (بعد از دکمه‌های «بانک») ──
         if action in ("bankdep", "bankwd"):
             amount = parse_amount(text)
             if amount is None:
-                await update.message.reply_html("❌ فقط عددشو بفرست، مثلا 1200\n\n❌ پشیمون شدی بنویس «لغو»")
+                await update.message.reply_html("❌ فقط عددشو بفرست، مثلا: 1200\n\n❌ اگر هم پشیمون شدی بنویس «لغو»")
                 raise ApplicationHandlerStop()
 
-            user.pending_action = None
-            user.pending_value = None
+            users.set_pending(user, None)
             if action == "bankdep":
                 ok, res = await bank_svc.deposit(s, user, amount)
             else:
@@ -180,23 +255,113 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await update.message.reply_html(res)
             raise ApplicationHandlerStop()
 
+        # ── انتقال بانکی: شماره حساب مقصد (بعد از دکمه 💳 انتقال موجودی) ──
+        if action == "trf_to":
+            target = await bank_svc.get_by_bank_acc(s, text)
+            if target is not None and target.telegram_id == user.telegram_id:
+                await update.message.reply_html(
+                    "😅 به حساب خودت که لازم نیس انتقال بدی، برداشت عادی بزن\n"
+                    "شماره حساب طرف مقصدو بفرست\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()  # pending سر جاش، شماره درست بفرست
+            if target is None:
+                await update.message.reply_html(
+                    "❌ همچین شماره حسابی پیدا نکردم، چک کن دوباره بفرست\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()  # pending سر جاش
+            users.set_pending(user, "trf_amt", str(target.telegram_id))
+            tgt_name = esc(users.display_name(target))
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>💳 انتقال به حساب «{tgt_name}»</b>\n\n"
+                f"چقد تی‌پوینت میخوای بهش واریز کنی؟\n"
+                f"عددشو همینجا بنویس و بفرست، از {fa_num(config.TRF_MIN_AMOUNT)} تا {fa_num(config.TRF_MAX_AMOUNT)}، مثلا: 8000\n\n"
+                "❌ اگر هم پشیمون شدی بنویس «لغو»"
+            )
+            raise ApplicationHandlerStop()
+
+        # ── انتقال بانکی: مبلغ و فاکتور نهایی با اسم گیرنده ──
+        if action == "trf_amt":
+            amount = parse_amount(text)
+            if amount is None:
+                await update.message.reply_html(f"❌ فقط عددشو بفرست، مثلا: 8000\n\n❌ اگر هم پشیمون شدی بنویس «لغو»")
+                raise ApplicationHandlerStop()
+            target = await users.get_by_tg(s, int(user.pending_value or 0))
+            if target is None:
+                users.set_pending(user, None)
+                await s.commit()
+                await update.message.reply_html("❌ طرف پیدا نشد، از اول شروع کن")
+                raise ApplicationHandlerStop()
+            if amount < config.TRF_MIN_AMOUNT:
+                await update.message.reply_html(
+                    f"❌ حداقل انتقال باید {money(config.TRF_MIN_AMOUNT)} باشه، بیشتر بگو\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()  # pending سر جاش تا بیشتر بفرسته
+            if amount > config.TRF_MAX_AMOUNT:
+                await update.message.reply_html(
+                    f"❌ حداکثر انتقال باید {money(config.TRF_MAX_AMOUNT)} باشه، کمتر بگو\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()  # pending سر جاش تا کمتر بفرسته
+            left = bank_svc.trf_cooldown_left(user)
+            if left > 0:
+                users.set_pending(user, None)
+                await s.commit()
+                await update.message.reply_html(f"⏳ تازه انتقال دادی، تا {fa_num(left)} ثانیه دیگه نمیتونی انتقال بدی")
+                raise ApplicationHandlerStop()
+            if amount > user.bank_balance:
+                await update.message.reply_html(
+                    f"❌ تو بانک این همه نداری، موجودیت {money(user.bank_balance)} ـه\n"
+                    "یه عدد کوچیک‌تر بفرست\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()  # pending سر جاش تا کمتر بفرسته
+            tgt_name0 = esc(users.display_name(target))
+            cap_room = bank_svc.bank_capacity(target.bank_level) - target.bank_balance
+            if amount > cap_room:
+                if cap_room <= 0:
+                    users.set_pending(user, None)
+                    await s.commit()
+                    await update.message.reply_html(f"🏦 بانک «{tgt_name0}» کاملاً پره، الان امکان واریز به حسابش نیست")
+                    raise ApplicationHandlerStop()
+                await update.message.reply_html(
+                    f"🏦 بانک «{tgt_name0}» فقط {money(cap_room)} جای خالی داره، کمتر بگو\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+            users.set_pending(user, None)
+            tgt_name = esc(users.display_name(target))
+            bal_after = user.bank_balance - amount
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>💳 تاییدیه انتقال</b>\n\n"
+                f"💸 مبلغ: {money(amount)}\n"
+                f"🔢 شماره حساب: <code>{target.bank_acc or ''}</code>\n"
+                f"👤 حساب به نام «{tgt_name}» هست\n\n"
+                f"🏦 موجودی بانکت بعد انتقال: {money(bal_after)}\n\n"
+                "از انتقال اطمینان داری؟",
+                reply_markup=kb.confirm_kb(f"tbf:{target.telegram_id}:{amount}"),
+            )
+            raise ApplicationHandlerStop()
+
         # ── مبلغ هدیه ادمین به یه کاربر دیگه (از کارت /user) ──
         if action in ("admtp", "admxp"):
             if update.effective_user.id not in config.ADMIN_IDS:
-                user.pending_action = None
-                user.pending_value = None
+                users.set_pending(user, None)
                 await s.commit()
                 return
 
             amount = parse_amount(text)
             if amount is None:
-                await update.message.reply_html("❌ فقط عددشو بفرست، مثلا 5000\n\n❌ پشیمون شدی بنویس «لغو»")
+                await update.message.reply_html("❌ فقط عددشو بفرست، مثلا: 5000\n\n❌ اگر هم پشیمون شدی بنویس «لغو»")
                 raise ApplicationHandlerStop()
 
             target_tg = int(user.pending_value or 0)
             target = await users.get_by_tg(s, target_tg)
-            user.pending_action = None
-            user.pending_value = None
+            users.set_pending(user, None)
             if target is None:
                 await s.commit()
                 await update.message.reply_html("❌ طرف پیدا نشد")
@@ -224,8 +389,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # ── کانال عضویت اجباری بعد از دکمه ست کردن (فقط ادمین) ──
         if action == "fjchan":
             if update.effective_user.id not in config.ADMIN_IDS:
-                user.pending_action = None
-                user.pending_value = None
+                users.set_pending(user, None)
                 await s.commit()
                 return
 
@@ -236,14 +400,13 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     "❌ فرمت درست نیس، یوزرنیم یا لینک کانال رو بفرست\n"
                     "مثلا <code>@mychannel</code> یا <code>https://t.me/mychannel</code>\n"
                     "کانال خصوصی: <code>-1001234567890 https://t.me/+AbCdEfGh</code>\n\n"
-                    "❌ پشیمون شدی بنویس «لغو»",
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»",
                 )
                 raise ApplicationHandlerStop()
 
             channel, link = parsed
             await fj_svc.set_channel(s, channel, link)
-            user.pending_action = None
-            user.pending_value = None
+            users.set_pending(user, None)
             await s.commit()
             await update.message.reply_html(
                 f"<b>✅ عضویت اجباری فعال شد</b>\n\n"
@@ -265,7 +428,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             help_txt = (
                 "❌ فرمت درست نیس، اینجوری بنویس\n\n"
                 "«آهن 300»\n«چوب 200»\n\n"
-                "❌ پشیمون شدی بنویس «لغو»"
+                "❌ اگر هم پشیمون شدی بنویس «لغو»"
             )
             if res is None:
                 await update.message.reply_html(help_txt)  # pending می‌مونه تا درست بفرسته
@@ -277,13 +440,12 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if amount > have:
                 await update.message.reply_html(
                     f"❌ فقط {fa_num(have)} تا {name} داری، {fa_num(amount)} تا نمی‌تونی بفروشی\n\n"
-                    "❌ پشیمون شدی بنویس «لغو»"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
                 )  # pending می‌مونه تا عدد درست بفرسته
                 raise ApplicationHandlerStop()
 
             total = amount * res_svc.sell_price(res)
-            user.pending_action = None
-            user.pending_value = None
+            users.set_pending(user, None)
             await s.commit()
             await update.message.reply_html(
                 f"<b>💰 فروش {fa_num(amount)} تا {name}</b>\n\n"
@@ -307,8 +469,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 raise ApplicationHandlerStop()
 
             display = " ".join(str(text).split())
-            user.pending_action = "teamcf"
-            user.pending_value = display[:48]
+            users.set_pending(user, "teamcf", display[:48], chat_id)
             await s.commit()
             await update.message.reply_html(
                 f"<b>🏴 ساخت تیم «{esc(display)}»</b>\n\n"

@@ -1,5 +1,5 @@
 """
-سیستم‌های جهان: جستجو 🔍 | آب و هوا 🌦 | بازار سیاه 📈 | پناهگاه 🏚 | قمارخانه 🎰 | کاروان 🚛
+سیستم‌های جهان: جستجو 🔍 | آب و هوا 🌦 | بازار سیاه 📈 | انبار 🏚 | قمارخانه 🎰 | کاروان 🚛
 """
 
 from telegram import Update
@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 import config
 from services import resources as res_svc
 from database import session_scope
-from handlers.common import parts, respond
+from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
 from models import GroupActivity
 from services import combat, dogs as dog_svc, farming, users
@@ -30,16 +30,23 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         artis = users.artifact_keys(await users.get_item_keys(s, user.id))
         luck = max(luck, users.artifact_luck(artis))
         res = await world_svc.do_search(s, user, luck=luck)
+        tq = None
         if res["status"] != "cooldown":
             from services import quests as dq_svc
             dq_done, dq_left = await dq_svc.track(s, user, "search")
             uname = users.display_name(user)
+            from services import teams as team_svc
+            tq = await team_svc.record_search(s, user)  # کوئست روزانه تیم، جستجوی اعضا
         cash = user.cash
         await s.commit()
 
+    if tq:
+        from handlers.common import announce_notes
+        await announce_notes(update, [tq])
+
     st = res["status"]
     if st == "cooldown":
-        return await respond(update, f"⏳ هر {fa_num(config.SEARCH_COOLDOWN_MINUTES)} دقیقه یه جستجو، {fa_dur(res['left'])} دیگه بیا")
+        return await respond(update, world_svc.search_cooldown_text(res["left"]))
 
     o = res["outcome"]
     if st == "money":
@@ -108,21 +115,17 @@ async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await respond(update, world_svc.market_view_text(mults, left), kb.home_kb())
 
 
-# ═════════ انبار و مخفیگاه 🏚 ═════════
+# ═════════ انبار 🏚 ═════════
 
 async def _shelter_text(session, user) -> str:
-    cut = world_svc.shelter_raid_cut(user.shelter_level)
-    dodge = world_svc.shelter_dodge_chance(user.shelter_level)
     cap = world_svc.seed_storage_cap(user)
     wcap, icap = res_svc.wood_cap(user), res_svc.iron_cap(user)
     stock = await farming.get_stock(session, user.id)
     lines = [
-        "<b>🏚 انبار و مخفیگاه</b>",
+        "<b>🏚 انبار</b>",
         "",
         f"⭐ لول {fa_num(user.shelter_level)}" + (f" از {fa_num(config.SHELTER_MAX_LEVEL)}" if user.shelter_level else "، هنوز نداری"),
         "",
-        f"🛡 خسارت یورش پلیس {fa_num(int(cut * 100))}% کمتره",
-        f"🎲 شانس فرار کامل از یورش {fa_num(int(dodge * 100))}%",
         f"📦 ظرفیت انبار هر بذر {fa_num(cap)} تا",
         "",
         f"🪵 چوب {bar(user.wood, wcap)} {fa_num(user.wood)}/{fa_num(wcap)}",
@@ -137,7 +140,6 @@ async def _shelter_text(session, user) -> str:
         lines.append(f"{sd['emoji']} {sd['name']} {bar(cnt, cap)} {fa_num(cnt)}/{fa_num(cap)}")
     lines += [
         "",
-        "🚔 پلیس هر چند ساعت به فعال‌های محله یورش میاره و 30% محصولات انبار رو نابود می‌کنه، پناهگاه جلوته",
         "با ارتقا، ظرفیت بذر و چوب و آهن هم بیشتر میشه",
         "چوب و آهن اضافه رو هم می‌تونی از بخش فروش منابع بفروشی",
     ]
@@ -163,15 +165,14 @@ def _resource_sell_text(user) -> str:
         "بنویس چی و چقدر می‌خوای بفروشی، مثلا «آهن 300» یا «چوب 200» (فقط چوب و آهن قابل فروش‌اند)",
         "بعدش مبلغشو می‌گیری و تایید می‌کنی",
         "",
-        "❌ پشیمون شدی بنویس «لغو»",
+        "❌ اگر هم پشیمون شدی بنویس «لغو»",
     ])
 
 
 async def resource_sell_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        user.pending_action = "ressell"
-        user.pending_value = None
+        users.set_pending(user, "ressell", None, chat_id_of(update))
         text = _resource_sell_text(user)
         await s.commit()
     await respond(update, text, kb.sell_menu_kb())
@@ -221,7 +222,7 @@ async def shelter_up_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await s.commit()
 
     text = (
-        f"<b>🏚 ارتقای انبار و مخفیگاه، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
+        f"<b>🏚 ارتقای انبار، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
         f"💸 هزینه {money(price)}\n"
         f"💵 الان {money(cash)} داری\n\n"
         "انجامش بدیم؟"
@@ -241,7 +242,7 @@ async def shelter_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return await respond(
             update,
             text + f"\n\n{esc(msg)}\n💵 نقدینگی: {money(cash)}",
-            markup, alert="🏚 انبار و مخفیگاه ارتقا پیدا کرد",
+            markup, alert="🏚 انبار ارتقا پیدا کرد",
         )
     await respond(update, text, markup, alert=msg)
 
@@ -332,6 +333,11 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     chat_id = query.message.chat_id if query.message else update.effective_chat.id
 
+    # دیبانس: کلیک تندتند دکمه بی‌صدا جواب خالی می‌گیره تا اسپم سرور رو خسته نکنه
+    if world_svc.caravan_click_spam(chat_id, update.effective_user.id):
+        await query.answer()
+        return
+
     cv = world_svc.caravan_active(chat_id)
     if not cv:
         await query.answer("🚛 کاروانی تو محله نیس", show_alert=True)
@@ -355,6 +361,10 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             atk = int(atk * (1 + team_svc.atk_bonus(user_team)))
 
         res = await world_svc.caravan_attack(s, chat_id, user, atk)
+        if res["status"] in ("hit", "killed"):
+            tq = await team_svc.record_caravan(s, user)  # کوئست روزانه تیم، ضربه به کاروان
+            if tq:
+                res.setdefault("notes", []).append(tq)
         await s.commit()
 
     if res["status"] == "cooldown":

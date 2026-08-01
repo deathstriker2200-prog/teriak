@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 import config
 from database import session_scope
 from handlers import dogs as dogs_h
-from handlers.common import parts, respond
+from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
 from services import combat, dogs as dog_svc, economy, farming, resources as res_svc, shop_svc, users
 from utils import esc, fa_num, money, money_tp
@@ -155,7 +155,7 @@ def _res_text(user) -> str:
         "",
         "چوب و آهن از کنده‌کاری، شاپ و کارخانه به دست میان",
         "خریدش گرونه ولی تولیدش می‌صرفه",
-        "فروش منابع اضافه هم از بخش مخفیگاه انجام میشه",
+        "فروش منابع اضافه هم از بخش انبار انجام میشه",
         "برای خرید روی جنس موردنظر بزن و بگو چندتا می‌خوای",
     ])
 
@@ -301,14 +301,32 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return await shop_cb(update, context)
         async with session_scope() as s:
             user, _ = await users.get_or_create(s, update.effective_user)
-            user.pending_action = "resbuy"
-            user.pending_value = key
+            users.set_pending(user, "resbuy", key, chat_id_of(update))
             await s.commit()
         text = (
             f"<b>🛒 خرید {info['emoji']} {info['name']}</b>\n\n"
+            f"چندتا {info['name']} میخوای بخری؟\n"
+            "عددشو همینجا بنویس و بفرست، مثلا: 24\n"
             f"💸 قیمت هر دونه {money_tp(info['unit'])}\n\n"
-            f"چندتا {info['name']} می‌خوای؟ یه عدد بفرست، مثلا 24\n\n"
-            "❌ پشیمون شدی بنویس «لغو»"
+            "❌ اگر هم پشیمون شدی بنویس «لغو»"
+        )
+        return await respond(update, text)
+
+    # خرید بذر هم مثل آهن و چوب، تعداد پرسیده میشه و فاکتور میاد (درخواست کارفرما)
+    if kind == "seed":
+        info = config.SEEDS.get(key)
+        if not info or info.get("legendary"):
+            return await shop_cb(update, context)
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            users.set_pending(user, "seedbuy", key, chat_id_of(update))
+            await s.commit()
+        text = (
+            f"<b>🛒 خرید {info.get('emoji', '🌱')} {esc(info['name'])}</b>\n\n"
+            f"چندتا بذر {esc(info['name'])} میخوای بخری؟\n"
+            "عددشو همینجا بنویس و بفرست، مثلا: 5\n"
+            f"💸 قیمت هر بذر {money_tp(info['price'])}\n\n"
+            "❌ اگر هم پشیمون شدی بنویس «لغو»"
         )
         return await respond(update, text)
 
@@ -403,6 +421,27 @@ async def buyres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def buyres_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     return await render_section(update, "res", alert="❌ خرید لغو شد")
+
+
+# ───────── تایید فاکتور خرید بذر با تعداد (cf:shopseed | cl:shopseed) ─────────
+
+async def buyseed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _, _, seed_key, qty_s = parts(update)
+    info = config.SEEDS.get(seed_key)
+    if not info or info.get("legendary"):
+        return await shop_cb(update, context)
+    qty = int(qty_s)
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, out = await shop_svc.purchase_seed(s, user, seed_key, qty)
+        await s.commit()
+    if not ok:
+        return await render_section(update, "seed", alert=out)
+    await render_section(update, "seed", alert=out)
+
+
+async def buyseed_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    return await render_section(update, "seed", alert="❌ خرید لغو شد")
 
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────

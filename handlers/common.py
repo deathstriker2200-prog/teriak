@@ -107,6 +107,19 @@ async def owner_guard(update: Update, context) -> None:
 _CMD_PREFIX_RE = re.compile(r"^(?:تریاکی|تریاک|تی)[\s\u200c]+([\s\S]+)$")
 
 
+def chat_id_of(update: Update) -> int | None:
+    """آیدی چت آپدیت (پیام یا کالبک)، برای بایند ورودی معلق؛ ناشناخته None"""
+    chat = getattr(update, "effective_chat", None)
+    cid = getattr(chat, "id", None)
+    if cid is not None:
+        return cid
+    msg = getattr(update, "effective_message", None)
+    cid = getattr(msg, "chat_id", None)
+    if cid is not None:
+        return cid
+    return getattr(getattr(msg, "chat", None), "id", None)
+
+
 def has_prefix(text: str) -> bool:
     """متن با یکی از پیشوندهای تریاکی/تریاک/تی شروع شده؟"""
     return bool(_CMD_PREFIX_RE.match((text or "").strip()))

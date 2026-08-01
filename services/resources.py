@@ -13,12 +13,17 @@ from models import User
 
 # ───────── ظرفیت ─────────
 
+def _table_cap(table: list, level: int) -> int:
+    idx = min(max(int(level or 0), 0), len(table) - 1)
+    return table[idx]
+
+
 def wood_cap(user: User) -> int:
-    return config.RES_WOOD_CAP_BASE + config.RES_WOOD_CAP_PER_LEVEL * user.shelter_level
+    return _table_cap(config.RES_WOOD_CAP_TABLE, user.shelter_level)
 
 
 def iron_cap(user: User) -> int:
-    return config.RES_IRON_CAP_BASE + config.RES_IRON_CAP_PER_LEVEL * user.shelter_level
+    return _table_cap(config.RES_IRON_CAP_TABLE, user.shelter_level)
 
 
 def res_cap(user: User, res: str) -> int:
@@ -121,13 +126,22 @@ def mine_loot(user: User) -> dict:
     xp = max(1, int(random.randint(config.MINE_XP_MIN, config.MINE_XP_MAX) * mine_xp_mult(user)))
     wood, iron = 0, 0
     rare = random.random() < mine_rare_chance(user)
-    boost = config.MINE_RARE_MULT if rare else 1
 
-    if random.random() < tool_chance(user, "axe", config.MINE_WOOD_CHANCE):
-        wood = random.randint(config.MINE_WOOD_MIN, config.MINE_WOOD_MAX)
-        wood = max(1, int(wood * tool_amount_mult(user, "axe"))) * boost
-    if random.random() < tool_chance(user, "pick", config.MINE_IRON_CHANCE):
-        iron = random.randint(config.MINE_IRON_MIN, config.MINE_IRON_MAX)
-        iron = max(1, int(iron * tool_amount_mult(user, "pick"))) * boost
+    if rare:
+        # شکار کمیاب: چوب و آهن حتمی میفتن و همه درآمد ×مقدار کمیاب
+        boost = config.MINE_RARE_MULT
+        cash *= boost
+        xp *= boost
+        wood = max(1, int(random.randint(config.MINE_WOOD_MIN, config.MINE_WOOD_MAX)
+                          * tool_amount_mult(user, "axe"))) * boost
+        iron = max(1, int(random.randint(config.MINE_IRON_MIN, config.MINE_IRON_MAX)
+                          * tool_amount_mult(user, "pick"))) * boost
+    else:
+        if random.random() < tool_chance(user, "axe", config.MINE_WOOD_CHANCE):
+            wood = random.randint(config.MINE_WOOD_MIN, config.MINE_WOOD_MAX)
+            wood = max(1, int(wood * tool_amount_mult(user, "axe")))
+        if random.random() < tool_chance(user, "pick", config.MINE_IRON_CHANCE):
+            iron = random.randint(config.MINE_IRON_MIN, config.MINE_IRON_MAX)
+            iron = max(1, int(iron * tool_amount_mult(user, "pick")))
 
     return {"cash": cash, "xp": xp, "wood": wood, "iron": iron, "rare": rare}

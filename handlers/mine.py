@@ -45,15 +45,16 @@ def mine_home_text(user) -> str:
 
 
 def _loot_text(loot: dict, user) -> str:
-    lines = ["<b>⛏ کنده‌کاری</b>", ""]
-    lines.append(f"💰 {money(loot['cash'])} به دست آوردی")
-    lines.append(f"✨ {fa_num(loot['xp'])} تجربه گرفتی")
-    if loot["wood"]:
-        lines.append(f"🪵 {fa_num(loot['wood'])} چوب پیدا کردی")
-    if loot["iron"]:
-        lines.append(f"⛏️ {fa_num(loot['iron'])} آهن پیدا کردی")
+    lines = ["<b>⛏️ کنده‌کاری</b>", ""]
     if loot["rare"]:
-        lines.append("✨ شکار کمیاب")
+        lines.append("<b>🎉 شکار کمیاب</b>")
+        lines.append("")
+    lines.append(f"<b>💰 {money(loot['cash'])} به دست آوردی</b>")
+    if loot["wood"]:
+        lines.append(f"<b>🪵 {fa_num(loot['wood'])} چوب دریافت کردی</b>")
+    if loot["iron"]:
+        lines.append(f"<b>⛏️ {fa_num(loot['iron'])} آهن دریافت کردی</b>")
+    lines.append(f"<b>✨ {fa_num(loot['xp'])} تجربه گرفتی</b>")
     lines += [
         "",
         f"🪙 موجودی: {money(user.cash)}",
@@ -65,7 +66,7 @@ def _loot_text(loot: dict, user) -> str:
 
 def _tired_text(left: float) -> str:
     return (
-        "<b>⛏ کنده‌کاری</b>\n\n"
+        "<b>⛏️ کنده‌کاری</b>\n\n"
         f"خستت شده نیاز به {fa_dur(left)} استراحت داری برای کنده کاری بعدی"
     )
 
@@ -107,6 +108,9 @@ async def _do_roll(update: Update) -> None:
                 notes.append(congrats)
             from services import teams as team_svc
             notes += await team_svc.add_team_xp(s, user, loot["xp"])
+            tq = await team_svc.record_mine(s, user)  # کوئست روزانه تیم، کنده‌کاری اعضا
+            if tq:
+                notes.append(tq)
 
             from services import quests as dq_svc
             dq_done, dq_left = await dq_svc.track(s, user, "mine")

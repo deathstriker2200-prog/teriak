@@ -5,6 +5,7 @@
 کنده‌کاری تیمی: حداقل ۳ عضو | ۷۰% اعضا باید دستورشو بزنن تا پول بره تو خزانه تیم
 """
 
+import json
 import math
 import random
 from datetime import datetime, timedelta
@@ -26,7 +27,8 @@ def _today() -> str:
 
 
 def team_name_norm(name: str) -> str:
-    return normalize_fa(name)
+    """یکدست‌سازی اسم تیم برای مقایسه، بزرگی/کوچکی حروف لاتین فرقی نمی‌کنه (Master = master)"""
+    return normalize_fa(name).lower()
 
 
 # ───────── لول و ظرفیت تیم ⭐ ─────────
@@ -448,7 +450,7 @@ async def rename_team(session: AsyncSession, user: User, new_name: str) -> tuple
     old = team.name
     team.name = display
     team.name_norm = team_name_norm(display)  # ستون یکدست‌شده جستجو هم آپدیت میشه
-    return True, f"✏️ اسم تیم از «{old}» شد «{team.name}»\n💸 {money(cost)} هم از جیبت رفت"
+    return True, f"✏️ اسم تیم از «{old}» شد «{team.name}»\n💸 {money(cost)} هم از جیبت کم شد"
 
 
 # ───────── آمار تیم ─────────
@@ -500,7 +502,7 @@ async def top_teams(session: AsyncSession, limit: int = 10) -> list[tuple[Team, 
         select(Team)
         .join(TeamMember, (TeamMember.team_id == Team.id) & (TeamMember.role == "owner"))
         .join(User, User.id == TeamMember.user_id)
-        .where(User.lb_hidden == 0)
+        .where(User.lb_hidden == 0, Team.lb_hidden == 0)
         .order_by(Team.bank.desc(), Team.total_kills.desc())
         .limit(limit)
     )
@@ -522,10 +524,63 @@ async def _daily(session: AsyncSession, team_id: int) -> TeamDaily:
     return row
 
 
+def _qprog(daily: TeamDaily) -> dict:
+    """شمارنده‌های JSON کوئست (برای کلیدهای بدون ستون اختصاصی)"""
+    try:
+        d = json.loads(daily.qprog or "{}")
+    except (ValueError, TypeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _qdone(daily: TeamDaily) -> list:
+    """کلیدهای تکمیل‌شده JSON"""
+    try:
+        d = json.loads(daily.qdone or "[]")
+    except (ValueError, TypeError):
+        return []
+    return d if isinstance(d, list) else []
+
+
 def _quest_progress(daily: TeamDaily, key: str) -> tuple[int, bool]:
     if key == "kills":
         return daily.kills, bool(daily.kills_done)
-    return daily.harvests, bool(daily.harvests_done)
+    if key == "harvest":
+        return daily.harvests, bool(daily.harvests_done)
+    return int(_qprog(daily).get(key, 0)), key in _qdone(daily)
+
+
+def _quest_mark_done(daily: TeamDaily, key: str) -> None:
+    if key == "kills":
+        daily.kills_done = 1
+    elif key == "harvest":
+        daily.harvests_done = 1
+    else:
+        done = _qdone(daily)
+        if key not in done:
+            done.append(key)
+        daily.qdone = json.dumps(done, ensure_ascii=False)
+
+
+def team_quest_scaled(quest: dict, team_level: int) -> dict | None:
+    """
+    کوئست مقیاس‌خورده با لول تیم، None اگه تیم به لولش نرسیده باشه
+    هرچی لول تیم بالاتر، هدف سخت‌تر و جایزه بزرگ‌تر
+    """
+    lvl = max(1, min(int(team_level or 1), config.TEAM_MAX_LEVEL))
+    if lvl < quest.get("min_level", 1):
+        return None
+    steps = lvl - quest.get("min_level", 1)
+    target = max(1, round(quest["target"] * (1 + config.TEAM_QUEST_TARGET_GROWTH * steps)))
+    reward = round(quest["reward"] * (1 + config.TEAM_QUEST_REWARD_GROWTH * steps))
+    bank = round(quest.get("bank_reward", 0) * (1 + config.TEAM_QUEST_REWARD_GROWTH * steps))
+    return {
+        **quest,
+        "target": target,
+        "reward": reward,
+        "bank_reward": bank,
+        "title": quest["title"].format(n=fa_num(target)),
+    }
 
 
 async def _record(session: AsyncSession, user: User, key: str, n: int) -> str | None:
@@ -546,35 +601,47 @@ async def _record(session: AsyncSession, user: User, key: str, n: int) -> str | 
         team.total_kills += n
         team.points += config.TEAM_POINT_KILL * n
         team.week_points += config.TEAM_POINT_KILL * n
-    else:
+    elif key == "harvest":
         daily.harvests += n
         team.total_harvests += n
         team.points += config.TEAM_POINT_HARVEST * n
         team.week_points += config.TEAM_POINT_HARVEST * n
+    else:
+        prog = _qprog(daily)
+        prog[key] = int(prog.get(key, 0)) + n
+        daily.qprog = json.dumps(prog, ensure_ascii=False)
 
     for quest in config.TEAM_QUESTS:
         if quest["key"] != key:
             continue
+        scaled = team_quest_scaled(quest, team.level or 1)
+        if scaled is None:
+            continue
         progress, done = _quest_progress(daily, key)
-        if progress >= quest["target"] and not done:
-            if key == "kills":
-                daily.kills_done = 1
-            else:
-                daily.harvests_done = 1
+        if progress >= scaled["target"] and not done:
+            _quest_mark_done(daily, key)
 
             members = await get_members(session, team.id)
             for m in members:
                 u = await session.get(User, m.user_id)
                 if u:
-                    u.cash += quest["reward"]
+                    u.cash += scaled["reward"]
 
-            bank_reward = quest.get("bank_reward", 0)
+            bank_reward = scaled.get("bank_reward", 0)
             team.bank += bank_reward
             bank_line = f"\n🏦 و {money(bank_reward)} هم به بانک تیم رسید" if bank_reward else ""
 
+            # جایزه ویژه تیمی: لول تیم ۷ به بالا، با شانس کم یه بذر جهنم یا ابلیس به هر عضو میرسه
+            legend_line = ""
+            if (team.level or 1) >= config.TEAM_QUEST_LEGEND_MIN_LEVEL and random.random() < config.TEAM_QUEST_LEGEND_CHANCE:
+                from services import farming as farm_svc
+                for m in members:
+                    await farm_svc.add_seed_stock(session, m.user_id, random.choice(config.QUEST_LEGEND_SEEDS), 1)
+                legend_line = "\n🍀 بخت باهاتون یار بود، یه بذر افسانه‌ای 🔥 یا 😈 هم به هر عضو رسید"
+
             return (
-                f"🏴 کوئست {quest['emoji']} «{quest['title']}» تیم «{team.name}» کامل شد!\n"
-                f"🎁 {money(quest['reward'])} به هر عضو تیم رسید{bank_line}"
+                f"🏴 کوئست {quest['emoji']} «{scaled['title']}» تیم «{team.name}» کامل شد!\n"
+                f"🎁 {money(scaled['reward'])} به هر عضو تیم رسید{bank_line}{legend_line}"
             )
     return None
 
@@ -589,13 +656,52 @@ async def record_harvest(session: AsyncSession, user: User, n: int) -> str | Non
     return await _record(session, user, "harvest", n)
 
 
-def quests_view(daily: TeamDaily) -> list[dict]:
-    """نمایش کوئست‌ها با پیشرفت، برای متن استعلام"""
+async def record_mine(session: AsyncSession, user: User) -> str | None:
+    """هر کنده‌کاری موفق عضو، با قلاب هندلر معدن صدا زده میشه"""
+    return await _record(session, user, "mine", 1)
+
+
+async def record_search(session, user: User) -> str | None:
+    """هر جستجوی موفق عضو، با قلاب هندلر جستجو صدا زده میشه"""
+    return await _record(session, user, "search", 1)
+
+
+async def record_caravan(session, user: User) -> str | None:
+    """هر ضربه عضو به کاروان، با قلاب هندلر کاروان صدا زده میشه"""
+    return await _record(session, user, "caravan", 1)
+
+
+async def record_plant(session, user: User, n: int = 1) -> str | None:
+    """هر بذری که عضو می‌کاره، کوئست تیمی کاشت"""
+    return await _record(session, user, "plant", n)
+
+
+async def record_feed(session, user: User) -> str | None:
+    """هر بار غذا دادن به سگ، کوئست تیمی غذا"""
+    return await _record(session, user, "feed", 1)
+
+
+async def record_team_deposit(session, user: User, amount: int) -> str | None:
+    """هر واریز به بانک تیم، کوئست تیمی «واریز مجموع» با مبلغ"""
+    return await _record(session, user, "depbank", amount)
+
+
+def quests_view(daily: TeamDaily, team_level: int = 1) -> list[dict]:
+    """نمایش کوئست‌های باز برای لول تیم با پیشرفت، برای متن استعلام"""
     out = []
     for q in config.TEAM_QUESTS:
+        scaled = team_quest_scaled(q, team_level)
+        if scaled is None:
+            continue
         progress, done = _quest_progress(daily, q["key"])
-        out.append({**q, "progress": min(progress, q["target"]), "done": done})
+        out.append({**scaled, "progress": min(progress, scaled["target"]), "done": done})
     return out
+
+
+def locked_quests_view(team_level: int) -> list[dict]:
+    """کوئست‌هایی که لول تیم بهشون نرسیده، برای نمایش قفل‌شده تو استعلام"""
+    lvl = max(1, int(team_level or 1))
+    return [q for q in config.TEAM_QUESTS if lvl < q.get("min_level", 1)]
 
 
 # ───────── کنده‌کاری تیمی (استخراج) ─────────
@@ -709,15 +815,15 @@ async def meta_set(session: AsyncSession, key: str, value: str) -> None:
 
 
 async def top_teams_by_points(session: AsyncSession, limit: int = 10) -> list[tuple[Team, int]]:
-    """لیدربرد کلی، بر اساس امتیاز تیم"""
-    q = select(Team).order_by(Team.points.desc(), Team.total_kills.desc()).limit(limit)
+    """لیدربرد کلی، بر اساس امتیاز تیم | تیم‌های مخفی («تیم مخفی») نمیان"""
+    q = select(Team).where(Team.lb_hidden == 0).order_by(Team.points.desc(), Team.total_kills.desc()).limit(limit)
     teams_ = list((await session.execute(q)).scalars())
     return [(t, await member_count(session, t.id)) for t in teams_]
 
 
 async def top_teams_week(session: AsyncSession, limit: int = 10) -> list[tuple[Team, int]]:
-    """رقابت این هفته، بر اساس امتیاز هفته"""
-    q = select(Team).order_by(Team.week_points.desc(), Team.points.desc()).limit(limit)
+    """رقابت این هفته، بر اساس امتیاز هفته | تیم‌های مخفی («تیم مخفی») نمیان"""
+    q = select(Team).where(Team.lb_hidden == 0).order_by(Team.week_points.desc(), Team.points.desc()).limit(limit)
     teams_ = list((await session.execute(q)).scalars())
     return [(t, await member_count(session, t.id)) for t in teams_]
 
@@ -773,9 +879,12 @@ async def team_medal_sums(session: AsyncSession, team_id: int) -> dict:
 
 
 async def top_teams_by_medals(session: AsyncSession, tab: str, limit: int = 10,
-                              week_id: str | None = None, day_id: str | None = None) -> list[tuple[Team, int, int]]:
-    """برترین تیم‌ها بر اساس مدال اعضا توی تب، خروجی: (تیم، جمع مدال، تعداد اعضا)"""
-    all_teams = list((await session.execute(select(Team))).scalars())
+                              week_id: str | None = None, day_id: str | None = None,
+                              include_hidden: bool = False) -> list[tuple[Team, int, int]]:
+    """برترین تیم‌ها بر اساس مدال اعضا توی تب، خروجی: (تیم، جمع مدال، تعداد اعضا)
+    تیم‌های مخفی از نمایش حذفن ولی برای جایزه هفتگی (include_hidden) حساب میشن"""
+    q = select(Team) if include_hidden else select(Team).where(Team.lb_hidden == 0)
+    all_teams = list((await session.execute(q)).scalars())
     scored: list[tuple[Team, int, int]] = []
     for t in all_teams:
         members = await get_members(session, t.id)
@@ -819,7 +928,7 @@ async def maybe_weekly_rollover(session: AsyncSession) -> list[dict] | None:
         return None
 
     # رتبه‌بندی بر اساس مدال‌های هفته‌ای که تازه تموم شده (سطل‌های کاربرا هنوز کلید قدیمی دارن)
-    scored = await top_teams_by_medals(session, "week", limit=3, week_id=last)
+    scored = await top_teams_by_medals(session, "week", limit=3, week_id=last, include_hidden=True)
     winners = [(t, total) for t, total, _ in scored if total > 0][:3]
 
     medals_row = {1: "🥇", 2: "🥈", 3: "🥉"}
@@ -916,6 +1025,26 @@ async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tupl
     return True, f"🏗 {title} رفت رو لول {fa_num(new_level)}، {effect}"
 
 
+async def toggle_hidden(session: AsyncSession, user: User, team_name: str | None = None) -> tuple[bool, str]:
+    """«تیم مخفی» فقط دست ادمینه، با اسم هر تیمی و بدون اسم تیم خود ادمین (دوباره بزنی برمی‌گرده)"""
+    if team_name:
+        team = await get_team_by_name(session, team_name)
+        if not team:
+            return False, f"❌ تیمی به اسم «{team_name}» پیدا نکردم"
+    else:
+        team = await get_team_of(session, user.id)
+        if not team:
+            return False, "🏴 خودت تو تیمی نیستی، با اسم بزن: «تیم مخفی [اسم تیم]»"
+    team.lb_hidden = 0 if team.lb_hidden else 1
+    if team.lb_hidden:
+        return True, (
+            f"👻 تیم «{team.name}» نامرئی شد\n\n"
+            "دیگه تو لیدربردهای تیم دیده نمیشه\n"
+            "برای برگشت دوباره «تیم مخفی» رو بزن"
+        )
+    return True, f"👀 تیم «{team.name}» برگشت تو لیدربردها"
+
+
 async def team_deposit(session: AsyncSession, user: User, amount: int) -> tuple[bool, str]:
     """واریز کمک مالی عضو به بانک تیم، «تیم واریز 1200»"""
     if amount <= 0:
@@ -924,7 +1053,7 @@ async def team_deposit(session: AsyncSession, user: User, amount: int) -> tuple[
     if not team:
         return False, "🏴 تو تیمی نیستی که بخوای بهش کمک کنی"
     if user.cash < amount:
-        return False, f"❌ این همه پول نقد نداری، جیبت {money(user.cash)} ـه"
+        return False, f"❌ این همه پول نقد نداری، جیبت {money(user.cash)} داری"
     user.cash -= amount
     team.bank += amount
     return True, f"🏦 {money(amount)} به بانک تیم «{team.name}» واریز شد، دستت درد نکنه رفیق 🙏"

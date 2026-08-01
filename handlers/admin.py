@@ -5,6 +5,7 @@
 به غریبه‌ها کاملاً بی‌صداس
 """
 
+import asyncio
 import time
 
 from telegram import Update
@@ -12,13 +13,13 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import parts, respond
+from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
 from services import economy, users
 from services import forcejoin as fj_svc
 from services import teams as team_svc
 from services import world as world_svc
-from utils import esc, fa_num, jalali_str, money, parse_amount
+from utils import esc, fa_num, jalali_str, money, now_utc, parse_amount
 
 
 def _is_admin(update: Update) -> bool:
@@ -40,6 +41,7 @@ def _panel_text(user, extra: str | None = None) -> str:
         "🧨 <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
         "🔧 /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
         "👻 /hideboard، نامرئی شدن از همه لیدربردها (دوباره بزنی برمی‌گرده)\n"
+        "📣 «پیام همگانی» از دکمه پایین، پیامت فوروارد یا ارسال میشه به گروه‌ها | پی‌وی‌ها | همه\n"
         "🔄 /update، به‌روزرسانی فوری وضعیت بازی: لود دوباره کانفیگ، رول بازار، بازخوانی ظرفیت تیم‌ها و ریست کش‌ها (آب‌وهوا دست نمی‌خوره)\n"
         "💾 /backup و /upload_backup، بک‌آپ و ری‌استور\n"
         "🔌 /botoff و /boton توی گروه، خاموش و روشن کردن ربات فقط تو همون گروه"
@@ -61,6 +63,112 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await respond(update, text, kb.admin_kb())
 
 
+# ───────── پیام همگانی 📣 ─────────
+
+async def broadcast_scope_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """انتخاب دامنه پیام همگانی → بعدش مد ارسال پرسیده میشه"""
+    if not _is_admin(update):
+        await update.callback_query.answer()
+        return
+    p = parts(update)  # bcs:scope:src_chat:src_msg
+    scope, src_chat, src_msg = p[1], p[2], p[3]
+    label = {"g": "👥 فقط گروه‌ها", "p": "👤 فقط پی‌وی‌ها", "a": "📣 همه"}.get(scope, "📣 همه")
+    text = (
+        "<b>📣 پیام همگانی</b>\n\n"
+        f"🎯 دامنه: {label}\n\n"
+        "چطور بره؟\n"
+        "📤 فوروارد، با تگ فوروارد از طرف تو\n"
+        "✉️ ارسال، از طرف خود ربات و بدون تگ"
+    )
+    await respond(update, text, kb.broadcast_mode_kb(scope, src_chat, src_msg))
+
+
+async def broadcast_mode_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """شروع ارسال تو بک‌گراند، گزارش پیشرفت و نتیجه همینجا ادیت میشه"""
+    if not _is_admin(update):
+        await update.callback_query.answer()
+        return
+    p = parts(update)  # bcm:mode:scope:src_chat:src_msg
+    mode, scope, src_chat, src_msg = p[1], p[2], int(p[3]), int(p[4])
+    chat = update.effective_chat
+    msg = update.callback_query.message
+    await respond(update, "<b>📣 پیام همگانی</b>\n\n⏳ دارم می‌فرستم، تموم شد گزارش همینجا میاد")
+    asyncio.create_task(broadcast_run(
+        context.bot, chat.id, msg.message_id, mode, scope, src_chat, src_msg,
+    ))
+
+
+async def broadcast_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """لغو پیام همگانی"""
+    if not _is_admin(update):
+        await update.callback_query.answer()
+        return
+    await respond(update, "<b>😅 پیام همگانی بی‌خیال شد</b>")
+
+
+async def broadcast_run(bot, admin_chat: int, admin_msg: int, mode: str, scope: str,
+                        src_chat: int, src_msg: int) -> dict:
+    """
+    ارسال همگانی به هدف‌ها با مکث بین هر ارسال (نه ربات لگ می‌گیره نه تلگرام محدود می‌کنه)
+    mode: f (فوروارد) | t (کپی بدون تگ) | scope: g (گروه) | p (پی‌وی) | a (همه)
+    """
+    from telegram.error import BadRequest, Forbidden
+
+    from models import GroupActivity
+    from models import User as _User
+
+    async with session_scope() as s:
+        from sqlalchemy import select as _sel
+        groups = list((await s.execute(_sel(GroupActivity.chat_id))).scalars()) if scope in ("g", "a") else []
+        pvs = list((await s.execute(_sel(_User.telegram_id))).scalars()) if scope in ("p", "a") else []
+        await s.commit()
+
+    targets = [("👥", c) for c in groups] + [("👤", c) for c in pvs]
+    total = len(targets)
+    scope_label = {"g": "👥 فقط گروه‌ها", "p": "👤 فقط پی‌وی‌ها", "a": "📣 گروه‌ها و پی‌وی‌ها"}.get(scope, "📣")
+    ok = fail = 0
+
+    async def _progress(i: int) -> None:
+        try:
+            await bot.edit_message_text(
+                chat_id=admin_chat, message_id=admin_msg,
+                text=f"<b>📣 پیام همگانی</b>\n\n⏳ {fa_num(i)} از {fa_num(total)} ارسال شد…",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+    for i, (_, tgt) in enumerate(targets, 1):
+        try:
+            if mode == "f":
+                await bot.forward_message(chat_id=tgt, from_chat_id=src_chat, message_id=src_msg)
+            else:
+                await bot.copy_message(chat_id=tgt, from_chat_id=src_chat, message_id=src_msg)
+            ok += 1
+        except (BadRequest, Forbidden):
+            fail += 1
+        except Exception:
+            fail += 1
+        if i % 15 == 0:
+            await _progress(i)
+        await asyncio.sleep(config.BROADCAST_DELAY_SECONDS)
+
+    try:
+        await bot.edit_message_text(
+            chat_id=admin_chat, message_id=admin_msg,
+            text=(
+                "<b>✅ پیام همگانی تموم شد</b>\n\n"
+                f"🎯 دامنه: {scope_label}\n"
+                f"📤 موفق: {fa_num(ok)} | ❌ خطا: {fa_num(fail)}\n"
+                f"📊 کل مقصدها: {fa_num(total)}"
+            ),
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+    return {"ok": ok, "fail": fail, "total": total}
+
+
 async def _user_card_text(session, target) -> str:
     """کارت پروفایل یه کاربر برای پنل ادمین"""
     name = esc(users.display_name(target))
@@ -74,7 +182,7 @@ async def _user_card_text(session, target) -> str:
         f"⭐ لول {fa_num(target.level)} | ✨ {fa_num(target.xp)} از {fa_num(economy.xp_need(target.level))}\n"
         f"💵 نقدی {money(target.cash)}\n"
         f"🏦 بانک {money(target.bank_balance)} (لول {fa_num(target.bank_level)})\n"
-        f"🏚 پناهگاه لول {fa_num(target.shelter_level)}{team_line}\n"
+        f"🏚 انبار لول {fa_num(target.shelter_level)}{team_line}\n"
         f"✅ برد {fa_num(target.wins)} | ❌ باخت {fa_num(target.losses)}\n"
         f"🗓 عضو {joined}"
     )
@@ -163,6 +271,28 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         dogs_wiped = (await s.execute(
             sa_update(_Dog).where(_Dog.personality.isnot(None)).values(personality=None)
         )).rowcount or 0
+        # زمین‌دارای قدیمی که قدم «اولین زمین» آنبوردینگشون گیر کرده، ثبت اولین زمین
+        from models import Plot as _Plot, User as _User
+        owner_ids = set((await s.execute(sa_select(_Plot.user_id))).scalars().all())
+        plot_fixed = 0
+        if owner_ids:
+            q_stuck = sa_select(_User).where(_User.id.in_(owner_ids), _User.first_plot_at.is_(None))
+            for u in (await s.execute(q_stuck)).scalars():
+                u.first_plot_at = now_utc()
+                plot_fixed += 1
+        # امتیاز مهارتِ بازیکن‌هایی که هنوز هیچ امتیازی خرج نکردن به مقدار درست لولشون به‌روز میشه
+        # (پس‌دررو: به‌ازای هر لولی که دارن، با بونوس لول ۱۰ و ۲۰)، خرج‌کرده‌ها سر جاشون می‌مونن
+        q_sk = sa_select(_User).where(
+            _User.skill_points.isnot(None),
+            _User.skill_power == 0, _User.skill_speed == 0,
+            _User.skill_defense == 0, _User.skill_loot == 0,
+        )
+        skills_fixed = 0
+        for u in (await s.execute(q_sk)).scalars():
+            expect = users.expected_skill_points(u.level or 1)
+            if (u.skill_points or 0) != expect:
+                u.skill_points = expect
+                skills_fixed += 1
         # ظرفیت تیم‌ها داینامیک از لول حساب میشه؛ اینجا بازخوانی و گزارش سرریز
         all_teams = (await s.execute(sa_select(Team))).scalars().all()
         over: list[tuple[str, int, int]] = []
@@ -171,6 +301,8 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             cap = team_svc.team_capacity(t)
             if n > cap:
                 over.append((t.name, n, cap))
+        # لقب‌ها ذخیره نمیشن و زنده از روی لول حساب میشن، با ریلود کانفیگ اسم جدید 💎 Drug Lord روی همه افتاده
+        titled_n = (await s.execute(sa_select(sa_func.count(_User.id)))).scalar() or 0
         await s.commit()
 
     # کش‌های حافظه ریست بشن تا وضعیت‌های قدیمی (ستینگ گیت | عضویت کاربرا) تازه بشن
@@ -192,6 +324,14 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lines.append(f"🐕 شخصیت {fa_num(dogs_wiped)} سگ پاک شد (سیستم شخصیت حذف شده)")
     else:
         lines.append("🐕 سگ‌ها دیگه شخصیت ندارن")
+    if plot_fixed:
+        lines.append(f"🌱 آنبوردینگ زمین {fa_num(plot_fixed)} بازیکن گیرکرده فیکس شد")
+    else:
+        lines.append("🌱 آنبوردینگ زمین همه اوکیه")
+    if skills_fixed:
+        lines.append(f"🎖 امتیاز مهارت {fa_num(skills_fixed)} بازیکنِ خرجنکرده به مقدار درست لولشون به‌روز شد")
+    else:
+        lines.append("🎖 امتیاز مهارت‌ها از قبل به‌روزه")
     if over:
         lines.append(
             f"⚠️ {fa_num(len(over))} تیم سرریز ظرفیت دارن: "
@@ -199,6 +339,7 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
     else:
         lines.append("✅ هیچ تیمی سرریز ظرفیت نیس")
+    lines.append(f"🏅 لقب {fa_num(titled_n)} بازیکن به‌روزه (خودکار از روی لول، لول 20: 💎 Drug Lord)")
     lines.append("🧹 کش تنظیمات گیت و عضویت کاربرا ریست شد")
     lines.append("🌦 آب‌وهوا دست‌نخورده موند، سر مرزهای ساعت ایران عوض میشه")
     await update.message.reply_html("\n".join(lines))
@@ -492,8 +633,7 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if kind == "fjset":
         async with session_scope() as s:
             me, _ = await users.get_or_create(s, update.effective_user)
-            me.pending_action = "fjchan"
-            me.pending_value = None
+            users.set_pending(me, "fjchan", None, chat_id_of(update))
             await s.commit()
         return await respond(
             update,
@@ -504,7 +644,20 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "کانال خصوصی؟ آیدی عددی + لینک دعوت بفرست:\n"
             "▫️ <code>-1001234567890 https://t.me/+AbCdEfGh</code>\n\n"
             "⚠️ ربات باید توی کانال ادمین باشه تا بتونه عضویت رو چک کنه\n\n"
-            "❌ پشیمون شدی بنویس «لغو»",
+            "❌ اگر هم پشیمون شدی بنویس «لغو»",
+        )
+
+    # ── شروع فلو پیام همگانی، متن/مدیای بعدی ادمین میشه پیام ──
+    if kind == "bcast":
+        async with session_scope() as s:
+            me, _ = await users.get_or_create(s, update.effective_user)
+            users.set_pending(me, "bcast", None, chat_id_of(update))
+            await s.commit()
+        return await respond(
+            update,
+            "<b>📣 پیام همگانی</b>\n\n"
+            "پیامتو بفرست، هر چی باشه (متن | عکس | ویدیو | فایل) همون می‌رسه به ملت\n\n"
+            "❌ اگر هم پشیمون شدی بنویس «لغو»",
         )
 
     # ── کارت یه کاربر ──
@@ -527,17 +680,28 @@ async def admin_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if target is None:
                 await s.commit()
                 return await respond(update, "❌ طرف پیدا نشد", kb.admin_kb())
-            me.pending_action = "admtp" if kind == "gtp" else "admxp"
-            me.pending_value = str(num)
+            users.set_pending(
+                me, "admtp" if kind == "gtp" else "admxp", str(num),
+                chat_id_of(update),
+            )
             name = esc(users.display_name(target))
             await s.commit()
-        label = "💰 چند تی‌پوینت" if kind == "gtp" else "✨ چند XP"
-        return await respond(
-            update,
-            f"<b>{label} به {name} بدیم؟</b>\n\n"
-            "فقط عددشو بفرست، مثلا 5000\n\n"
-            "❌ پشیمون شدی بنویس «لغو»",
-        )
+        # قالب یکدست با سایر سوال‌های عددی (مثل بانک)
+        if kind == "gtp":
+            qtext = (
+                f"<b>💰 هدیه تی‌پوینت به {name}</b>\n\n"
+                "چقد تی‌پوینت میخوای بهش بدی؟\n"
+                "عددشو همینجا بنویس و بفرست، مثلا: 5000\n\n"
+                "❌ اگر هم پشیمون شدی بنویس «لغو»"
+            )
+        else:
+            qtext = (
+                f"<b>✨ هدیه تجربه به {name}</b>\n\n"
+                "چند تا تجربه میخوای بهش بدی؟\n"
+                "عددشو همینجا بنویس و بفرست، مثلا: 500\n\n"
+                "❌ اگر هم پشیمون شدی بنویس «لغو»"
+            )
+        return await respond(update, qtext)
 
     # ── دادن به خودت (پنل کلاسیک) ──
     async with session_scope() as s:
@@ -646,7 +810,7 @@ async def _stats_text(bot=None) -> str:
         if gids:
             pl_rows = (await s.execute(
                 select(GroupPlayer.chat_id, func.count(GroupPlayer.user_tg))
-                .where(GroupPlayer.chat_id.in_(gids), GroupPlayer.last_active_at >= day_ago)
+                .where(GroupPlayer.chat_id.in_(gids), GroupPlayer.last_active_at >= hour_ago)
                 .group_by(GroupPlayer.chat_id)
             )).all()
             players_in = {cid: int(n) for cid, n in pl_rows}
@@ -771,17 +935,19 @@ async def _stats_text(bot=None) -> str:
     ]
     if top_groups:
         # شمارنده ساعتی، «دستورهای» این ساعت گروهه نه همه پیام‌ها (فعالیت = دستور)
-        lines += ["", "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>"]
+        # هر گروه دو خط: اسم | پلیرای فعال و تعداد دستورات ۱ ساعت اخیر (درخواست کارفرما)
+        lines += ["", "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>", ""]
         badges = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         for i, g in enumerate(top_groups):
             gname = esc(g.title) if g.title else f"گروه {fa_num(g.chat_id)}"
+            lines.append(f"{badges[i]} {gname}")
             lines.append(
-                f"{badges[i]} {gname} ⌨️ {fa_num(g.msgs_hour or 0)} دستور"
-                f" │ 👥 {fa_num(players_in.get(g.chat_id, 0))}"
+                f"پلیرای فعال: {fa_num(players_in.get(g.chat_id, 0))}"
+                f" | تعداد دستورات 1ساعت اخیر: {fa_num(g.msgs_hour or 0)}"
             )
     lines += [
         "",
-        "⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
+        "⏱️ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
     ]
     return "\n".join(lines)
 
