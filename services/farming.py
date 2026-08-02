@@ -159,7 +159,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         mkt = world_svc.market_mult(mults, p.crop)
         gain = apply_legendary_cap(p.crop, int(base * tier["mult"] * sell_mult * mkt))
         total_gain += gain
-        total_xp += config.SEEDS[p.crop]["xp"]
+        total_xp += economy.crop_xp(p.crop, tier["stars"])
         item_lines.append(
             f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)}، {money_tp(gain)}"
         )

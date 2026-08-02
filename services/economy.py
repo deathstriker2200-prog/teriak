@@ -65,6 +65,13 @@ def plot_quality_bonus(plot_level: int) -> float:
     return config.PLOT_Q5_PER_LEVEL * max(0, plot_level - 1)
 
 
+def crop_xp(seed_key: str, stars: int) -> int:
+    """تجربه برداشت هر ساقه: از رنج (کف، سقف) بذر بر اساس کیفیت ⭐1 تا ⭐5 درونیابی میشه"""
+    lo, hi = config.SEEDS[seed_key]["xp"]
+    stars = min(max(int(stars or 1), 1), 5)
+    return lo + round((hi - lo) * (stars - 1) / 4)
+
+
 def crop_yield(seed_key: str, plot_level: int = 1, user_level: int = 1) -> int:
     """درآمد برداشت با بونس لول کاربر | لول زمین روی قیمت اثر مستقیم نداره (فقط کیفیت و سرعت)"""
     base = config.SEEDS[seed_key]["sell"]

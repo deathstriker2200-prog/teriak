@@ -112,14 +112,16 @@ PLOT_UPGRADE_LEVELS = [3, 5, 10, 15, 20]
 # ترتیب پیشرفت: ماری‌جوانا → قارچ → پیوت → کراتوم → خشخاش سیاه → تریاک → کوکائین
 # price = قیمت بذر | grow_min = دقیقه رشد | sell = فروش | xp = تجربه برداشت | min_level = لول لازم
 # کلیدها عوض نشدن، انبار و زمین‌های بازیکنای قدیمی خودشون با آپدیت درست میشن
+# xp هر بذر: (کف، سقف) به‌ازای برداشت هر ساقه، بر اساس کیفیت ⭐1 تا ⭐5 درونیابی میشه (economy.crop_xp)
+# بازه درخواستی کارفرما: بذرهای عادی بین 4 تا 25 | افسانه‌ای‌ها میانگین جهنم 80 و ابلیس 200 و جهش‌یافته 500 (سقف کلی 500)
 SEEDS = {
-    "marijuana": {"name": "ماری‌جوانا",  "emoji": "🌿", "price": 120,  "grow_min": 5,  "sell": 300,   "xp": 10, "min_level": 1,  "desc": "محصول شروع هر دلال"},
-    "gharch":    {"name": "قارچ",         "emoji": "🍄", "price": 320,  "grow_min": 8,  "sell": 800,   "xp": 18, "min_level": 3,  "desc": "کپک سحرآمیز و پرطرفدار"},
-    "peyote":    {"name": "پیوت",         "emoji": "🌵", "price": 850,  "grow_min": 12, "sell": 2100,  "xp": 30, "min_level": 4,  "desc": "کاکتوس جادویی صحرا"},
-    "kratom":    {"name": "کراتوم",       "emoji": "🍃", "price": 1300, "grow_min": 14, "sell": 3400,  "xp": 35, "min_level": 5,  "desc": "برگ سبز انرژی‌بخش شرق"},
-    "khashkhash": {"name": "خشخاش سیاه",   "emoji": "🌺", "price": 1650, "grow_min": 16, "sell": 4300,  "xp": 40, "min_level": 7,  "desc": "گل سیاهی که تریاک ازش در میاد"},
-    "teriak":    {"name": "تریاک",        "emoji": "☕", "price": 2000, "grow_min": 18, "sell": 5200,  "xp": 45, "min_level": 10, "desc": "طلای سیاه محله"},
-    "cocaine":   {"name": "کوکائین",      "emoji": "⚪", "price": 5200, "grow_min": 25, "sell": 14000, "xp": 70, "min_level": 14, "desc": "پودر سفید قیمتی"},
+    "marijuana": {"name": "ماری‌جوانا",  "emoji": "🌿", "price": 120,  "grow_min": 5,  "sell": 300,   "xp": (4, 8), "min_level": 1,  "desc": "محصول شروع هر دلال"},
+    "gharch":    {"name": "قارچ",         "emoji": "🍄", "price": 320,  "grow_min": 8,  "sell": 800,   "xp": (6, 10), "min_level": 3,  "desc": "کپک سحرآمیز و پرطرفدار"},
+    "peyote":    {"name": "پیوت",         "emoji": "🌵", "price": 850,  "grow_min": 12, "sell": 2100,  "xp": (8, 13), "min_level": 4,  "desc": "کاکتوس جادویی صحرا"},
+    "kratom":    {"name": "کراتوم",       "emoji": "🍃", "price": 1300, "grow_min": 14, "sell": 3400,  "xp": (9, 15), "min_level": 5,  "desc": "برگ سبز انرژی‌بخش شرق"},
+    "khashkhash": {"name": "خشخاش سیاه",   "emoji": "🌺", "price": 1650, "grow_min": 16, "sell": 4300,  "xp": (11, 17), "min_level": 7,  "desc": "گل سیاهی که تریاک ازش در میاد"},
+    "teriak":    {"name": "تریاک",        "emoji": "☕", "price": 2000, "grow_min": 18, "sell": 5200,  "xp": (13, 20), "min_level": 10, "desc": "طلای سیاه محله"},
+    "cocaine":   {"name": "کوکائین",      "emoji": "⚪", "price": 5200, "grow_min": 25, "sell": 14000, "xp": (16, 25), "min_level": 14, "desc": "پودر سفید قیمتی"},
     # ── بذرهای افسانه‌ای، قابل خرید نیستن (فقط جستجو/کاروان/ایونت) و تو بازار سیاه دیده نمیشن ──
     # کاشتشون هیچ گیت لولی نداره و برای همه آزاده (min_level فقط تاریخیه)،
     # تو متن لول‌آپ هم اسمشون نمیاد که ملت فکر نکنن تو شاپ باز شدن
@@ -128,17 +130,17 @@ SEEDS = {
     # ابلیس هم دقیقا همین داستانو نسبت به جهنم داره (50,000 به‌جای 54,000 و 80 دقیقه به‌جای 90)
     # سود به‌ازای هر دقیقه رشد: کوکائین 560 | جهنم 600 | ابلیس 625 (تفاوتا عمداً کمه)
     "jahannam": {
-        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 45, "sell": 27000, "xp": 150,
+        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 45, "sell": 27000, "xp": (40, 120),
         "min_level": 1, "legendary": True, "desc": "از عمق جهنم رسیده",
     },
     "eblis": {
-        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 80, "sell": 50000, "xp": 300,
+        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 80, "sell": 50000, "xp": (100, 300),
         "min_level": 1, "legendary": True, "desc": "نایاب‌ترین بذر محله",
     },
     # ☣️ جهش‌یافته از جهنم و ابلیس هم نایاب‌تره (دراپش خیلی کمه) ولی ارزش کاشتش خیلی بالاتره
     # cap: سقف فروش نهاییش بعد از کیفیت/آب‌وهوا/بونس لول، جدا از سقف ۶۰,۰۰۰ی افسانه‌ای‌های عادی
     "mutant": {
-        "name": "بذر جهش‌یافته ☣️", "price": 0, "grow_min": 180, "sell": 150000, "xp": 600,
+        "name": "بذر جهش‌یافته ☣️", "price": 0, "grow_min": 180, "sell": 150000, "xp": (500, 500),
         "min_level": 1, "legendary": True, "cap": 200000, "desc": "یه جهش عجیب و غریب",
     },
 }
@@ -257,7 +259,8 @@ BATTLE_CRIT_MULT = 2.0        # دمیج نهایی ×۲
 # سیستم قدیمی بدون HP: قدرت حمله مهاجم با دفاع حریف مقایسه میشه و شانس برد درصدی درمیاد
 # بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره و از لیست حمله‌های پی‌وی خارج میشه
 PV_ATTACK_ENERGY_COST = 15        # هزینه انرژی هر حمله پی‌وی
-PV_ATTACK_LEVEL_RANGE = 4         # هدف اول بین ۴ لول بالاتر تا ۴ لول پایین‌تر، نبود فالبک بازتر
+PV_ATTACK_LEVEL_RANGE = 2         # هدف اول بین ۲ لول بالا تا ۲ لول پایین، نبود مرحله‌مرحله بازتر میشه
+PV_ATTACK_MAX_RANGE = 10          # تا این رنج باز میشه، بعدش فالبک قدیمی (اول بالاترها بعد پایین‌ترها)         # هدف اول بین ۴ لول بالاتر تا ۴ لول پایین‌تر، نبود فالبک بازتر
 PV_ATTACK_MIN_CHANCE = 0.15       # کف شانس برد
 PV_ATTACK_MAX_CHANCE = 0.85       # سقف شانس برد
 PV_ATTACK_CHANCE_SCALE = 0.02     # هر واحد اختلاف (حمله − دفاع) شانس رو اینقدر جابه‌جا می‌کنه
@@ -396,7 +399,7 @@ TITLES = [
     (14, "👑", "Boss"),
     (16, "💀", "Kingpin"),
     (18, "☠️", "Godfather"),
-    (20, "💎", "Drug Lord"),
+    (20, "💎", "Teriaky Lord"),
 ]
 
 # ───────── زره‌ها (فروشگاه 🛡) ─────────
@@ -406,11 +409,11 @@ ARMORS = {
     "vest":   {"name": "جلیقه سنگین",    "price": 1500,  "defense": 14,  "min_level": 3,  "desc": "ضربه رو جذب می‌کنه"},
     "kevlar": {"name": "جلیقه کِولار",   "price": 2800,  "defense": 24,  "min_level": 5,  "desc": "استاندارد پلیس‌ها"},
     "steel":  {"name": "زره فولادی",     "price": 4500,  "defense": 34,  "min_level": 6,  "desc": "محکم مثل در بانک"},
-    "swat":   {"name": "جلیقه تاکتیکی",  "price": 9000,  "defense": 52,  "min_level": 8,  "desc": "مخصوص یگه‌های ویژه"},
-    "nano":   {"name": "زره نانو",       "price": 30000, "defense": 90,  "min_level": 10, "desc": "تکنولوژی فضایی"},
-    "titan":  {"name": "زره تیتانیومی",  "price": 60000, "defense": 120, "min_level": 12, "desc": "سبک ولی شکست‌ناپذیر"},
+    "swat":   {"name": "جلیقه تاکتیکی",  "price": 9000,  "defense": 46,  "min_level": 8,  "desc": "مخصوص یگه‌های ویژه"},
+    "nano":   {"name": "زره نانو",       "price": 30000, "defense": 70,  "min_level": 10, "desc": "تکنولوژی فضایی"},
+    "titan":  {"name": "زره تیتانیومی",  "price": 60000, "defense": 90,  "min_level": 12, "desc": "سبک ولی شکست‌ناپذیر"},
     "legend": {
-        "name": "زره افسانه‌ای 👑", "price": 100000, "defense": 150, "min_level": 14,
+        "name": "زره افسانه‌ای 👑", "price": 100000, "defense": 110, "min_level": 14,
         "legendary": True,
         "desc": "این زره افسانه‌ای باعث می‌شود نصف مقدار سکه‌ای که دشمن از شما دریافت می‌کند از بین برود",
     },
@@ -560,12 +563,12 @@ QUALITY_TIERS = [
 SEARCH_COOLDOWN_MINUTES = 10      # هر ۱۰ دقیقه یه جستجو
 # هر نتیجه شانس خودشو داره، جمع شانس‌ها باید ۱ باشه
 SEARCH_OUTCOMES = [
-    {"key": "money",       "chance": 0.27, "emoji": "💰", "text": "مقداری پول پیدا کردی",        "min": 100, "max": 700},
-    {"key": "seed_common", "chance": 0.25, "emoji": "🌱", "text": "بذر معمولی پیدا کردی",        "pool": ["marijuana", "gharch"]},
-    {"key": "seed_rare",   "chance": 0.20, "emoji": "🌿", "text": "بذر کمیاب پیدا کردی",         "pool": ["peyote", "kratom", "khashkhash", "teriak", "cocaine"]},
-    {"key": "seed_hell",   "chance": 0.07, "emoji": "🔥", "text": "بذر جهنم پیدا کردی",          "pool": ["jahannam"]},
-    {"key": "seed_devil",  "chance": 0.05, "emoji": "😈", "text": "بذر ابلیس پیدا کردی",         "pool": ["eblis"]},
-    {"key": "seed_mutant", "chance": 0.01, "emoji": "☣️", "text": "بذر جهش‌یافته پیدا کردی",      "pool": ["mutant"]},
+    {"key": "money",       "chance": 0.31, "emoji": "💰", "text": "مقداری پول پیدا کردی",        "min": 100, "max": 700},
+    {"key": "seed_common", "chance": 0.275, "emoji": "🌱", "text": "بذر معمولی پیدا کردی",       "pool": ["marijuana", "gharch"]},
+    {"key": "seed_rare",   "chance": 0.22, "emoji": "🌿", "text": "بذر کمیاب پیدا کردی",         "pool": ["peyote", "kratom", "khashkhash", "teriak", "cocaine"]},
+    {"key": "seed_hell",   "chance": 0.03, "emoji": "🔥", "text": "بذر جهنم پیدا کردی",          "pool": ["jahannam"]},
+    {"key": "seed_devil",  "chance": 0.01, "emoji": "😈", "text": "بذر ابلیس پیدا کردی",         "pool": ["eblis"]},
+    {"key": "seed_mutant", "chance": 0.005, "emoji": "☣️", "text": "بذر جهش‌یافته پیدا کردی",     "pool": ["mutant"]},
     {"key": "thief",       "chance": 0.15, "emoji": "☠️", "text": "دزد مقداری پولت را دزدید",   "pct_min": 0.05, "pct_max": 0.12},
 ]
 

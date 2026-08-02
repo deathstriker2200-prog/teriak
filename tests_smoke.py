@@ -81,8 +81,8 @@ async def main() -> None:
           config.SEEDS["mutant"]["sell"] == 150000 and config.SEEDS["mutant"].get("cap") == 200000)
     _mrate = [o for o in config.SEARCH_OUTCOMES if o["key"] == "seed_mutant"]
     _cloot = [l for l in config.CARAVAN_LOOT if l["key"] == "mutant"]
-    check("دراپ جهش‌یافته تو جستجو و کاروان خیلی کمه (۱٪، کمتر از ابلیس)",
-          _mrate and _mrate[0]["chance"] == 0.01 and _cloot and _cloot[0]["chance"] == 0.01)
+    check("دراپ جهش‌یافته تو جستجو ۰٫۵٪ شد (کاروان همون ۱٪ مونده)",
+          _mrate and _mrate[0]["chance"] == 0.005 and _cloot and _cloot[0]["chance"] == 0.01)
     check("جمع شانس جستجوها ۱ـه", abs(sum(o["chance"] for o in config.SEARCH_OUTCOMES) - 1.0) < 1e-9)
     check("جمع شانس لوت کاروان ۱ـه", abs(sum(l["chance"] for l in config.CARAVAN_LOOT) - 1.0) < 1e-9)
     check("قیمت فروش بذر ابلیس 50,000 و بذر جهنم 27,000ـه (بکم کوچیک از دوبرابر کوکائین)",
@@ -133,8 +133,8 @@ async def main() -> None:
 
     # ── بالانس آیتم‌های آخر بازی و زره‌ها ──
     check("زره‌های آخر بازی دفاعشون باف شده",
-          config.ARMORS["legend"]["defense"] == 150 and config.ARMORS["titan"]["defense"] == 120
-          and config.ARMORS["nano"]["defense"] == 90 and config.ARMORS["swat"]["defense"] == 52)
+          config.ARMORS["legend"]["defense"] == 110 and config.ARMORS["titan"]["defense"] == 90
+          and config.ARMORS["nano"]["defense"] == 70 and config.ARMORS["swat"]["defense"] == 46)
     check("پلاسما پاک شده و گاتلینگ و آرپی‌جی رفتن تو گرمی با یه لول زودتر",
           "plasma" not in config.WEAPONS
           and config.WEAPONS["minigun"]["sec"] == "hot" and config.WEAPONS["minigun"]["min_level"] == 12
@@ -2032,7 +2032,7 @@ async def main() -> None:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
             if r["status"] == "money":
                 money_bounds.append(r["amount"])
-        check("همه نتیجه‌های جستجو دیده میشن (حتی جهش‌یافته با دراپ ۱٪)",
+        check("همه نتیجه‌های جستجو دیده میشن (حتی جهش‌یافته با دراپ ۰٫۵٪)",
               all(counts.get(k) for k in ("money", "seed_common", "seed_rare", "seed_hell", "seed_devil", "seed_mutant", "thief")),
               str(counts))
         check("دراپ جهش‌یافته از ابلیس هم کمتره", counts.get("seed_mutant", 0) < counts.get("seed_devil", 0), str(counts))
@@ -3619,7 +3619,7 @@ async def main() -> None:
           all(x in HS["gear"] for x in ["🛡 تجهیزات", "سلاح و زره فعال", "دو تب", "دست خالی",
                                         "قابلیت مخصوص", "آپگرید تجهیزات"]))
     check("هلپ لقب‌ها (بخش جدید)",
-          all(x in HS["titles"] for x in ["🏅 لقب", "Newbie", "Drug Lord", "لیدربرد", "تیم"]))
+          all(x in HS["titles"] for x in ["🏅 لقب", "Newbie", "Teriaky Lord", "لیدربرد", "تیم"]))
     check("هلپ کنده‌کاری (بخش جدید)",
           all(x in HS["mine"] for x in ["⛏ کنده‌کاری", "«تریاکی کنده کاری»", "«کنده کاری»", "60 ثانیه",
                                         "🪓 تبر", "⛏️ کلنگ", "لول 5", "«شکار کمیاب»"]))
@@ -4328,7 +4328,7 @@ async def main() -> None:
 
     # ── کانفیگ حمله پی‌وی کلاسیک ──
     check("کانفیگ حمله پی‌وی کلاسیک",
-          config.PV_ATTACK_ENERGY_COST == 15 and config.PV_ATTACK_LEVEL_RANGE == 4
+          config.PV_ATTACK_ENERGY_COST == 15 and config.PV_ATTACK_LEVEL_RANGE == 2 and config.PV_ATTACK_MAX_RANGE == 10
           and config.PV_ATTACK_MIN_CHANCE == 0.15 and config.PV_ATTACK_MAX_CHANCE == 0.85
           and config.PV_BASE_CHANCE == 0.50)
     check("مصونیت پی‌وی دقیقا 6 ساعته", config.PV_ATTACK_SHIELD_SECONDS == 6 * 3600,
@@ -4578,12 +4578,12 @@ async def main() -> None:
           and c_spy == 10000 - pv_svc.spy_cost(20) and pv_svc.spy_cost(20) == 1000
           and "طرف9411" in rt, f"{ans} | {c_spy}")
 
-    # پول کم: جاسوسی نمیشه، الرت یکدست و پول دست‌نخورده
+    # پول کم: جاسوسی نمیشه، الرت یکدست و پول دست‌نخورده (رو هدف تازه‌ای که هنوز جاسوش نشده، چون دوباره همون طرف رایگانه)
     async with session_scope() as s:
         low2 = await users.get_by_tg(s, 9410)
         low2.cash = 5
         await s.commit()
-    upd = _fake_update(f"patt:spy:{id9411}", uid=9410)
+    upd = _fake_update(f"patt:spy:{id9412}", uid=9410)
     await pv_h3.target_spy_cb(upd, None)
     ans = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
     async with session_scope() as s:
@@ -8876,7 +8876,7 @@ async def main() -> None:
           and users.title_of(SimpleNamespace(level=3)) == ("🥉", "Rookie")
           and users.title_of(SimpleNamespace(level=4)) == ("🔹", "Member")
           and users.title_of(SimpleNamespace(level=19)) == ("☠️", "Godfather")
-          and users.title_of(SimpleNamespace(level=20)) == ("💎", "Drug Lord"), str(users.title_of(SimpleNamespace(level=4))))
+          and users.title_of(SimpleNamespace(level=20)) == ("💎", "Teriaky Lord"), str(users.title_of(SimpleNamespace(level=4))))
     check("جدول لقب 11 ردیف و سر جاش از لول 1 تا 20",
           len(config.TITLES) == 11 and config.TITLES[0][0] == 1 and config.TITLES[-1][0] == 20
           and all(config.TITLES[i][0] < config.TITLES[i + 1][0] for i in range(10)))
@@ -8888,7 +8888,7 @@ async def main() -> None:
         cap_t = await profile_h2._profile_caption(s, pft)
         await s.commit()
     check("پروفایل خط «🏅 ایموجی لقب» داره",
-          "🏅 💎 Drug Lord" in cap_t and "<b>🛡 تجهیزات</b>" in cap_t and "<b>💰 دارایی</b>" in cap_t,
+          "🏅 💎 Teriaky Lord" in cap_t and "<b>🛡 تجهیزات</b>" in cap_t and "<b>💰 دارایی</b>" in cap_t,
           cap_t.splitlines()[4] if cap_t else "-")
 
     # ── تجهیزات: انتخاب سلاح و زره فعال ──
@@ -9406,8 +9406,8 @@ async def main() -> None:
 
     # ═══ این دور: لقب تو لیدربرد (دوخطی) و لیست اعضای تیم (بولد「») + لقب آخر 💎 Drug Lord ═══
 
-    check("لقب لول 20 اسمش Drug Lord-ه",
-          users.title_of(SimpleNamespace(level=20)) == ("💎", "Drug Lord"),
+    check("لقب لول 20 اسمش Teriaky Lord-ه",
+          users.title_of(SimpleNamespace(level=20)) == ("💎", "Teriaky Lord"),
           str(users.title_of(SimpleNamespace(level=20))))
 
     # ── لیدربرد بازیکنان: هر ردیف دوخطی، ایموجی لقب + اسم لقب بولد تو「» ──
@@ -9497,8 +9497,156 @@ async def main() -> None:
     await admin_h.update_cmd(upd_ut, None)
     rep_ut = next((c[1] for c in upd_ut.message.calls if "به‌روز" in c[1]), "")
     check("گزارش /update خط لقب‌ها رو هم داره",
-          "🏅 لقب" in rep_ut and "Drug Lord" in rep_ut,
+          "🏅 لقب" in rep_ut and "Teriaky Lord" in rep_ut,
           next((ln for ln in rep_ut.splitlines() if "🏅" in ln), "-"))
+
+    # ═══ این دور: تجربه برداشت بر اساس کیفیت + دراپ جستجو کمتر + زره نرم + رنج مرحله‌ای پی‌وی ═══
+    # ═══ + جاسوسی دوباره همون طرف رایگان + برگشت لقب Teriaky Lord ═══
+
+    # ── تجربه برداشت: بازه (کف، سقف) با کیفیت ⭐1 تا ⭐5 ──
+    check("تجربه بذرهای عادی بین 4 تا 25 بر اساس کیفیت",
+          economy.crop_xp("marijuana", 1) == 4 and economy.crop_xp("marijuana", 5) == 8
+          and economy.crop_xp("cocaine", 1) == 16 and economy.crop_xp("cocaine", 5) == 25
+          and all(4 <= economy.crop_xp(k, st) <= 25 for k in
+                  ("marijuana", "gharch", "peyote", "kratom", "khashkhash", "teriak", "cocaine")
+                  for st in range(1, 6)),
+          str(economy.crop_xp("cocaine", 3)))
+    check("افسانه‌ای‌ها با میانگین ⭐3 = 80 و 200 و 500 و سقف کلی 500",
+          economy.crop_xp("jahannam", 3) == 80 and economy.crop_xp("eblis", 3) == 200
+          and economy.crop_xp("mutant", 3) == 500 and economy.crop_xp("mutant", 5) == 500
+          and economy.crop_xp("jahannam", 1) == 40 and economy.crop_xp("jahannam", 5) == 120
+          and economy.crop_xp("eblis", 1) == 100 and economy.crop_xp("eblis", 5) == 300,
+          str(economy.crop_xp("jahannam", 3)))
+    check("کف و سقف کلی تجربه برداشت 4 تا 500",
+          min(economy.crop_xp(k, 1) for k in config.SEEDS) == 4
+          and max(economy.crop_xp(k, 5) for k in config.SEEDS) == 500)
+
+    # برداشت واقعی با کیفیت ثابت ⭐، تجربه دقیق کف بازه‌ست
+    async with session_scope() as s:
+        qxu, _ = await users.get_or_create(s, tg(9981, "xph", "برداشتی"))
+        qxu.level = 20
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in config.SEEDS))
+        await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
+        pqx = Plot(user_id=qxu.id, status="growing", crop="marijuana", level=1)
+        pqx.planted_at = now_utc() - timedelta(hours=1)
+        pqx.ready_at = now_utc() - timedelta(seconds=1)
+        s.add(pqx)
+        await s.flush()
+        _orig_q2 = world_svc.roll_quality
+        world_svc.roll_quality = lambda bonus=0.0: config.QUALITY_TIERS[0]  # ⭐
+        xp0 = qxu.xp or 0
+        ok_qx, _a, _ex, _dq, _nn = await farming.harvest_all(s, qxu)
+        world_svc.roll_quality = _orig_q2
+        check("برداشت ماری‌جوانا با کیفیت ⭐ دقیقاً 4 تجربه میده",
+              ok_qx and (qxu.xp or 0) - xp0 == 4, f"{(qxu.xp or 0) - xp0}")
+        await s.commit()
+
+    # ── درصد جستجوی افسانه‌ای‌ها ──
+    _srch = {o["key"]: o["chance"] for o in config.SEARCH_OUTCOMES}
+    check("دراپ جستجو: جهنم 3٪ و ابلیس 1٪ و جهش‌یافته 0.5٪ و جمع شانس‌ها 1",
+          _srch["seed_hell"] == 0.03 and _srch["seed_devil"] == 0.01 and _srch["seed_mutant"] == 0.005
+          and abs(sum(_srch.values()) - 1.0) < 1e-9, str(_srch))
+
+    # ── رنج مرحله‌ای هدف پی‌وی: ±2 → ±3 → … → ±10 → فالبک ──
+    async with session_scope() as s:
+        pva, _ = await users.get_or_create(s, tg(9982, "pvst", "مرحله‌ای"))
+        pva.level = 45
+        pva.shield_until = None
+        oldfa = await users.get_by_tg(s, 9420)  # لول 50، از رقابت مرحله‌ها خارجش می‌کنیم
+        oldfa.shield_until = now_utc() + timedelta(hours=2)
+        for vid, lv in ((9983, 43), (9984, 42), (9985, 35)):
+            v, _ = await users.get_or_create(s, tg(vid, f"pvs{vid}", f"مرحله{vid}"))
+            v.level, v.shield_until = lv, None
+        await s.commit()
+        picks = set()
+        for _ in range(40):
+            t = await pv_svc.pick_random_target(s, pva)
+            if t:
+                picks.add(t.telegram_id)
+        check("بازه اول ±2 فقط نزدیک‌ترین لول رو میاره",
+              picks == {9983}, str(sorted(picks)))
+        (await users.get_by_tg(s, 9983)).shield_until = now_utc() + timedelta(hours=2)
+        picks2 = set()
+        for _ in range(40):
+            t = await pv_svc.pick_random_target(s, pva)
+            if t:
+                picks2.add(t.telegram_id)
+        check("نزدیک محافظت شد، یه مرحله بازتر (اختلاف 3) میاد",
+              picks2 == {9984}, str(sorted(picks2)))
+        (await users.get_by_tg(s, 9984)).shield_until = now_utc() + timedelta(hours=2)
+        picks3 = set()
+        for _ in range(40):
+            t = await pv_svc.pick_random_target(s, pva)
+            if t:
+                picks3.add(t.telegram_id)
+        check("تا رنج مکس 10 باز میشه و اختلاف 10 رو میاره",
+              picks3 == {9985}, str(sorted(picks3)))
+        (await users.get_by_tg(s, 9985)).shield_until = now_utc() + timedelta(hours=2)
+        t_fb2 = await pv_svc.pick_random_target(s, pva)
+        check("هیچی تو رنج نبود فالبک قدیمی جواب میده (خارج پنجره ±10)",
+              t_fb2 is not None and t_fb2.telegram_id != 9982 and abs(t_fb2.level - 45) > 10,
+              str((t_fb2.telegram_id, t_fb2.level) if t_fb2 else None))
+
+    # ── جاسوسی دوباره همون طرف رایگانه ──
+    async with session_scope() as s:
+        spyu, _ = await users.get_or_create(s, tg(9990, "spyr", "جاسوس"))
+        spyu.level, spyu.cash = 20, 10000
+        spyu.last_spy_target_id = None
+        spp, _ = await users.get_or_create(s, tg(9991, "spvt", "هدف جاسوسی"))
+        spp.cash, spp.level = 7777, 10
+        id_spp = spp.id
+        spq, _ = await users.get_or_create(s, tg(9992, "spvo", "هدف دیگه"))
+        spq.cash, spq.level = 5555, 8
+        id_spq = spq.id
+        cost_spy = pv_svc.spy_cost(20)
+        await s.commit()
+
+    upd_s1 = _fake_update(f"patt:spy:{id_spp}", uid=9990)
+    await pv_h3.target_spy_cb(upd_s1, None)
+    async with session_scope() as s:
+        spyu = await users.get_by_tg(s, 9990)
+        check("جاسوسی اول یه طرف هزینه برمیداره و آخرین هدف ثبت میشه",
+              spyu.cash == 10000 - cost_spy and spyu.last_spy_target_id == id_spp,
+              f"{spyu.cash} / {spyu.last_spy_target_id}")
+        await s.commit()
+
+    upd_s2 = _fake_update(f"patt:spy:{id_spp}", uid=9990)
+    await pv_h3.target_spy_cb(upd_s2, None)
+    ans_s2 = next((c for c in upd_s2.callback_query.calls if c[0] == "answer"), None)
+    ed_s2 = next((c for c in upd_s2.callback_query.calls if c[0] == "edit"), None)
+    btns_s2 = [b.text for row in (ed_s2[2].get("reply_markup").inline_keyboard if ed_s2 else []) for b in row]
+    async with session_scope() as s:
+        cash_after2 = (await users.get_by_tg(s, 9990)).cash
+        await s.commit()
+    check("جاسوسی دوباره همون طرف رایگانه، پول کم نمیشه و دکمه رایگانه",
+          cash_after2 == 10000 - cost_spy
+          and ans_s2 is not None and "رایگان" in str(ans_s2[1])
+          and any("رایگان" in t for t in btns_s2),
+          f"{cash_after2} | {btns_s2}")
+
+    upd_s3 = _fake_update(f"patt:spy:{id_spq}", uid=9990)
+    await pv_h3.target_spy_cb(upd_s3, None)
+    async with session_scope() as s:
+        spyu = await users.get_by_tg(s, 9990)
+        check("هدف که عوض بشه دوباره پولیه و آخرین هدف به‌روز میشه",
+              spyu.cash == 10000 - 2 * cost_spy and spyu.last_spy_target_id == id_spq,
+              f"{spyu.cash} / {spyu.last_spy_target_id}")
+        await s.commit()
+
+    upd_s4 = _fake_update(f"patt:spy:{id_spp}", uid=9990)
+    await pv_h3.target_spy_cb(upd_s4, None)
+    async with session_scope() as s:
+        cash_after4 = (await users.get_by_tg(s, 9990)).cash
+        await s.commit()
+    check("برگشت به هدف قبلی هم پولیه چون آخرین جاسوس عوض شده",
+          cash_after4 == 10000 - 3 * cost_spy, str(cash_after4))
+
+    # ── زره‌های نرم‌شده (دمیج برگرده) ──
+    check("دفاع زره‌های ته‌خط نرم شد",
+          config.ARMORS["swat"]["defense"] == 46 and config.ARMORS["nano"]["defense"] == 70
+          and config.ARMORS["titan"]["defense"] == 90 and config.ARMORS["legend"]["defense"] == 110)
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

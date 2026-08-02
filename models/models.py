@@ -79,6 +79,7 @@ class User(Base):
 
     # آخرین حمله پی‌وی که خودت زدی — کولدان حمله پی‌وی روی این حساب میشه
     pv_attack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_spy_target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # جاسوسی دوباره همون طرف رایگانه
 
     # نبرد HP گروهی — جان دائمی بین نبردها میمونه | NULL یعنی هنوز مقداردهی نشده (فول حساب میشه)
     hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
