@@ -103,6 +103,8 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
         return False, f"🌾 بذر {seed['name']} نداری، از بخش بذرهای شاپ بخرش"
 
     await add_seed_stock(session, user.id, seed_key, -1)
+    from services import tracklog as tl
+    await tl.bump_plant(session, user.id, seed_key)  # لاگ ردیابی ادمین
 
     seconds = await grow_seconds(session, user, plot, seed_key)
     plot.status = "growing"
@@ -170,6 +172,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     total_xp = 0
     total_units = 0
     n_harvests = 0
+    harv_seeds: dict[str, int] = {}  # لاگ ردیابی ادمین: هر بذر چندتا برداشت شد
     item_lines: list[str] = []
     lost_lines: list[str] = []
     from services import smuggle as smg
@@ -189,6 +192,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         gain = apply_legendary_cap(p.crop, int(base * sell_mult * mkt) * qty)
         total_xp += economy.crop_xp(p.crop, tier["stars"])
         n_harvests += 1
+        harv_seeds[p.crop] = harv_seeds.get(p.crop, 0) + qty
         # محصول بعد برداشت نقد نمیشه، تعدادی و با ارزش قفل‌شده همون لحظه میره تو انبار
         # فروش (محموله یا کاروان قاچاق) بعداً انجام میشه و عرضه بازار موقع فروش ثبت میشه
         # هر محصول ظرفیت انبار خودشو داره، سرریز از بین میره و به کاربر گزارش میشه
@@ -208,6 +212,8 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
 
     user.last_harvest_at = now_utc()
     notes = users.add_xp(user, total_xp)
+    from services import tracklog as tl
+    await tl.bump_harvest(session, user.id, total_gain, total_xp, n_harvests, harv_seeds)  # لاگ ردیابی ادمین
 
     # قلاب کوئست تیم، برداشت هر عضو حساب میشه
     from services import teams as team_svc

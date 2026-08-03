@@ -554,7 +554,7 @@ async def main() -> None:
               battle_svc.roll_damage(10, int(10 * config.BATTLE_NO_DAMAGE_DEF_RATIO), 200)[0] == 0)
         check("کانفیگ دمیج درصدی مکس HP و نسبت و واریانس",
               config.BATTLE_DMG_VARIANCE == 0.30 and config.BATTLE_NO_DAMAGE_DEF_RATIO == 3.0
-              and config.BATTLE_DMG_PCT_MIN == 0.012 and config.BATTLE_DMG_PCT_MAX == 0.09)
+              and config.BATTLE_DMG_PCT_MIN == 0.05 and config.BATTLE_DMG_PCT_MAX == 0.20)
         random.seed(21)
         _oc2 = config.BATTLE_CRIT_CHANCE
         config.BATTLE_CRIT_CHANCE = 0.0
@@ -566,7 +566,7 @@ async def main() -> None:
         check("دمیج بین کف و سقف درصدی مکس HP قربانی می‌چرخه و قوی‌تر بودن بیشتر می‌زنه",
               min(dms_w) >= round(400 * config.BATTLE_DMG_PCT_MIN * (1 - v30))
               and max(dms_s) <= round(400 * config.BATTLE_DMG_PCT_MAX * (1 + v30))
-              and sum(dms_s) > sum(dms_w) * 2, f"{min(dms_w)}..{max(dms_s)}")
+              and sum(dms_s) > sum(dms_w) * 1.5, f"{min(dms_w)}..{max(dms_s)}")
 
         # ── ضربه کامل نبرد HP (سرویس) ──
         from models import InventoryItem
@@ -621,7 +621,7 @@ async def main() -> None:
         check("تلاش بی‌نتیجه هم انرژی و کولدان می‌سوزونه",
               w.energy < config.MAX_ENERGY and (await battle_svc.cooldown_left(s, w)) > 0)
 
-        # ── شکست = ۱۰ دقیقه بیهوشی و زنده شدن خودکار با HP فول ──
+        # ── شکست = ۳۰ دقیقه بیهوشی و زنده شدن خودکار با HP فول ──
         u1.energy = config.MAX_ENERGY
         u1.last_attack_at = None
         u2.hp = 1
@@ -629,10 +629,10 @@ async def main() -> None:
         w_b, l_b = u1.wins, u2.losses
         res_kill = await battle_svc.execute_hit(s, u1, u2)
         check("ضربه آخر حریف رو زمین زد", res_kill["ok"] and res_kill["killed"] and u2.hp == 0)
-        check("شکست ۱۰ دقیقه بیهوشی میده",
-              u2.dead_until is not None and 9 * 60 < battle_svc.dead_left(u2) <= 10 * 60,
+        check("شکست ۳۰ دقیقه بیهوشی میده",
+              u2.dead_until is not None and 29 * 60 < battle_svc.dead_left(u2) <= 30 * 60,
               str(battle_svc.dead_left(u2)))
-        check("کانفیگ بیهوشی ۶۰۰ ثانیه", config.BATTLE_DEAD_SECONDS == 600)
+        check("کانفیگ بیهوشی ۱۸۰۰ ثانیه", config.BATTLE_DEAD_SECONDS == 1800)
         check("برد و باخت فقط موقع شکست ثبت شد", u1.wins == w_b + 1 and u2.losses == l_b + 1)
         u1.energy = config.MAX_ENERGY
         u1.last_attack_at = None
@@ -1740,17 +1740,17 @@ async def main() -> None:
               and "سلامت فول" in htexts[2]
               and all(st == "success" for st in hstyles), str(htexts))
         check("دکمه‌های درمان قالب «اسم | قیمت TP | سلامت» رو دارن",
-              htexts[0] == "🩹 باند کوچک | 🪙 400 TP | 🏥 سلامت +75"
-              and htexts[1] == "💉 کیت درمان | 🪙 900 TP | 🏥 سلامت +150"
-              and htexts[2] == "🏥 جعبه کمک‌های اولیه | 🪙 1,800 TP | 🏥 سلامت فول", str(htexts))
+              htexts[0] == "🩹 باند کوچک | 🪙 750 TP | 🏥 سلامت +75"
+              and htexts[1] == "💉 کیت درمان | 🪙 2,000 TP | 🏥 سلامت +150"
+              and htexts[2] == "🏥 جعبه کمک‌های اولیه | 🪙 6,000 TP | 🏥 سلامت فول", str(htexts))
         check("کاتالوگ درمان سه آیتم و قیمت‌هاش تو کانفیگه",
               set(config.HEAL_ITEMS) == {"band", "kit", "box"}
               and config.HEAL_ITEMS["band"]["heal"] == 75
               and config.HEAL_ITEMS["kit"]["heal"] == 150
               and config.HEAL_ITEMS["box"]["heal"] is None
-              and config.HEAL_ITEMS["band"]["price"] == 400
-              and config.HEAL_ITEMS["kit"]["price"] == 900
-              and config.HEAL_ITEMS["box"]["price"] == 1800)
+              and config.HEAL_ITEMS["band"]["price"] == 750
+              and config.HEAL_ITEMS["kit"]["price"] == 2000
+              and config.HEAL_ITEMS["box"]["price"] == 6000)
 
     # ═══ کولدان کنده‌کاری ۱ دقیقه ═══
     check("کنده‌کاری ۶۰ ثانیه‌ایه", config.MINE_COOLDOWN_SECONDS == 60)
@@ -1758,7 +1758,7 @@ async def main() -> None:
     # ═══ کانفیگ نبرد HP جدید و کوئست‌های روزانه ═══
     check("کانفیگ نبرد HP",
           config.BATTLE_COOLDOWN_SECONDS == 30 and config.BATTLE_DMG_VARIANCE == 0.30
-          and len(config.BATTLE_STEAL_TIERS) == 5 and config.BATTLE_DEAD_SECONDS == 600
+          and len(config.BATTLE_STEAL_TIERS) == 5 and config.BATTLE_DEAD_SECONDS == 1800
           and config.MAX_LEVEL == 20 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 600)
     check("۶ کوئست روزانه با عنوان و عدد هدف",
           set(config.DAILY_QUESTS) == {"attack", "harvest", "mine", "plant", "search", "feed"}
@@ -4284,7 +4284,7 @@ async def main() -> None:
         vic = await users.get_by_tg(s, 8891)
         vic.dead_until = now_utc() - timedelta(seconds=1)
         battle_svc.revive_if_due(vic)
-        check("قربانی بعد ۱۰ دقیقه با HP فول برگشت",
+        check("قربانی بعد ۳۰ دقیقه با HP فول برگشت",
               vic.dead_until is None and vic.hp == battle_svc.max_hp(vic.level))
         await s.commit()
 
@@ -4959,9 +4959,9 @@ async def main() -> None:
           hhome.replace("\n", " | ")[:230])
     hhtexts = [b.text for row in hhkb.inline_keyboard for b in row]
     check("دکمه‌های صفحه درمان قالب نام | قیمت | سلامت رو دارن",
-          "🩹 باند کوچک | 🪙 400 TP | 🏥 سلامت +75" in hhtexts
-          and "💉 کیت درمان | 🪙 900 TP | 🏥 سلامت +150" in hhtexts
-          and "🏥 جعبه کمک‌های اولیه | 🪙 1,800 TP | 🏥 سلامت فول" in hhtexts, str(hhtexts))
+          "🩹 باند کوچک | 🪙 750 TP | 🏥 سلامت +75" in hhtexts
+          and "💉 کیت درمان | 🪙 2,000 TP | 🏥 سلامت +150" in hhtexts
+          and "🏥 جعبه کمک‌های اولیه | 🪙 6,000 TP | 🏥 سلامت فول" in hhtexts, str(hhtexts))
 
     # باند: همون لحظه +75 و قیمتش از جیب رفت
     upd = _fake_update("heal:buy:band", uid=8894)
@@ -4994,14 +4994,14 @@ async def main() -> None:
     # جعبه فول‌کننده
     async with session_scope() as s:
         hl = await users.get_by_tg(s, 8894)
-        hl.cash = 5000
+        hl.cash = 8000
         await s.commit()
     upd = _fake_update("heal:buy:box", uid=8894)
     await battle_h3.heal_buy_cb(upd, None)
     async with session_scope() as s:
         hl = await users.get_by_tg(s, 8894)
         check("جعبه کمک‌های اولیه HP رو فول کرد و قیمتش کم شد",
-              hl.hp == battle_svc.max_hp(1) and hl.cash == 5000 - config.HEAL_ITEMS["box"]["price"])
+              hl.hp == battle_svc.max_hp(1) and hl.cash == 8000 - config.HEAL_ITEMS["box"]["price"])
         await s.commit()
 
     # بیهوش نمی‌تونه درمان بشه
@@ -10096,8 +10096,8 @@ async def main() -> None:
           "shelter:cat:prod" not in shop_d and "smc:page" not in shop_d and "sm:page" not in shop_d, str(shop_d))
 
     # ═══ این دور: تقویت دمیج نبرد (مکس‌دوئل 30 تا 40 درخواست کارفرما) + غارت ضربه پله‌ای ═══
-    check("کف و سقف دمیج تقویت شد: ۱٫۲٪ تا ۹٪ مکس HP",
-          config.BATTLE_DMG_PCT_MIN == 0.012 and config.BATTLE_DMG_PCT_MAX == 0.09)
+    check("کف و سقف دمیج دوباره خیلی تقویت شد: ۵٪ تا ۲۰٪ مکس HP (راند ۸ درخواست کارفرما)",
+          config.BATTLE_DMG_PCT_MIN == 0.05 and config.BATTLE_DMG_PCT_MAX == 0.20)
     check("سقف غارت هر ضربه پله‌ای شد (زیر 10هزار 5٪، بالای 500هزار 1٪)",
           config.BATTLE_STEAL_TIERS[0] == (10_000, 0.05) and config.BATTLE_STEAL_TIERS[-1] == (None, 0.01))
     random.seed(42)
@@ -10112,13 +10112,13 @@ async def main() -> None:
     mean_m = sum(d_maxed) / len(d_maxed)
     mean_t = sum(d_titan) / len(d_titan)
     mean_n = sum(d_naked) / len(d_naked)
-    check("دوئل مکس‌شده (حمله 700 طرف زره‌مکس) میانگین دمیج تو بازه 30 تا 40 به درخواست کارفرما",
-          28 <= mean_m <= 42, f"میانگین {mean_m:.1f}")
-    check("ضربه‌های مکس‌دوئل حدود 25 تا 47 پخش میشن (با واریانس) و از 12-18 قدیم خیلی بالاترن",
-          min(d_maxed) >= 20 and max(d_maxed) <= 52 and max(d_maxed) >= 38,
+    check("دوئل مکس‌شده (حمله 700 طرف زره‌مکس) میانگین دمیج حدود 85 شد (راند ۸ درخواست کارفرما)",
+          80 <= mean_m <= 90, f"میانگین {mean_m:.1f}")
+    check("ضربه‌های مکس‌دوئل حدود 60 تا 111 پخش میشن (با واریانس) و از 25-47 قبلی خیلی بالاترن",
+          min(d_maxed) >= 55 and max(d_maxed) <= 120 and max(d_maxed) >= 95,
           f"{min(d_maxed)}..{max(d_maxed)}")
-    check("زره ضعیف‌تر دمیج خیلی بیشتره (بقیش دیگه خیلی بیشتر درخواست کارفرما)",
-          mean_m < mean_t < mean_n and mean_n >= 40,
+    check("زره ضعیف‌تر دمیج خیلی بیشتره",
+          mean_m < mean_t < mean_n and mean_n >= 100,
           f"{mean_m:.1f} < {mean_t:.1f} < {mean_n:.1f}")
     st_max, _ = battle_svc.steal_for_hit(600, 600, 100000, [], [], [])
     check("ضربه تمام‌قد روی جیب 100هزارتا فقط ۱٫۵٪ (1500) غارت می‌کنه (پله جدید)",
@@ -10767,7 +10767,7 @@ async def main() -> None:
     check("ساختمان مکس‌لول خط ⭐ مکس لوله رو داره",
           "⭐ مکس لوله" in btxt5m, btxt5m[:120])
 
-    # ── باف درصدی کنار حمله و دفاع تو پروفایل ──
+    # ── درصد بوست واحد additive کنار حمله و دفاع تو پروفایل (راند ۸، درخواست کارفرما) ──
     async with session_scope() as s:
         pfu, _ = await users.get_or_create(s, tg(999122, "bufman", "بافی"))
         pfu.level = 10
@@ -10783,17 +10783,25 @@ async def main() -> None:
         ok_pb, _m_pb = await shop_svc.purchase(s, pfu, "weap", "pipe")
         ik1 = await users.get_item_keys(s, pfu.id)
         atk1, dfn1 = combat.combat_stats(pfu, ik1, [])
-        pct1 = max(0, round(atk1 / (config.ATK_BASE + config.ATK_PER_LEVEL * pfu.level) * 100 - 100))
         cap1 = await profile_h._profile_caption(s, pfu)
+        pfu.skill_power = 4
+        atk2, _ = combat.combat_stats(pfu, ik1, [])
+        cap2 = await profile_h._profile_caption(s, pfu)
+        pfu.skill_power = 0
         await s.commit()
     import re as _re_buff
     stats0 = cap0.split("⚔️ آمار")[-1]
     check("پروفایل بدون آیتم عدد خام حمله و دفاع رو بدون پرانتز باف داره",
           _re_buff.search(r"💪 حمله: [\d,]+\n", stats0) is not None and "(+" not in stats0
           and atk0 == base_atk0 and dfn0 == base_dfn0, stats0[:80])
-    check("پروفایل با سلاح درصد باف رو کنار حمله می‌نویسه مثل 458(+38%)",
-          ok_pb and pct1 > 0 and f"💪 حمله: {fa_num(atk1)}(+{fa_num(pct1)}%)" in cap1,
-          f"{cap1.split('⚔️ آمار')[-1][:60]} | {pct1}")
+    stats1 = cap1.split("⚔️ آمار")[-1]
+    check("سلاح عدد ثابته و پرانتز درصدی نمیاره (باگ درصد بزرگ رفع شد، راند ۸)",
+          ok_pb and atk1 > atk0 and f"💪 حمله: {fa_num(atk1)}\n" in cap1 and "(+" not in stats1,
+          f"{stats1[:60]} | {atk0}->{atk1}")
+    stats2 = cap2.split("⚔️ آمار")[-1]
+    check("مهارت قدرت به‌صورت یه درصد واحد کنار حمله میاد مثل 43(+8%)",
+          atk2 == int(atk1 * 1.08) and f"💪 حمله: {fa_num(atk2)}(+8%)" in cap2,
+          f"{stats2[:60]} | {atk1}->{atk2}")
 
     # ── متن لول‌آپ زمین: جمله شانس تعداد بیشتر به‌جای شانس ⭐ (لول زمین، نه پلیر) ──
     async with session_scope() as s:
@@ -10895,6 +10903,266 @@ async def main() -> None:
           and "تمام بذرهات داخل این بخش قرار می‌گیرن" in HS6["shelter"])
     check("هیچ بخش هلپی اشاره‌ای به جعبه/کلید/بلیت نداره (قابلیت حساب نیس)",
           all(w not in v.replace("قابلیت", "") for v in HS6.values() for w in ("جعبه", "کلید", "بلیت")))
+
+    # ═══ این دور: سیستم لاگ دوره‌ای بازیکن 🕵 (ردیابی ادمین، خلاصه هر ۱۰ دقیقه به چت لاگ، ریست بعد از ارسال) ═══
+    from services import tracklog as tl
+    from models import TrackedUser, TrackedUserStats
+    from database import Base as _BaseTL
+    from handlers import TEXT_HANDLERS as _TH
+    import json as _json
+
+    # ── مدل‌ها و کانفیگ ──
+    check("جدول‌های ردیابی مستقل و اختیاری ثبت شدن (بدون دست‌خوردن جدول کاربرا)",
+          "tracked_users" in _BaseTL.metadata.tables and "tracked_user_stats" in _BaseTL.metadata.tables)
+    check("ستون‌های آمار ردیابی همشون هستن",
+          set(("mine_count", "mine_tp", "mine_xp", "plant_count", "plant_seeds", "harvest_count", "harvest_tp", "harvest_xp",
+               "harvest_seeds", "sell_count", "sell_tp", "sell_items", "bat_hits", "bat_win", "bat_loss", "bat_tp", "bat_xp",
+               "pv_count", "pv_win", "pv_loss", "pv_tp", "pv_xp", "casino_count", "casino_win", "casino_tp",
+               "quest_count", "quest_tp", "quest_xp", "search_count", "search_tp", "period_start"))
+          <= set(_BaseTL.metadata.tables["tracked_user_stats"].c.keys()))
+    check("چت لاگ جدا از گروه بازیه و پیش‌فرضش خاموشه (۰)، بازه ۱۰ دقیقه",
+          config.ADMIN_LOG_CHAT_ID == 0 and config.TRACK_SUMMARY_SECONDS == 600)
+
+    # ── رجیستری دستورها ──
+    import re as _re7
+    tl_pat = {n: p for n, p, _h in _TH if n in ("tracklog", "tracklog_stop")}
+    check("«لاگ» و «توقف لاگ» با و بدون پیشوند رجیسترن و با هم تداخل ندارن",
+          bool(_re7.match(tl_pat.get("tracklog", ""), "لاگ @x")) and bool(_re7.match(tl_pat["tracklog"], "تریاکی لاگ @x"))
+          and bool(_re7.match(tl_pat["tracklog_stop"], "توقف لاگ @x")) and bool(_re7.match(tl_pat["tracklog_stop"], "تی توقف لاگ x"))
+          and not _re7.match(tl_pat["tracklog"], "توقف لاگ @x"), str(list(tl_pat)))
+
+    # ── شروع لاگ ──
+    async with session_scope() as s:
+        tu7, _ = await users.get_or_create(s, tg(7007, "spytarget", "هدف لاگ"))
+        tid7 = tu7.id
+        tu7b, _ = await users.get_or_create(s, tg(7017, "bumpfree", "آزاد"))
+        tid7b = tu7b.id
+        await s.commit()
+    upd_tl1 = _text_update("تریاکی لاگ @spytarget", uid=1001, uname="theadmin", fname="ادمین")
+    await admin_h.tracklog_start_text(upd_tl1, None)
+    check("تایید شروع لاگ با بازه و دستور توقف (و هشدار چت لاگ نست‌شده)",
+          "🕵️ ردیابی @spytarget شروع شد" in upd_tl1.message.calls[-1][1]
+          and "توقف لاگ" in upd_tl1.message.calls[-1][1]
+          and "ADMIN_LOG_CHAT_ID ست نشده" in upd_tl1.message.calls[-1][1],
+          upd_tl1.message.calls[-1][1][:160] if upd_tl1.message.calls else "")
+    async with session_scope() as s:
+        row7 = (await s.execute(select(TrackedUser).where(TrackedUser.user_id == tid7))).scalar_one()
+        st7 = await s.get(TrackedUserStats, tid7)
+        check("ردیف ردیابی فعال و آمار صفر ساخته شد و کش حافظه سینکه",
+              row7.active and st7 is not None and tl.is_tracked(tid7) and not tl.has_activity(st7))
+        check("کاربرای عادی تو کش نیسن (هزینه‌شون فقط یه نگاه به set ایه)",
+              not tl.is_tracked(tid7b) and not tl.is_tracked(1) and not tl.is_tracked(999999))
+        await s.commit()
+
+    # ── تکراری/غریبه/ناشناس ──
+    upd_tl2 = _text_update("لاگ @spytarget", uid=1001, uname="theadmin", fname="ادمین")
+    await admin_h.tracklog_start_text(upd_tl2, None)
+    check("شروع دوباره روی کاربر فعال فقط اخطاره", "همین الانم داره ردیابی میشه" in upd_tl2.message.calls[-1][1])
+    upd_tl3 = _text_update("لاگ @spytarget", uid=7777, uname="stranger", fname="غریبه")
+    await admin_h.tracklog_start_text(upd_tl3, None)
+    check("لاگ برای غیرادمین کاملاً بی‌صداس", not upd_tl3.message.calls, str(upd_tl3.message.calls[:1]))
+    upd_tl4 = _text_update("تریاکی لاگ @nobody999x", uid=1001, uname="theadmin", fname="ادمین")
+    await admin_h.tracklog_start_text(upd_tl4, None)
+    check("یوزر ناشناس «پیدا نشد» میگیره", "پیدا نشد" in upd_tl4.message.calls[-1][1])
+
+    # ── بامپ‌های تجمعی همه بخش‌ها ──
+    async with session_scope() as s:
+        await tl.bump_mine(s, tid7, 120, 8)
+        await tl.bump_plant(s, tid7, "marijuana")
+        await tl.bump_plant(s, tid7, "marijuana")
+        await tl.bump_harvest(s, tid7, 900, 12, 2, {"marijuana": 3, "gharch": 1})
+        await tl.bump_sell(s, tid7, {"marijuana": (2, 600)})
+        await tl.bump_sell(s, tid7, {"teriak": (1, 900)})
+        await tl.bump_battle(s, tid7, 424242, 250, 15, True)   # ضربه + کشتن → برد
+        await tl.bump_battle(s, 424242, tid7, 0, 10, True)     # خودش مُرد → باخت
+        await tl.bump_pv(s, tid7, True, 500, 20)
+        await tl.bump_casino(s, tid7, False, -1000)
+        await tl.bump_quest(s, tid7, 300, 25)
+        await tl.bump_search(s, tid7, -150)
+        await tl.bump_mine(s, tid7b, 100, 5)  # غیرردیابی باید بی‌هزینه رد بشه
+        await s.commit()
+    async with session_scope() as s:
+        st7b = await s.get(TrackedUserStats, tid7)
+        check("تجمع ماین", (st7b.mine_count, st7b.mine_tp, st7b.mine_xp) == (1, 120, 8))
+        check("تجمع کاشت", st7b.plant_count == 2 and _json.loads(st7b.plant_seeds) == {"marijuana": 2})
+        check("تجمع برداشت با اسم و تعداد هر بذر", (st7b.harvest_count, st7b.harvest_tp, st7b.harvest_xp) == (2, 900, 12)
+              and _json.loads(st7b.harvest_seeds) == {"marijuana": 3, "gharch": 1})
+        check("تجمع فروش به تفکیک محصول", st7b.sell_count == 2 and st7b.sell_tp == 1500
+              and _json.loads(st7b.sell_items) == {"marijuana": [2, 600], "teriak": [1, 900]})
+        check("تجمع نبرد: ضربه + برد + باخت + غارت و تجربه",
+              (st7b.bat_hits, st7b.bat_win, st7b.bat_loss, st7b.bat_tp, st7b.bat_xp) == (1, 1, 1, 250, 15))
+        check("تجمع پی‌وی/قمار/کوئست/جستجو", (st7b.pv_count, st7b.pv_win, st7b.pv_tp) == (1, 1, 500)
+              and (st7b.casino_count, st7b.casino_win, st7b.casino_tp) == (1, 0, -1000)
+              and (st7b.quest_count, st7b.quest_tp, st7b.quest_xp) == (1, 300, 25)
+              and st7b.search_count == 1 and st7b.search_tp == -150)
+        check("کاربر غیرردیابی هیچ ردیف آماری نگرفت (هوک واقعاً سبکه)",
+              await s.get(TrackedUserStats, tid7b) is None)
+        await s.commit()
+
+    # ── هوک واقعی: کاشت از سرویس ──
+    async with session_scope() as s:
+        tu7c = await users.get_by_tg(s, 7007)
+        pl7 = Plot(user_id=tid7, status="empty")
+        s.add(pl7)
+        await s.flush()
+        await farming.add_seed_stock(s, tid7, "peyote", 1)
+        ok7, _pm7 = await farming.plant(s, tu7c, pl7, "peyote")
+        st7c = await s.get(TrackedUserStats, tid7)
+        check("کاشت واقعی از سرویس روی شمارنده ردیابی می‌افته",
+              ok7 and st7c.plant_count == 3 and _json.loads(st7c.plant_seeds) == {"marijuana": 2, "peyote": 1},
+          str(st7c.plant_seeds if st7c else None))
+        await s.commit()
+
+    # ── متن خلاصه ──
+    async with session_scope() as s:
+        tu7d = await users.get_by_tg(s, 7007)
+        row7d = (await s.execute(select(TrackedUser).where(TrackedUser.user_id == tid7))).scalar_one()
+        st7d = await s.get(TrackedUserStats, tid7)
+        txt7 = tl.summary_text(tu7d, row7d, st7d)
+        await s.commit()
+    check("متن خلاصه: یوزرنیم، بازه و همه بخش‌ها",
+          all(x in txt7 for x in ["<b>🕵️ لاگ @spytarget</b>", "⏱ بازه:",
+                                  "⛏ کنده‌کاری: 1 بار | 💰 120 تی‌پوینت | ✨ 8 تجربه",
+                                  "🌱 کاشت: 🌿 ماری‌جوانا ×2، 🌵 پیوت ×1",
+                                  "🌾 برداشت: 2 بار | 💰 ارزش 900 تی‌پوینت | ✨ 12 تجربه",
+                                  "▫️ 🌿 ماری‌جوانا ×3، 🍄 قارچ ×1",
+                                  "🚚 فروش: 2 بار | 💰 1,500 تی‌پوینت",
+                                  "⚔️ نبرد: 1 ضربه | ✅ 1 برد | ❌ 1 باخت | 💰 250 تی‌پوینت | ✨ 15 تجربه",
+                                  "🔫 حمله پی‌وی: 1 بار (✅ 1 / ❌ 0) | 💰 خالص 500 تی‌پوینت | ✨ 20 تجربه",
+                                  "🎰 قمارخانه: 1 دست (✅ 0 / ❌ 1) | 💰 خالص -1,000 تی‌پوینت",
+                                  "📋 کوئست روزانه: 1 تا | 💰 300 تی‌پوینت | ✨ 25 تجربه",
+                                  "🔍 جستجو: 1 بار | 💰 خالص -150 تی‌پوینت",
+                                  "💰 خالص دوره:"]), txt7)
+    check("متن خلاصه دشِ فاصله‌دار و درصد عربی نداره", " — " not in txt7 and "٪" not in txt7)
+    check("بدون فعالیت متن خلاصه None ـه", tl.summary_text(tu7d, row7d, None) is None)
+
+    # ── جاب خلاصه: ارسال + ریست + ضد اسپم خالی + گارد چت نست‌شده ──
+    spy7 = SimpleNamespace(bot=_CBotSpy())
+    _old_log_chat = config.ADMIN_LOG_CHAT_ID
+    config.ADMIN_LOG_CHAT_ID = -100777
+    try:
+        await jobs_h.track_summary_job(spy7)
+        check("جاب خلاصه پیام رو به چت لاگ فرستاد (فقط چت ادمین، نه گروه)",
+              len(spy7.bot.sent) == 1 and spy7.bot.sent[0][0] == -100777
+              and "🕵️ لاگ @spytarget" in spy7.bot.sent[0][1], str(spy7.bot.sent)[:160])
+        async with session_scope() as s:
+            st7e = await s.get(TrackedUserStats, tid7)
+            check("بعد از ارسال موفق همه شمارنده‌ها ریست شدن و دوره تازه شد",
+                  st7e is not None and not tl.has_activity(st7e) and st7e.mine_tp == 0
+                  and _json.loads(st7e.plant_seeds) == {} and st7e.bat_hits == 0)
+            await s.commit()
+        await jobs_h.track_summary_job(spy7)
+        check("بازه بدون فعالیت هیچ پیام خالی ارسال نمیشه (ضد اسپم)", len(spy7.bot.sent) == 1)
+    finally:
+        config.ADMIN_LOG_CHAT_ID = _old_log_chat
+    spy7z = SimpleNamespace(bot=_CBotSpy())
+    await jobs_h.track_summary_job(spy7z)
+    check("چت لاگ نست‌شده (۰) جاب کاملاه غیرفعاله",
+          not spy7z.bot.sent and config.ADMIN_LOG_CHAT_ID == 0)
+
+    # ── توقف لاگ ──
+    async with session_scope() as s:
+        await tl.bump_mine(s, tid7, 50, 4)  # دوره جاری دوباره پر بشه
+        await s.commit()
+    upd_tl5 = _text_update("تریاکی توقف لاگ @spytarget", uid=1001, uname="theadmin", fname="ادمین")
+    await admin_h.tracklog_stop_text(upd_tl5, None)
+    check("توقف لاگ تایید و خبر پاک شدن آمار",
+          "⏹ ردیابی @spytarget متوقف شد" in upd_tl5.message.calls[-1][1]
+          and "آمار جاریش هم پاک شد" in upd_tl5.message.calls[-1][1],
+          upd_tl5.message.calls[-1][1][:160] if upd_tl5.message.calls else "")
+    async with session_scope() as s:
+        row7f = (await s.execute(select(TrackedUser).where(TrackedUser.user_id == tid7))).scalar_one()
+        check("بعد توقف: غیرفعال + آمار حذف + کش پاک",
+              not row7f.active and await s.get(TrackedUserStats, tid7) is None and not tl.is_tracked(tid7))
+        await tl.bump_mine(s, tid7, 50, 4)
+        check("بعد توقف دیگه هیچی جمع نمیشه (ردیف دوباره ساخته نمیشه)",
+              await s.get(TrackedUserStats, tid7) is None)
+        await s.commit()
+    upd_tl6 = _text_update("توقف لاگ @spytarget", uid=1001, uname="theadmin", fname="ادمین")
+    await admin_h.tracklog_stop_text(upd_tl6, None)
+    check("توقف روی کاربر غیرفعال «فعال نیس» میگه", "فعال نیس" in upd_tl6.message.calls[-1][1])
+    upd_tl7 = _text_update("توقف لاگ @spytarget", uid=7777, uname="stranger", fname="غریبه")
+    await admin_h.tracklog_stop_text(upd_tl7, None)
+    check("توقف لاگ برای غیرادمین بی‌صداس", not upd_tl7.message.calls)
+
+    # ── فعال‌سازی دوباره روی همون ردیف + جستجو با آیدی عددی ──
+    upd_tl8 = _text_update("لاگ 7007", uid=1001, uname="theadmin", fname="ادمین")
+    await admin_h.tracklog_start_text(upd_tl8, None)
+    async with session_scope() as s:
+        row8 = (await s.execute(select(TrackedUser).where(TrackedUser.user_id == tid7))).scalar_one()
+        check("شروع دوباره با آیدی عددی همون ردیف رو فعال می‌کنه",
+          "شروع شد" in upd_tl8.message.calls[-1][1] and row8.active and tl.is_tracked(tid7))
+        await s.commit()
+    upd_tl9 = _text_update("توقف لاگ @spytarget", uid=1001, uname="theadmin", fname="ادمین")
+    await admin_h.tracklog_stop_text(upd_tl9, None)  # تمیزکاری، ته تست‌ها لاگ فعالی نمونه
+
+    # ═══ این دور: بالانس نبرد راند ۸ درخواست کارفرما ═══
+    # دمیج خیلی بیشتر + بیهوشی طولانی‌تر (۳۰ دقیقه) + درمان گران‌تر + درصد بوست additive واحد
+    check("راند ۸: کف و سقف دمیج ۵٪ تا ۲۰٪ مکس HP و بیهوشی ۱۸۰۰ ثانیه",
+          config.BATTLE_DMG_PCT_MIN == 0.05 and config.BATTLE_DMG_PCT_MAX == 0.20
+          and config.BATTLE_DEAD_SECONDS == 1800)
+    check("راند ۸: درمان گران‌تر شد تا برگشتن به نبرد هزینه‌دار بشه",
+          config.HEAL_ITEMS["band"]["price"] == 750 and config.HEAL_ITEMS["kit"]["price"] == 2000
+          and config.HEAL_ITEMS["box"]["price"] == 6000
+          and config.HEAL_ITEMS["band"]["price"] < config.HEAL_ITEMS["kit"]["price"]
+          < config.HEAL_ITEMS["box"]["price"])
+
+    # دوئل هم‌قد: حدود ۸ ضربه تا زمین زدن (قبلاً حدود ۲۰ بود، شکایت کارفرما)
+    random.seed(8)
+    _ocr8 = config.BATTLE_CRIT_CHANCE
+    config.BATTLE_CRIT_CHANCE = 0.0
+    try:
+        _d_eq = [battle_svc.roll_damage(100, 100, 600)[0] for _ in range(400)]
+        _d_hi = [battle_svc.roll_damage(200, 43, 600)[0] for _ in range(400)]
+    finally:
+        config.BATTLE_CRIT_CHANCE = _ocr8
+    _m_eq, _m_hi = sum(_d_eq) / len(_d_eq), sum(_d_hi) / len(_d_hi)
+    check("دوئل هم‌قد هر ضربه میانگین حدود ۱۲٫۵٪ مکس HP (۸ ضربه تا زمین زدن)",
+          70 <= _m_eq <= 80 and 7 <= 600 / _m_eq <= 9, f"میانگین {_m_eq:.1f} -> {600 / _m_eq:.1f} ضربه")
+    check("مهاجم قوی‌تر حدود ۵-۶ ضربه طرف رو زمین می‌زنه (دیگه دمیج مزخرف کم نیس)",
+          95 <= _m_hi <= 112 and 600 / _m_hi <= 6.5, f"میانگین {_m_hi:.1f} -> {600 / _m_hi:.1f} ضربه")
+
+    # بوست‌ها additive روی مقدار اولیه جمع میشن، نه ضرب زنجیره‌ای (درخواست کارفرما)
+    from models import InventoryItem as _InvR8
+    async with session_scope() as s:
+        bst, _ = await users.get_or_create(s, tg(999124, "addman", "جمعی"))
+        bst.level = 20
+        bst.skill_power = 4   # ۴ لول × ۲٪ = +۸٪
+        bst.skill_defense = 4
+        s.add(_InvR8(user_id=bst.id, item_key="arti_dragon", level=1))    # +۱۰٪ حمله
+        s.add(_InvR8(user_id=bst.id, item_key="arti_guardian", level=1))  # +۱۰٪ دفاع
+        await s.flush()
+        _ik_b = await users.get_item_keys(s, bst.id)
+        _ap, _dp = combat.combat_boost_pcts(bst, _ik_b, [])
+        _atk_b, _dfn_b = combat.combat_stats(bst, _ik_b, [])
+        _base_b = config.ATK_BASE + config.ATK_PER_LEVEL * bst.level
+        _bdb = config.DEF_BASE + config.DEF_PER_LEVEL * bst.level
+        check("بوست آرتیفکت و مهارت additive جمع میشه: ۱۰٪+۸٪ = یه ۱۸٪ تمیز نه ضرب زنجیره‌ای",
+              abs(_ap - 0.18) < 1e-9 and abs(_dp - 0.18) < 1e-9
+              and _atk_b == int(_base_b * 1.18) and _dfn_b == int(_bdb * 1.18)
+              and _atk_b != int(_base_b * 1.10 * 1.08),
+              f"ap={_ap:.2f} atk={_atk_b} (ضرب زنجیره‌ای می‌شد {int(_base_b * 1.10 * 1.08)})")
+        _atk_x, _dfn_x = combat.combat_stats(bst, _ik_b, [], atk_extra=0.12, def_extra=0.12)
+        check("باف تیم و هوا هم تو همون جمع واحد میشینن (۱۸٪+۱۲٪ = ۳۰٪ نه ۳۲٫۸٪)",
+              _atk_x == int(_base_b * 1.30) and _dfn_x == int(_bdb * 1.30)
+              and _dfn_x != int(_bdb * 1.18 * 1.12),
+              f"{_atk_b}->{_atk_x} | {_dfn_b}->{_dfn_x}")
+        await s.commit()
+
+    # سیم‌کشی نبرد واقعی: با هوای عادی و بدون بوست، battle_powers همون استت پایه رو میده
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        pw8a, _ = await users.get_or_create(s, tg(999125, "pwatt8", "قدرتی"))
+        pw8d, _ = await users.get_or_create(s, tg(999126, "pwdef8", "هدفی"))
+        _at8, _df8, _in8 = await battle_svc.battle_powers(s, pw8a, pw8d)
+        _base8 = combat.combat_stats(pw8a, [], [])[0]
+        _bdf8 = combat.combat_stats(pw8d, [], [])[1]
+        check("قدرت نبرد بدون بوست همون استت پایه‌ست و کلیدهای مادیفایر سر جاشن",
+              _at8 == _base8 and _df8 == _bdf8
+              and _in8["weather"] == "normal" and _in8["tbuff"] == 0.0 and _in8["defcut"] == 0.0
+              and "poison_self" not in _in8 and "poison_target" not in _in8, str(_in8))
+        await s.commit()
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

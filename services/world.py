@@ -521,11 +521,15 @@ async def do_search(session: AsyncSession, user: User, luck: float = 1.0) -> dic
     if outcome["key"] == "money":
         amount = random.randint(outcome["min"], outcome["max"])
         user.cash += amount
+        from services import tracklog as tl
+        await tl.bump_search(session, user.id, amount)  # لاگ ردیابی ادمین
         return {"status": "money", "amount": amount, "outcome": outcome}
 
     if outcome["key"] == "thief":
         lost = int(user.cash * random.uniform(outcome["pct_min"], outcome["pct_max"]))
         user.cash = max(0, user.cash - lost)
+        from services import tracklog as tl
+        await tl.bump_search(session, user.id, -lost)  # لاگ ردیابی ادمین، منفی
         return {"status": "thief", "lost": lost, "outcome": outcome}
 
     # بذرها
@@ -563,10 +567,13 @@ async def casino_play(session: AsyncSession, user: User, bet: int) -> dict:
     from services import actionlog
     await actionlog.log(session, "casino")  # آمار دست‌های قمارخانه پنل ادمین
 
+    from services import tracklog as tl
     if random.random() < config.CASINO_WIN_CHANCE:
         prize = int(bet * config.CASINO_WIN_MULT)
         user.cash += prize
+        await tl.bump_casino(session, user.id, True, prize - bet)  # لاگ ردیابی ادمین، خالص برد
         return {"status": "win", "bet": bet, "prize": prize, "cash": user.cash}
+    await tl.bump_casino(session, user.id, False, -bet)  # لاگ ردیابی ادمین، شرط باخته‌شده
     return {"status": "lose", "bet": bet, "prize": 0, "cash": user.cash}
 
 

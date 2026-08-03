@@ -187,6 +187,8 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     if victim_xp:
         user_svc.add_xp(victim, victim_xp)
         await team_svc.add_team_xp(session, victim, victim_xp)
+    from services import tracklog as tl
+    await tl.bump_pv(session, attacker.id, won, steal if won else -penalty, xp)  # لاگ ردیابی ادمین
     return {
         "ok": True,
         "won": won,

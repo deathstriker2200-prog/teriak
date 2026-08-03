@@ -83,6 +83,8 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("bankdep", rf"{T}واریز{S}+(.+)$", bank.deposit_text),
     ("bankwd", rf"{T}برداشت{S}+([0-9۰-۹٠-٩,٬]+)$", bank.withdraw_text),
     ("help", rf"{T}راهنما!?$|{T}آموزشات!?$", start.help_cmd),
+    ("tracklog_stop", rf"{TP}توقف{S}+لاگ{S}+(.+)$", admin.tracklog_stop_text),  # توقف ردیابی بازیکن، فقط ادمین
+    ("tracklog", rf"{TP}لاگ{S}+(.+)$", admin.tracklog_start_text),  # شروع ردیابی بازیکن، فقط ادمین
     ("caravan_spawn", rf"{T}اسپان{S}+کاروان!?$", world.caravan_spawn_cmd),  # فقط ادمین
     ("smuggler_spawn", rf"{T}اسپان{S}+کاروان{S}+(.+?)!?$", smuggle.admin_spawn_text),  # کاروان قاچاق، فقط ادمین
 ]

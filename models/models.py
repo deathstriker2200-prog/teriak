@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 import config
@@ -442,3 +442,68 @@ class MessageOwner(Base):
     message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     owner_tg: Mapped[int] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class TrackedUser(Base):
+    """
+    ردیابی یه بازیکن مشخص توسط ادمین 🕵 (با «لاگ @یوزر» فعال و با «توقف لاگ @یوزر» خاموش میشه)
+    جدول کاملاً مستقل و اختیاریه، بدون فعال‌سازی ادمین هیچ ردیفی توش نیس و به دیتای بازیگرا دست نمی‌زنه
+    هر بازیکن فقط یه ردیف داره و فلگ active روشن/خاموشش می‌کنه، چند بازیکن هم‌زمان می‌تونن فعال باشن
+    """
+    __tablename__ = "tracked_users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class TrackedUserStats(Base):
+    """
+    شمارنده‌های تجمعی دوره جاریِ بازیکن ردیابی‌شده، بعد از هر ارسال موفق خلاصه صفر میشن
+    فقط برای ردیف‌های TrackedUser ساخته میشه (نقطه‌ای، نه برای همه کاربرا)
+    دیکشنری بذر/محصولها به‌صورت JSON تو ستون متنی نگه‌داری میشه تا جدول تازه‌ای لازم نشه
+    """
+    __tablename__ = "tracked_user_stats"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    period_start: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    mine_count: Mapped[int] = mapped_column(Integer, default=0)
+    mine_tp: Mapped[int] = mapped_column(Integer, default=0)
+    mine_xp: Mapped[int] = mapped_column(Integer, default=0)
+
+    plant_count: Mapped[int] = mapped_column(Integer, default=0)
+    plant_seeds: Mapped[str] = mapped_column(String(512), default="{}")
+
+    harvest_count: Mapped[int] = mapped_column(Integer, default=0)
+    harvest_tp: Mapped[int] = mapped_column(Integer, default=0)  # ارزش قفل‌شده موقع برداشت، هنوز نقد نشده
+    harvest_xp: Mapped[int] = mapped_column(Integer, default=0)
+    harvest_seeds: Mapped[str] = mapped_column(String(512), default="{}")
+
+    sell_count: Mapped[int] = mapped_column(Integer, default=0)
+    sell_tp: Mapped[int] = mapped_column(Integer, default=0)
+    sell_items: Mapped[str] = mapped_column(String(1024), default="{}")  # محصول ← [تعداد، تی‌پوینت]
+
+    bat_hits: Mapped[int] = mapped_column(Integer, default=0)
+    bat_win: Mapped[int] = mapped_column(Integer, default=0)
+    bat_loss: Mapped[int] = mapped_column(Integer, default=0)
+    bat_tp: Mapped[int] = mapped_column(Integer, default=0)
+    bat_xp: Mapped[int] = mapped_column(Integer, default=0)
+
+    pv_count: Mapped[int] = mapped_column(Integer, default=0)
+    pv_win: Mapped[int] = mapped_column(Integer, default=0)
+    pv_loss: Mapped[int] = mapped_column(Integer, default=0)
+    pv_tp: Mapped[int] = mapped_column(Integer, default=0)  # خالص، غارت مثبت و جریمه باخت منفی
+    pv_xp: Mapped[int] = mapped_column(Integer, default=0)
+
+    casino_count: Mapped[int] = mapped_column(Integer, default=0)
+    casino_win: Mapped[int] = mapped_column(Integer, default=0)
+    casino_tp: Mapped[int] = mapped_column(Integer, default=0)  # خالص هر دست (برد 0.8 شرط+، باخت شرط-)
+
+    quest_count: Mapped[int] = mapped_column(Integer, default=0)
+    quest_tp: Mapped[int] = mapped_column(Integer, default=0)
+    quest_xp: Mapped[int] = mapped_column(Integer, default=0)
+
+    search_count: Mapped[int] = mapped_column(Integer, default=0)
+    search_tp: Mapped[int] = mapped_column(Integer, default=0)  # خالص، پول پیدا شده مثبت و دزدیده‌شده منفی

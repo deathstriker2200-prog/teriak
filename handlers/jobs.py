@@ -21,7 +21,7 @@ from telegram.ext import ContextTypes
 import config
 from database import session_scope
 from keyboards import keyboards as kb
-from models import GroupActivity, User
+from models import GroupActivity, TrackedUser, TrackedUserStats, User
 from services import world as world_svc
 from utils import now_utc
 
@@ -271,6 +271,39 @@ async def fj_wipe_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ───────── ثبت جاب‌ها ─────────
 
+# ───────── لاگ ردیابی بازیکن 🕵 (خلاصه دوره‌ای به چت لاگ ادمین) ─────────
+
+async def track_summary_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    from services import tracklog as tl
+    if not config.ADMIN_LOG_CHAT_ID:  # چت لاگ ست نشده، فیچر عملاً خاموشه
+        return
+    async with session_scope() as s:
+        await tl.refresh(s)  # کش حافظه هم که شده ریفرش، مثلاً نمونه موازی یوزری رو لاگ کرده باشه
+        rows = (await s.execute(
+            select(TrackedUser).where(TrackedUser.active == True)  # noqa: E712
+        )).scalars().all()
+        items: list[tuple[int, str]] = []
+        for tr in rows:
+            user = await s.get(User, tr.user_id)
+            st = await s.get(TrackedUserStats, tr.user_id)
+            txt = tl.summary_text(user, tr, st) if user else None
+            if txt:  # بدون فعالیت تو بازه، چیزی نمی‌فرستیم (ضد اسپم خالی)
+                items.append((tr.user_id, txt))
+        await s.commit()
+
+    sent: list[int] = []
+    for uid, txt in items:
+        if await _send(context, config.ADMIN_LOG_CHAT_ID, txt):
+            sent.append(uid)
+    if sent:  # ریست فقط برای ارسال‌های موفق، ناامید دوره بعد دوباره تلاش می‌کنه
+        async with session_scope() as s:
+            for uid in sent:
+                st = await s.get(TrackedUserStats, uid)
+                if st is not None:
+                    tl.reset_stats_row(st)
+            await s.commit()
+
+
 def register_jobs(app) -> None:
     """ثبت جاب‌های دوره‌ای روی JobQueue، بدون دیپندنسی جاب پاکش میشه"""
     jq = getattr(app, "job_queue", None)
@@ -289,6 +322,9 @@ def register_jobs(app) -> None:
         jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
     jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
     jq.run_repeating(fj_wipe_job, interval=config.FORCE_JOIN_WIPE_SCAN_SECONDS, first=300, name="fj-wipe")
+    if config.ADMIN_LOG_CHAT_ID:
+        jq.run_repeating(track_summary_job, interval=config.TRACK_SUMMARY_SECONDS,
+                         first=config.TRACK_SUMMARY_SECONDS, name="track-summary")
     # ادیت خودکار آخرین پیام آمار ادمین، هر ۱ ساعت یه بار (سبک، فشار به سرور نمیاره)
     from handlers.admin import stats_autoedit_job
     jq.run_repeating(
@@ -297,6 +333,7 @@ def register_jobs(app) -> None:
         name="stats-autoedit",
     )
     logger.info(
-        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | محموله | کاروان قاچاق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s",
+        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | محموله | کاروان قاچاق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s%s",
         " | پلیس" if config.POLICE_ENABLED else "",
+        " | لاگ ردیابی بازیکن" if config.ADMIN_LOG_CHAT_ID else "",
     )

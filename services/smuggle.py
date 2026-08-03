@@ -199,6 +199,8 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
             continue
 
         user.cash += sh.pay
+        from services import tracklog as tl
+        await tl.bump_sell(session, sh.user_id, {sh.crop: (sh.qty, sh.pay)})  # لاگ ردیابی ادمین
         await world_svc.record_sale(session, sh.crop, sh.qty)  # عرضه واقعی بازار پویا
         await session.delete(sh)
         if sh.outcome == "police":
@@ -454,6 +456,8 @@ async def sell_to_caravan(session: AsyncSession, user: User, qty: int) -> tuple[
         return False, f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری", 0
     gain = round(value * (1 + cv["bonus"] / 100))
     user.cash += gain
+    from services import tracklog as tl
+    await tl.bump_sell(session, user.id, {cv["crop"]: (qty, gain)})  # لاگ ردیابی ادمین
     await world_svc.record_sale(session, cv["crop"], qty)  # عرضه واقعی بازار پویا
     return True, (
         f"💰 {money(gain)} از کاروان گرفتی\n"
