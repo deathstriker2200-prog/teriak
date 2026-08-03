@@ -1,5 +1,6 @@
 """منطق مزرعه: خرید زمین | کاشت با بذر | برداشت با کولدان | آپگرید"""
 
+import random
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -72,6 +73,19 @@ async def buy_plot(session: AsyncSession, user: User) -> tuple[bool, str]:
 
 # ───────── کاشت (مصرف بذر) ─────────
 
+async def grow_seconds(session: AsyncSession, user: User, plot: Plot, seed_key: str) -> int:
+    """
+    زمان واقعی کاشت با همه ضریب‌ها (آب‌وهوا + مهارت سرعت)، دقیقاً همونی که plant ست می‌کنه
+    صفحه تایید کاشت و خود اجرا از همین استفاده می‌کنن که زمان نمایش‌داده‌شده همیشه درست باشه
+    """
+    from services import world as world_svc
+    from services import combat as combat_svc
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    speed = world_svc.weather_grow_speed(wkey, wpct)
+    speed *= 1 + combat_svc.skill_pct(user, "speed")  # مهارت ⚡ سرعت: هر لول ۲% کاشت تندتر
+    return max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
+
+
 async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) -> tuple[bool, str]:
     seed = config.SEEDS.get(seed_key)
     if not seed:
@@ -90,13 +104,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
     await add_seed_stock(session, user.id, seed_key, -1)
 
-    # آب و هوا روی سرعت رشد اثر می‌ذاره (باران سریع‌تر | گرما/سرما کندتر)، شدت همین رول
-    from services import world as world_svc
-    from services import combat as combat_svc
-    wkey, wpct, _ = await world_svc.weather_state(session)
-    speed = world_svc.weather_grow_speed(wkey, wpct)
-    speed *= 1 + combat_svc.skill_pct(user, "speed")  # مهارت ⚡ سرعت: هر لول ۲% کاشت تندتر
-    seconds = max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
+    seconds = await grow_seconds(session, user, plot, seed_key)
     plot.status = "growing"
     plot.crop = seed_key
     plot.planted_at = now_utc()
@@ -107,7 +115,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 # ───────── برداشت (همه آماده‌ها، هر ۲ دقیقه یه بار) ─────────
 
 def apply_legendary_cap(seed_key: str, gain: int) -> int:
-    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها، درخواست کارفرما: عادی‌ها بالای ۶۰,۰۰۰ نرن، جهش‌یافته سقف خودشو داره"""
+    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها روی کل سود هر برداشت، درخواست کارفرما: عادی‌ها بالای ۶۰,۰۰۰ نرن، جهش‌یافته سقف خودشو داره"""
     if not config.SEEDS[seed_key].get("legendary"):
         return gain
     cap = config.SEEDS[seed_key].get("cap", config.LEGENDARY_SELL_CAP)
@@ -121,11 +129,27 @@ def harvest_cooldown_left(user: User) -> int:
     return max(0, int(left))
 
 
+def harvest_qty_roll(plot_level: int, seed_key: str) -> int:
+    """تعداد برداشت شانسی از جدول لول زمین (درخواست کارفرما): افسانه‌ای‌ها همیشه 1 تا، بقیه طبق شانس‌های لول زمین"""
+    sd = config.SEEDS.get(seed_key) or {}
+    if sd.get("legendary"):
+        return 1
+    table = config.HARVEST_QTY_CHANCES[min(max(plot_level, 1), config.PLOT_MAX_LEVEL)]
+    r = random.random() * 100
+    acc = 0.0
+    for qty, pct in table:
+        acc += pct
+        if r < acc:
+            return qty
+    return table[-1][0]
+
+
 async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str | None, tuple]:
     """
     برداشت همه زمین‌های آماده
+    محصول پول نمیشه و میره تو انبار محصول، نقد کردن با محموله یا کاروان قاچاقه (services/smuggle)
     خروجی: (موفق, پیام کوتاه برای alert, متن اضافه برای نمایش توی مزرعه,
-            جفت (کوئست‌های روزانه تکمیل‌شده, تعداد مونده))
+            جفت (کوئست‌های روزانه تکمیل‌شده, تعداد مونده), یادداشت‌های لول‌آپ)
     """
     left = harvest_cooldown_left(user)
     if left:
@@ -136,16 +160,19 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     if not ready:
         return False, "▫️ چیزی آماده برداشت نیس", None, ([], 0), []
 
-    # افکت‌های جهان: کیفیت برداشت ⭐ + آب و هوا 🌦 + بازار سیاه 📈، شدت هوا همین رول
+    # افکت‌های جهان: رول تعداد برداشت + آب و هوا 🌦 + بازار سیاه 📈، شدت هوا همین رول
     from services import world as world_svc
     wkey, wpct, _ = await world_svc.weather_state(session)
     sell_mult = world_svc.weather_sell_mult(wkey, wpct)
-    q5_bonus = world_svc.weather_q5_bonus(wkey, wpct)
     mults, _ = await world_svc.market_mults(session)
 
     total_gain = 0
     total_xp = 0
+    total_units = 0
+    n_harvests = 0
     item_lines: list[str] = []
+    lost_lines: list[str] = []
+    from services import smuggle as smg
     for p in ready:
         if p.crop not in config.SEEDS:
             # بذر قدیمی (از کاتالوگ حذف شده)، زمین خالی میشه بدون درآمد
@@ -154,22 +181,31 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
             p.planted_at = None
             p.ready_at = None
             continue
-        tier = world_svc.roll_quality(q5_bonus + economy.plot_quality_bonus(p.level))
+        tier = world_svc.roll_quality(economy.plot_quality_bonus(p.level))
+        # درخواست کارفرما: تعداد شانسی از جدول لول زمین، افسانه‌ای‌ها همیشه 1 تا | رول داخلی فقط تجربه رو تعیین می‌کنه
+        qty = harvest_qty_roll(p.level, p.crop)
         base = economy.crop_yield(p.crop, p.level, user.level)
         mkt = world_svc.market_mult(mults, p.crop)
-        gain = apply_legendary_cap(p.crop, int(base * tier["mult"] * sell_mult * mkt))
-        total_gain += gain
+        gain = apply_legendary_cap(p.crop, int(base * sell_mult * mkt) * qty)
         total_xp += economy.crop_xp(p.crop, tier["stars"])
-        item_lines.append(
-            f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)}، {money_tp(gain)}"
-        )
-        await world_svc.record_sale(session, p.crop)  # عرضه واقعی بازار پویا
+        n_harvests += 1
+        # محصول بعد برداشت نقد نمیشه، تعدادی و با ارزش قفل‌شده همون لحظه میره تو انبار
+        # فروش (محموله یا کاروان قاچاق) بعداً انجام میشه و عرضه بازار موقع فروش ثبت میشه
+        # هر محصول ظرفیت انبار خودشو داره، سرریز از بین میره و به کاربر گزارش میشه
+        added, added_val = await smg.add_product(session, user.id, p.crop, qty, gain, user.shelter_level)
+        sd = config.SEEDS[p.crop]
+        emoji = sd.get("emoji", "🌱")
+        total_gain += added_val
+        total_units += added
+        if added:
+            item_lines.append(f"▫️ {emoji} {sd['name']} ×{fa_num(added)}")
+        if added < qty:
+            lost_lines.append(f"⚠️ انبار {sd['name']} پر بود، {fa_num(qty - added)} تا از بین رفت")
         p.status = "empty"
         p.crop = None
         p.planted_at = None
         p.ready_at = None
 
-    user.cash += total_gain
     user.last_harvest_at = now_utc()
     notes = users.add_xp(user, total_xp)
 
@@ -178,12 +214,14 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     notes += await team_svc.add_team_xp(session, user, total_xp)
     quest_msg = await team_svc.record_harvest(session, user, len(ready))
 
-    # قلاب کوئست روزانه، به تعداد محصول برداشت‌شده
+    # قلاب کوئست روزانه، به تعداد زمین برداشت‌شده
     from services import quests as dq_svc
-    dq = await dq_svc.track(session, user, "harvest", len(item_lines))
+    dq = await dq_svc.track(session, user, "harvest", n_harvests)
 
-    extra = "\n".join(item_lines)
-    extra += f"\n\n💰 مجموع {money(total_gain)} خالص گیرت اومد"
+    extra = "\n".join(item_lines + lost_lines)
+    extra += "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 🌾 محصولات)"
+    extra += f"\n💰 ارزش برداشت تقریبا {money(total_gain)}، هنوز نقد نشده"
+    extra += "\n🚚 برای نقد کردن: بخش «انبار» ارسال محموله یا فروش به کاروان قاچاق"
     if total_xp:
         extra += f"\n✨ {fa_num(total_xp)} تجربه"
     if wkey != "normal" and sell_mult != 1.0:
@@ -192,7 +230,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     if quest_msg:
         extra += "\n\n" + quest_msg
     # یادداشت‌های لول‌آپ جدا برمی‌گردن تا هندلر به‌صورت پیام مجزا بفرسته
-    return True, f"💰 {money(total_gain)}", extra, dq, notes
+    return True, f"🌾 {fa_num(total_units)} تا محصول برداشت کردی، رفت تو انبارت", extra, dq, notes
 
 
 # ───────── آپگرید ─────────

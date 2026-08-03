@@ -48,6 +48,11 @@ async def render_farm(update: Update, extra: str | None = None, alert: str | Non
         elif ready_count:
             text += f"\n📦 {fa_num(ready_count)} تا آماده برداشته"
 
+        from services import smuggle as smg
+        p_n = await smg.products_count(s, user.id)
+        if p_n:
+            text += f"\n🎒 {fa_num(p_n)} محصول تو انبارته، از 🎒 انبار بخش 📦 ارسال محموله بفرستشون"
+
         next_price = economy.plot_price(len(plots))
         markup = kb.farm_kb(user, plots, next_price, ready_count)
         await s.commit()
@@ -152,7 +157,7 @@ async def plant_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         stock = await farming.get_stock(s, user.id)
         have = stock.get(seed_key, 0)
         yield_ = economy.crop_yield(seed_key, plot.level, user.level)
-        grow = economy.crop_grow_seconds(seed_key, plot.level)
+        grow = await farming.grow_seconds(s, user, plot, seed_key)  # زمان واقعی با آب‌وهوا و مهارت، مثل اجرا
         text = (
             f"<b>🌱 کاشت {esc(seed['name'])}</b>\n\n"
             f"🌾 {fa_num(have)} بذر داری و یدونه مصرف میشه\n"
@@ -270,14 +275,12 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         wood = economy.upgrade_wood(plot.level)
         old_sp = economy.plot_speed_mult(plot.level)
         new_sp = economy.plot_speed_mult(plot.level + 1)
-        q0 = int((config.QUALITY_TIERS[-1]["chance"] + economy.plot_quality_bonus(plot.level)) * 100)
-        q1 = int((config.QUALITY_TIERS[-1]["chance"] + economy.plot_quality_bonus(plot.level + 1)) * 100)
         text = (
             f"<b>⬆️ لول‌آپ زمین شماره {fa_num(plot_index)}</b>\n\n"
             f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n\n"
             f"💸 هزینه: {money(price)} + 🪵 {fa_num(wood)} چوب\n"
             f"⚡ سرعت رشد 40% بیشتر میشه (×{old_sp:.1f} ← ×{new_sp:.1f})\n"
-            f"⭐ شانس محصول افسانه‌ای می‌رسه به {fa_num(q1)} درصد (الان {fa_num(q0)})\n\n"
+            "با لول آپ کردن زمین شانس دریافت تعداد بیشتری بذر رو از محصولات داری\n\n"
             "انجامش بدیم؟"
         )
         markup = kb.confirm_kb(f"cf:farm:up:{plot.id}")

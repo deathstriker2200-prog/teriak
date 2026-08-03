@@ -11,7 +11,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, gear, mine, pending, power, profile, rank, seen, shop, skills, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, gear, mine, pending, power, profile, rank, seen, shop, skills, smuggle, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -35,7 +35,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("buy", rf"{TP}خرید{S}+(.+)$", textcmd.buy_text),
     ("plant", rf"{TP}کاشت{S}+(.+)$", textcmd.plant_text),
     ("mydogs", rf"{T}سگ{S}*های{S}*من!?$|{T}سگ{S}*هام!?$|{T}سگ{S}*ها!?$", textcmd.dogs_text),
-    ("farm", rf"{T}مزرعه!?$|{T}زمین{S}*های{S}*من!?$|{T}زمین{S}*هام!?$|{T}زمین{S}*ها!?$|{T}زمین!?$", textcmd.farm_text),
+    ("farm", rf"{TP}مزرعه!?$|{TP}زمین{S}*های{S}*من!?$|{TP}زمین{S}*هام!?$|{TP}زمین{S}*ها!?$|{TP}زمین!?$", textcmd.farm_text),
     ("rank", rf"{TP}رتبه!?$|{TP}رتبه{S}*بندی!?$|{TP}لیدربرد!?$|{TP}لیدر{S}*برد!?$", rank.rank_cb),
     ("dogstats", rf"{TP}[اآ]مار{S}+(.+)$", dogs.dog_stats_text),  # «آمار لوله‌کش» و «امار لوله‌کش»، با و بدون پیشوند
     ("stats", rf"{TP}[اآ]مار!?$", textcmd.profile_text),  # «آمار» و «امار» تنها، پروفایل باز میشه که بلوک آمار داره
@@ -72,7 +72,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("weather", rf"{TP}وضعیت{S}+آب{S}+و{S}+هوا!?$|{TP}آب{S}*و{S}*هوا!?$|{TP}وضعیت{S}+هواشناسی!?$|{TP}هواشناسی!?$|{TP}وضعیت{S}+هوا!?$", world.weather_cmd),
     ("market", rf"{TP}وضعیت{S}+بازار!?$|{TP}بازار{S}*سیاه!?$|{TP}بازار!?$", world.market_cmd),  # با و بدون پیشوند
     ("shelter", rf"{T}پناهگاه!?$|{T}مخفیگاه!?$|{TP}انبار!?$|{TP}انبار{S}+و{S}+پناهگاه!?$", world.shelter_cmd),  # «انبار» بدون پیشوند هم جواب میده
-    ("company", rf"{T}شرکت!?$|{T}کارخانه!?$", company.company_cb),
+    ("company", rf"{TP}شرکت!?$|{TP}کارخانه!?$", company.company_cb),
     ("dogrename", rf"{T}اسم{S}+سگ{S}+(.+)$", dogs.dog_rename_text),
     ("casino", rf"{T}قمارخانه!?$|{T}قمار!?$", world.casino_cmd),
     # ── بانک شخصی، «بانک» بدون پیشوند هم باز میشه + دستورهای «بانک واریز/برداشت» و «انتقال n کد» ──
@@ -84,6 +84,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("bankwd", rf"{T}برداشت{S}+([0-9۰-۹٠-٩,٬]+)$", bank.withdraw_text),
     ("help", rf"{T}راهنما!?$|{T}آموزشات!?$", start.help_cmd),
     ("caravan_spawn", rf"{T}اسپان{S}+کاروان!?$", world.caravan_spawn_cmd),  # فقط ادمین
+    ("smuggler_spawn", rf"{T}اسپان{S}+کاروان{S}+(.+?)!?$", smuggle.admin_spawn_text),  # کاروان قاچاق، فقط ادمین
 ]
 
 
@@ -132,6 +133,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("addxpgroup", admin.addxpgroup_cmd))
     app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
+    app.add_handler(CommandHandler("addseed", admin.addseed_cmd))
     app.add_handler(CommandHandler("detp", admin.detp_cmd))
     app.add_handler(CommandHandler("dexp", admin.dexp_cmd))
     app.add_handler(CommandHandler("clearacc", admin.clearacc_cmd))
@@ -254,6 +256,16 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.team_upgrade_execute, pattern=r"^tbcf:(?:atk|def):\d+$"))
 
     # ── سیستم‌های جهان (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(world.shelter_cat_cb, pattern=r"^shelter:cat:\w+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_page, pattern=r"^sm:page$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_qty_page, pattern=r"^sm:pick:\w+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_confirm_page, pattern=r"^sm:qty:\w+:(?:\d+|all)$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_execute, pattern=r"^sm:go:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_ask_qty_cb, pattern=r"^sm:ask:\w+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.caravan_page, pattern=r"^smc:page$"))
+    app.add_handler(CallbackQueryHandler(smuggle.caravan_confirm_page, pattern=r"^smc:qty:(?:\d+|all)$"))
+    app.add_handler(CallbackQueryHandler(smuggle.caravan_execute, pattern=r"^smc:go:\d+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.caravan_ask_qty_cb, pattern=r"^smc:ask$"))
     app.add_handler(CallbackQueryHandler(world.shelter_up_confirm, pattern=r"^shelter:up$"))
     app.add_handler(CallbackQueryHandler(world.shelter_up_execute, pattern=r"^cf:shelter:up$"))
     app.add_handler(CallbackQueryHandler(world.resource_sell_cb, pattern=r"^shelter:sell$"))

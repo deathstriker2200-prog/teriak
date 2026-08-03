@@ -89,6 +89,24 @@ def is_seed_unlocked(seed_key: str, user_level: int) -> bool:
     return user_level >= config.SEEDS[seed_key]["min_level"]
 
 
+# ───────── گیت لول دراپ بذر (جستجو و کوئست، درخواست کارفرما) ─────────
+
+def seed_drop_min_level(seed_key: str) -> int:
+    """حداقل لول برای افتادن بذر از جستجو/کوئست، بقیه بذرها از لول ۱"""
+    return config.SEED_DROP_MIN_LEVEL.get(seed_key, 1)
+
+
+def seed_drop_allowed(seed_key: str, user_level: int) -> bool:
+    """این بذر با این لول می‌تونه دراپ بشه؟ (کوکائین 3+ | جهنم/ابلیس 5+ | جهش‌یافته 8+)"""
+    return user_level >= seed_drop_min_level(seed_key)
+
+
+def allowed_normal_seeds(user_level: int) -> list[str]:
+    """بذرهای غیرافسانه‌ای که با این لول اجازه دراپ دارن، به ترتیب کاتالوگ"""
+    return [k for k, v in config.SEEDS.items()
+            if not v.get("legendary") and seed_drop_allowed(k, user_level)]
+
+
 # ───────── ارتقای سلاح و زره ⬆️ ─────────
 
 def gear_catalog(kind: str) -> dict:
