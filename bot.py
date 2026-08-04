@@ -39,6 +39,7 @@ async def on_start(app: Application) -> None:
         BotCommand("profile", "🏠 پروفایلت"),
         BotCommand("help", "📖 آموزشات بازی"),
         BotCommand("heal", "❤️ درمان و برگردوندن سلامت"),
+        BotCommand("energy", "⚡ انرژی‌زا و برگشت انرژی"),
         BotCommand("shop", "🛒 فروشگاه"),
         BotCommand("botoff", "🔌 خاموش کردن ربات تو گروه (ادمین گروه)"),
         BotCommand("boton", "🔌 روشن کردن ربات تو گروه (ادمین گروه)"),

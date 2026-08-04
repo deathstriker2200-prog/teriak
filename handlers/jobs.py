@@ -5,6 +5,7 @@
 یورش پلیس فعلاً به درخواست کارفرما خاموشه (POLICE_ENABLED=False) 🚔
 نبض انرژی هر ۵ دقیقه به همه کاربرا (یه کوئری دسته‌جمعی، بدون حلقه تک‌تک) ⚡
 جاروی ورودی‌های معلق عددی هر چند ثانیه (مهلت ۶۰ ثانیه‌ای واریز/برداشت و خرید منابع) ⏳
+جاروی بوست انرژی‌زا هر نیم دقیقه، پیام «اثر انرژی زا به پایان رسید» میره پی‌وی ⚡
 پاکسازی اکانت غیرعضوهای عضویت اجباری (بعد از مهلت مثلاً ۴۸ ساعته) هر ساعت 🧹
 """
 
@@ -71,13 +72,16 @@ async def market_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 # ───────── نبض انرژی ⚡ ─────────
 
 def _energy_pulse_stmt():
-    """UPDATE دسته‌جمعی: min(انرژی + نبض, سقف) برای همه کاربرای زیر سقف"""
+    """UPDATE دسته‌جمعی: min(انرژی + نبض, سقف) برای همه کاربرای زیر سقف
+    سقف هر کاربر پویاست (راند ۱۵): MAX_ENERGY + per × لول استقامت، توی SQL خام حساب میشه"""
     from sqlalchemy import case
+    per = int((config.SKILLS.get("stamina") or {}).get("per", 0))
+    cap = config.MAX_ENERGY + per * User.skill_stamina
     return (
         sql_update(User)
-        .where(User.energy < config.MAX_ENERGY)
+        .where(User.energy < cap)
         .values(energy=case(
-            (User.energy + config.ENERGY_PULSE_AMOUNT > config.MAX_ENERGY, config.MAX_ENERGY),
+            (User.energy + config.ENERGY_PULSE_AMOUNT > cap, cap),
             else_=User.energy + config.ENERGY_PULSE_AMOUNT,
         ))
     )
@@ -168,7 +172,19 @@ async def shipment_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         events = await smg.process_due_shipments(s)
         await s.commit()
     for ev in events:
-        await _send(context, ev["tg"], ev["text"])
+        await _send(context, ev.get("chat") or ev["tg"], ev["text"])  # چت مبدأ ارسال محموله (راند ۱۳)
+
+
+# ───────── جاروی بوست انرژی‌زا ⚡ ─────────
+
+async def boost_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """بوست حمله انرژی‌زای تموم‌شده جارو میشه و خبر پایان اثر به پی‌وی کاربر میره (راند ۱۳)"""
+    from services import energy as energy_svc
+    async with session_scope() as s:
+        tgs = await energy_svc.process_expired_boosts(s)
+        await s.commit()
+    for tg_id in tgs:
+        await _send(context, tg_id, "⚡ اثر انرژی‌زا به پایان رسید")
 
 
 # ───────── کاروان قاچاق 🚚 ─────────
@@ -317,6 +333,7 @@ def register_jobs(app) -> None:
     jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
     jq.run_repeating(pending_sweep_job, interval=config.PENDING_SWEEP_SECONDS, first=45, name="pending-sweep")
     jq.run_repeating(shipment_job, interval=config.SHIPMENT_JOB_SECONDS, first=20, name="shipment")
+    jq.run_repeating(boost_sweep_job, interval=config.ENERGY_BOOST_SWEEP_SECONDS, first=config.ENERGY_BOOST_SWEEP_SECONDS, name="boost-sweep")
     jq.run_repeating(smuggler_job, interval=config.SMUGGLER_TICK_SECONDS, first=40, name="smuggler")
     if config.POLICE_ENABLED:
         jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
@@ -333,7 +350,7 @@ def register_jobs(app) -> None:
         name="stats-autoedit",
     )
     logger.info(
-        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | محموله | کاروان قاچاق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s%s",
+        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | محموله | جاروی بوست انرژی‌زا | کاروان قاچاق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s%s",
         " | پلیس" if config.POLICE_ENABLED else "",
         " | لاگ ردیابی بازیکن" if config.ADMIN_LOG_CHAT_ID else "",
     )

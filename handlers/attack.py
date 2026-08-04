@@ -2,7 +2,7 @@
 هدف دیگه هزینه‌داره (با لول جست‌وجوگر از 25 تا 1000 تی‌پوینت) و هر حمله 1 دقیقه کولدان داره
 قربانی سپر ۶ ساعته داشته باشه مهاجم انتخاب داره: با پول بشکنه یا بی‌خیال
 بعد حمله، به قربانی تو پی‌وی خبر حمله می‌رسه که چقدر دزدیده شد و چه تجربه کمی گرفت
-سیستم قدیمی راند ۱۲: قدرت کل (حمله + دفاع) دو طرف مقایسه میشه و درصدی نیس، بیشتر بود میبری
+راند ۱۲ قدرت کل (حمله + دفاع) با بوست‌های نقش‌محور | راند ۱۳: اختلاف تا ۱۰۰ شانس متناسبه و هدف‌های دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشن
 نبرد HP فقط توی گروه‌ها با دستورهای جنگ انجام میشه، اینجا سیستم جداست"""
 
 from telegram import Update
@@ -21,12 +21,12 @@ from utils import esc, fa_dur, fa_num, money
 
 PV_PANEL_TEXT = (
     "<b>⚔️ حمله پی‌وی</b>\n\n"
-    "🎯 هدف شانسی نزدیک لولت رو پیدا کن\n\n"
-    "👀 قبل از حمله پیش‌نمایشش رو می‌بینی و می‌تونی عوضش کنی\n"
-    "🕵 با جاسوسی جیب و قدرت کل طرف لو میره\n"
-    "💪 نتیجه نبرد مقایسه قدرت کله (حمله + دفاع)، بیشتر بود میبری\n"
-    "🛡 بعد از حمله حریف مدتی از حمله‌های پی‌وی مصون میشه\n\n"
-    "⚔️ نبردهای واقعی با HP فقط داخل گروه‌ها انجام میشن"
+    "🎯 با شروع حمله، یک بازیکن نزدیک به سطح خودت به‌صورت شانسی پیدا میشه\n\n"
+    "👀 قبل از حمله می‌تونی پیش‌نمایش حریف رو ببینی؛ اگر مناسب نبود، امکان تغییر هدف داری\n\n"
+    "🕵️ با جاسوسی، اطلاعات بیشتری از حریف مثل مقدار پول و قدرت کلیش به دست میاری\n\n"
+    "💪 نتیجه نبرد بر اساس قدرت کلی (قدرت حمله + قدرت دفاع) محاسبه میشه؛ بازیکنی که قدرت بیشتری داشته باشه، پیروز میشه\n\n"
+    "🛡️ بعد از هر حمله، حریف برای مدتی وارد حالت محافظت میشه و امکان حمله دوباره بهش وجود نداره\n\n"
+    "⚔️ توجه: نبردهای واقعی همراه با سیستم HP فقط داخل گروه‌ها فعال هستند"
 )
 
 NO_TARGET_TEXT = "😴 هدفی حوالی لولت پیدا نشد"
@@ -59,7 +59,7 @@ async def _target_view(s, user: User, victim: User) -> tuple[str, object]:
         "🕵 با جاسوسی جیب و قدرت کل طرف لو میره\n"
         "می‌زنیش یا یه هدف دیگه می‌خوای؟"
     )
-    spy_c = 0 if pvattack.spy_is_free(user, victim) else pvattack.spy_cost(user.level)
+    spy_c = pvattack.spy_cost(user.level)
     return text, kb.pv_target_kb(victim.id, pvattack.reroll_cost(user.level), spy_c)
 
 
@@ -79,6 +79,7 @@ async def target_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await s.commit()
             return await respond(update, NO_TARGET_TEXT, kb.pv_attack_kb())
 
+        pvattack.note_target_shown(user.telegram_id, victim.id)  # تا ۲۰ نشون بعدی تکرار نمیشه (راند ۱۳)
         text, markup = await _target_view(s, user, victim)
         await s.commit()
     await respond(update, text, markup)
@@ -110,13 +111,14 @@ async def target_next_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return await respond(update, text, markup, alert=NO_OTHER_TARGET_ALERT)
 
         user.cash -= cost
+        pvattack.note_target_shown(user.telegram_id, victim.id)  # تا ۲۰ نشون بعدی تکرار نمیشه (راند ۱۳)
         text, markup = await _target_view(s, user, victim)
         await s.commit()
     await respond(update, text, markup)
 
 
 async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🕵 جاسوسی، با پول جیب و استت‌ها و قدرت کل طرف و نتیجه مقایسه لو میره"""
+    """🕵 جاسوسی، فقط پول و قدرت کل طرف لو میره (راند ۱۵: همیشه پولیه، حکم مقایسه هم حذف شد)"""
     target_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -124,40 +126,29 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if cur is None:
             await s.commit()
             return await respond(update, NO_TARGET_TEXT, kb.pv_attack_kb())
-        free = pvattack.spy_is_free(user, cur)
         cost = pvattack.spy_cost(user.level)
-        if not free and user.cash < cost:
+        if user.cash < cost:
             text, markup = await _target_view(s, user, cur)
             await s.commit()
             return await respond(update, text, markup, alert="💸 پولت برای جاسوسی کمه")
-        if not free:
-            user.cash -= cost
-        user.last_spy_target_id = cur.id
-        a_tot, t_tot, info = await pvattack.total_powers(s, user, cur)
-        if a_tot > t_tot:
-            verdict = "✅ قدرتت بیشتره، حمله بزنی میبری"
-        elif a_tot == t_tot:
-            verdict = "⚖️ قدرت‌ها برابره، تساوی به نفع مدافه‌ست"
-        else:
-            verdict = "❌ قدرتش بیشتره، حمله بزنی میبازی"
+        user.cash -= cost
+        _a, t_tot, _info = await pvattack.total_powers(s, user, cur)
         cash = cur.cash
         name = users.display_name(cur)
         text, markup = await _target_view(s, user, cur)
         await s.commit()
+    # قالب گزارش درخواست کارفرما (راند ۱۵): فقط دو خط دیتا، هیچ خط دیگه‌ای نمیاد
     alert = (
-        f"🕵 جاسوسی از «{esc(name)}» گزارش داد\n"
-        f"💰 جیبش {money(cash)}\n"
-        f"⚔️ حمله {fa_num(info['t_atk0'])} | 🛡 دفاع {fa_num(info['t_def0'])}\n"
-        f"💪 قدرت کلش {fa_num(t_tot)} | قدرت کل تو {fa_num(a_tot)}\n"
-        f"{verdict}"
+        f"🕵 گزارش جاسوسی از «{esc(name)}» به شرح زیر است\n\n"
+        f"💰 پول: {money(cash)}\n"
+        f"💪 قدرت کلی: {fa_num(t_tot)}"
     )
-    if free:
-        alert += "\n🔁 همون طرفی که جاسوش بودی، این یکی رایگان بود"
     await respond(update, text, markup, alert=alert)
 
 
 async def target_back_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🔙 بازگشت به پنل حمله پی‌وی"""
+    """🔙 بازگشت به پنل حمله پی‌وی، سرچ تمومه و لیست دیده‌شده‌ها پاک میشه"""
+    pvattack.clear_seen_targets(update.effective_user.id)
     await pv_panel(update)
 
 
@@ -233,6 +224,8 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
             victim.shield_until = None
 
         result = await pvattack.execute(s, user, victim)
+        if result["ok"]:
+            pvattack.clear_seen_targets(user.telegram_id)  # سرچ با حمله تموم شد، دور بعدی تازه (راند ۱۳)
         if not result["ok"]:
             await s.commit()
             reason = result["reason"]

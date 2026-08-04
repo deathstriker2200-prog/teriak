@@ -1700,7 +1700,7 @@ async def main() -> None:
     from handlers import attack as attack_h
     check("متن راهنمای حمله و پنل شانسی پی‌وی",
           "حمله | شلیک | بنگ | پیو" in battle_h.ATTACK_GUIDE_TEXT
-          and "هدف شانسی" in attack_h.PV_PANEL_TEXT)
+          and "به‌صورت شانسی" in attack_h.PV_PANEL_TEXT)
 
     # ═══ دکمه‌های قفل قرمز + افزودن به گروه ═══
     from keyboards import keyboards as kb2
@@ -1763,8 +1763,9 @@ async def main() -> None:
           config.BATTLE_COOLDOWN_SECONDS == 30 and config.BATTLE_DMG_VARIANCE == 0.30
           and len(config.BATTLE_STEAL_TIERS) == 5 and config.BATTLE_DEAD_SECONDS == 1800
           and config.MAX_LEVEL == 20 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 600)
-    check("۶ کوئست روزانه با عنوان و عدد هدف",
-          set(config.DAILY_QUESTS) == {"attack", "harvest", "mine", "plant", "search", "feed"}
+    check("۱۰ کوئست روزانه با عنوان و عدد هدف (راند ۱۵ چهار تای جدید اضافه شد)",
+          set(config.DAILY_QUESTS) == {"attack", "harvest", "mine", "plant", "search", "feed",
+                                       "drink", "sellres", "caravan", "shipment"}
           and config.DAILY_QUESTS["attack"]["target"] == 5
           and config.DAILY_QUESTS["harvest"]["target"] == 10
           and config.DAILY_QUESTS["mine"]["target"] == 20
@@ -1909,9 +1910,9 @@ async def main() -> None:
 
     from handlers import jobs as jobs_h  # noqa: E402
     jobs_h.register_jobs(app)
-    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|جاروی ورودی معلق|محموله|کاروان قاچاق|نبض انرژی|پاکسازی عضویت|ادیت ساعتی آمار)",
-          app.job_queue is not None and len(app.job_queue.jobs()) == 10
-          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "pending-sweep", "shipment", "smuggler", "energy-pulse", "fj-wipe", "stats-autoedit"},
+    check("جاب‌های زمان‌دار رجیستر شدن (آب‌وهوا|بازار|کاروان|برد کاروان|جاروی ورودی معلق|محموله|جاروی بوست انرژی‌زا|کاروان قاچاق|نبض انرژی|پاکسازی عضویت|ادیت ساعتی آمار)",
+          app.job_queue is not None and len(app.job_queue.jobs()) == 11
+          and {j.name for j in app.job_queue.jobs()} == {"weather", "market", "caravan", "caravan-board", "pending-sweep", "shipment", "boost-sweep", "smuggler", "energy-pulse", "fj-wipe", "stats-autoedit"},
           str([j.name for j in (app.job_queue.jobs() if app.job_queue else [])]))
 
     # regex دستورهای متنی، از خود TEXT_HANDLERS رجیستری — پیشوند «تریاکی » اجباریه
@@ -2739,6 +2740,8 @@ async def main() -> None:
     qc = _FjQ(8860)
     updc = _fj_upd()
     updc.callback_query = qc
+    gate_h._LAST_GATE[8860] = 0  # خاطره ارسال قبلی رو می‌پرونیم، تست بدون وابستگی به زمان اجرای سوییت
+    sent_g0 = len(bot_g.sent)
     stopped = False
     try:
         await gate_h.gate_callbacks(updc, ctx_g)
@@ -2746,13 +2749,13 @@ async def main() -> None:
         stopped = True
     check("دکمه غیرعضو هم گیت میشه و پیام لینک فقط یه بار میره",
           stopped and any("عضو شو" in a for a in qc.answers)
-          and len(bot_g.sent) == 1 and "عضویت اجباری" in bot_g.sent[0][1]
+          and len(bot_g.sent) == sent_g0 + 1 and "عضویت اجباری" in bot_g.sent[-1][1]
           and gate_h.PENDING.get(8860) is updc)
     try:
         await gate_h.gate_callbacks(updc, ctx_g)
     except _AHS:
         pass
-    check("پیام گیت کالبکی پشت سر هم اسپم نمیشه", len(bot_g.sent) == 1)
+    check("پیام گیت کالبکی پشت سر هم اسپم نمیشه", len(bot_g.sent) == sent_g0 + 1)
 
     # ── خاموش کردن، کاملاً عبوری ──
     gate_h.PENDING.pop(8860, None)  # آپدیت کالبکی که تو تست قبلی گذاشتیم
@@ -3678,7 +3681,7 @@ async def main() -> None:
     check("هلپ مزرعه (چیدمان جدید کارفرما)",
           all(x in HS["farm"] for x in ["<b>🌱 مزرعه</b>", "«تریاکی کاشت [نام بذر]»", "«تریاکی برداشت»",
                                         "هر برداشت تعداد مشخصی محصول می‌ده", "افسانه‌ای همیشه 1 محصول",
-                                        "بین 1 تا 6 محصول", "⬆️ ارتقای زمین:", "چوب هم نیاز داره",
+                                        "بین 1 تا 3 محصول", "⬆️ ارتقای زمین:", "چوب هم نیاز داره",
                                         "ارسال محموله", "کاروان قاچاق"])
           and "کیفیت" not in HS["farm"] and "تعداد ثابت" not in HS["farm"] and "%" not in HS["farm"])
     check("هلپ شرکت (بدون عدد دقیق ضریب)",
@@ -4006,14 +4009,14 @@ async def main() -> None:
 
     slash_bot = _SlashBot()
     await bot_mod.on_start(SimpleNamespace(bot=slash_bot))
-    check("set_my_commands با لیست جدید صدا زده میشه (بدون menu، botoff/boton ته لیست)",
+    check("set_my_commands با لیست جدید صدا زده میشه (راند ۱۵: energy دقیق زیر heal)",
           slash_bot.cmds is not None
           and [c.command for c in slash_bot.cmds]
-          == ["start", "profile", "help", "heal", "shop", "botoff", "boton"]
+          == ["start", "profile", "help", "heal", "energy", "shop", "botoff", "boton"]
           and all(isinstance(c, _BC) for c in slash_bot.cmds),
           str([c.command for c in (slash_bot.cmds or [])]))
     check("توضیح هر کامند ایموجی مخصوص خودشو داره",
-          all(c.description and c.description[0] in "🎮🏠📖❤️🛒🔌" for c in slash_bot.cmds),
+          all(c.description and c.description[0] in "🎮🏠📖❤️⚡🛒🔌" for c in slash_bot.cmds),
           str([c.description for c in (slash_bot.cmds or [])]))
 
     # ═══ این دور: کوئست‌های روزانه 📅 | سپر ۱۵ دقیقه و نبرد قدرت‌محور | رگرسیون باگ رها کردن سگ ═══
@@ -4357,8 +4360,8 @@ async def main() -> None:
     await battle_h3.attack_cmd(upd, None)
     pvt = upd.message.calls[-1][1]
     pvk = upd.message.calls[-1][2].get("reply_markup")
-    check("حمله تو پی‌وی پنل هدف شانسی رو نشون میده",
-          "هدف شانسی" in pvt
+    check("حمله تو پی‌وی پنل حمله پی‌وی رو نشون میده",
+          "حمله پی‌وی" in pvt and "شانسی" in pvt
           and pvk is not None
           and any(b.callback_data == "patt:go" for row in pvk.inline_keyboard for b in row))
 
@@ -4387,20 +4390,20 @@ async def main() -> None:
     check("کولدان حمله پی‌وی دقیقا 5 دقیقه‌ست", config.PV_ATTACK_COOLDOWN_SECONDS == 300)
     check("تجربه قربانی و هزینه شکستن سپر تو کانفیگن",
           config.PV_ATTACK_VICTIM_XP == 3 and config.PV_ATTACK_SHIELD_BREAK_COST == 1500)
-    check("هزینه هدف دیگه خطی از 25 لول یک تا 1000 مکس‌لوله",
-          config.PV_REROLL_MIN_COST == 25 and config.PV_REROLL_MAX_COST == 1000
-          and pv_svc.reroll_cost(1) == 25
-          and pv_svc.reroll_cost(config.MAX_LEVEL) == 1000
-          and 25 < pv_svc.reroll_cost(10) < 1000)
-    check("هزینه جاسوسی خطی از 50 لول یک تا 1000 مکس‌لوله",
-          config.PV_SPY_MIN_COST == 50 and config.PV_SPY_MAX_COST == 1000
-          and pv_svc.spy_cost(1) == 50
-          and pv_svc.spy_cost(config.MAX_LEVEL) == 1000
-          and 50 < pv_svc.spy_cost(10) < 1000)
+    check("هزینه هدف دیگه خطی از 100 لول یک تا 2500 مکس‌لوله (راند ۱۵)",
+          config.PV_REROLL_MIN_COST == 100 and config.PV_REROLL_MAX_COST == 2500
+          and pv_svc.reroll_cost(1) == 100
+          and pv_svc.reroll_cost(config.MAX_LEVEL) == 2500
+          and 100 < pv_svc.reroll_cost(10) < 2500)
+    check("هزینه جاسوسی خطی از 250 لول یک تا 5000 مکس‌لوله (راند ۱۵)",
+          config.PV_SPY_MIN_COST == 250 and config.PV_SPY_MAX_COST == 5000
+          and pv_svc.spy_cost(1) == 250
+          and pv_svc.spy_cost(config.MAX_LEVEL) == 5000
+          and 250 < pv_svc.spy_cost(10) < 5000)
 
     # ── قدرت کل: درصدی نیس، بیشتر بود برده و تساوی به نفع مدافه‌ست (راند ۱۲) ──
-    check("قدرت کل بیشتر قطعی برده و تساوی یا کمتر باخته",
-          pv_svc.decide_win(101, 100) and not pv_svc.decide_win(100, 100) and not pv_svc.decide_win(100, 101))
+    check("قدرت کل خیلی بیشتر قطعی برده و خیلی کمتر قطعی باخته (خارج رنج نزدیک، راند ۱۳)",
+          pv_svc.decide_win(500, 100) and not pv_svc.decide_win(100, 500) and not pv_svc.decide_win(100, 600))
 
     # ── لیست هدف: فقط ±۲ لول، بدون خودش و بدون مصونیت‌دارها ──
     async with session_scope() as s:
@@ -4561,12 +4564,12 @@ async def main() -> None:
     plist_txt = upd.message.calls[-1][1]
     plist_kb = upd.message.calls[-1][2].get("reply_markup")
     pdata = [b.callback_data for row in plist_kb.inline_keyboard for b in row]
-    check("دستور «حمله» تو پی‌وی پنل هدف شانسی میده",
-          "هدف شانسی" in plist_txt and "patt:go" in pdata, pdata[:6])
-    check("پنل شانسی پیش‌نمایش و جاسوسی و مصونیت و نبرد گروهی رو توضیح میده",
-          "هدف شانسی نزدیک لولت رو پیدا کن" in plist_txt
-          and "پیش‌نمایشش رو می‌بینی" in plist_txt and "🕵 با جاسوسی جیب و قدرت کل طرف لو میره" in plist_txt
-          and "مصون" in plist_txt and "داخل گروه‌ها" in plist_txt, plist_txt[:120])
+    check("دستور «حمله» تو پی‌وی پنل حمله پی‌وی رو میده",
+          "حمله پی‌وی" in plist_txt and "شانسی" in plist_txt and "patt:go" in pdata, pdata[:6])
+    check("پنل شانسی قالب جدید کارفرما رو داره (راند ۱۳): شانسی، پیش‌نمایش، جاسوسی، محافظت، نبرد گروهی",
+          "با شروع حمله، یک بازیکن نزدیک به سطح خودت" in plist_txt
+          and "پیش‌نمایش حریف رو ببینی" in plist_txt and "با جاسوسی، اطلاعات بیشتری" in plist_txt
+          and "حالت محافظت" in plist_txt and "داخل گروه‌ها" in plist_txt, plist_txt[:120])
 
     # دکمه شانسی: هدف کنترل‌شده تزریق میشه (SQL انتخاب شانسی با تست سرویس پوشش داده شد)
     async def _pick9411(session, u, exclude_id=None):
@@ -4608,27 +4611,28 @@ async def main() -> None:
         id9412 = (await users.get_by_tg(s, 9412)).id
     check("دکمه‌های پیش‌نمایش: حمله، جاسوسی با قیمت، هدف دیگه با قیمت، بازگشت",
           rdata == [f"patt:hit:{id9411}", f"patt:spy:{id9411}", f"patt:next:{id9411}", "patt:back"]
-          and "🕵 جاسوسی" in rtexts[1] and "1,000 TP" in rtexts[1]
-          and "هدف دیگه" in rtexts[2] and "1,000 TP" in rtexts[2], str(rtexts))
+          and "🕵 جاسوسی" in rtexts[1] and "5,000 TP" in rtexts[1]
+          and "هدف دیگه" in rtexts[2] and "2,500 TP" in rtexts[2], str(rtexts))
 
-    # ── جاسوسی: جیب و دفاع و شانس لو میره و هزینه کم میشه ──
+    # ── جاسوسی: فقط پول و قدرت کلی لو میره و هزینه 5000 کم میشه (راند ۱۵) ──
     upd = _fake_update(f"patt:spy:{id9411}", uid=9410)
     await pv_h3.target_spy_cb(upd, None)
     rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
     ans = next((c for c in upd.callback_query.calls if c[0] == "answer"), None)
     async with session_scope() as s:
         c_spy = (await users.get_by_tg(s, 9410)).cash
-    check("جاسوسی گزارش جیب و استت‌ها و قدرت کل رو الرت میده و 1000 هزینه برمیداره",
+    check("جاسوسی قالب راند ۱۵: فقط پول و قدرت کلی بدون هیچ حکم مقایسه، 5000 هزینه برمیداره",
           ans is not None and ans[1] and ans[2].get("show_alert")
-          and "🕵 جاسوسی از «طرف9411» گزارش داد" in str(ans[1][0])
-          and "💰 جیبش 9,000 تی‌پوینت" in str(ans[1][0])
-          and "⚔️ حمله" in str(ans[1][0]) and "🛡 دفاع" in str(ans[1][0])
-          and "💪 قدرت کلش" in str(ans[1][0]) and "قدرت کل تو" in str(ans[1][0])
-          and ("میبری" in str(ans[1][0]) or "میبازی" in str(ans[1][0]) or "برابره" in str(ans[1][0]))
-          and c_spy == 10000 - pv_svc.spy_cost(20) and pv_svc.spy_cost(20) == 1000
+          and "🕵 گزارش جاسوسی از «طرف9411» به شرح زیر است" in str(ans[1][0])
+          and "💰 پول: 9,000 تی‌پوینت" in str(ans[1][0])
+          and "💪 قدرت کلی:" in str(ans[1][0])
+          and "پول توی جیب" not in str(ans[1][0])
+          and "میبری" not in str(ans[1][0]) and "میبازی" not in str(ans[1][0]) and "🎲" not in str(ans[1][0])
+          and str(ans[1][0]).count("\n") == 3
+          and c_spy == 10000 - pv_svc.spy_cost(20) and pv_svc.spy_cost(20) == 5000
           and "طرف9411" in rt, f"{ans} | {c_spy}")
 
-    # پول کم: جاسوسی نمیشه، الرت یکدست و پول دست‌نخورده (رو هدف تازه‌ای که هنوز جاسوش نشده، چون دوباره همون طرف رایگانه)
+    # پول کم: جاسوسی نمیشه، الرت یکدست و پول دست‌نخورده (راند ۱۵: دیگه جاسوسی رایگان نداریم، لول 20 همیشه 5000 می‌خواد)
     async with session_scope() as s:
         low2 = await users.get_by_tg(s, 9410)
         low2.cash = 5
@@ -4658,8 +4662,8 @@ async def main() -> None:
     check("هدف دیگه یه قربانی تازه میاره", "طرف9412" in rt and f"patt:hit:{id9412}" in rdata and f"patt:spy:{id9412}" in rdata, rt)
     async with session_scope() as s:
         c_after = (await users.get_by_tg(s, 9410)).cash
-    check("هزینه هدف دیگه لول 20 برابر 1000 تی‌پوینته و کم شد",
-          c_after == 9000 - pv_svc.reroll_cost(20) and pv_svc.reroll_cost(20) == 1000, str(c_after))
+    check("هزینه هدف دیگه لول 20 برابر 2500 تی‌پوینته و کم شد",
+          c_after == 9000 - pv_svc.reroll_cost(20) and pv_svc.reroll_cost(20) == 2500, str(c_after))
 
     # پول کم: هدف دیگه نمیشه و همون پیش‌نمایش میمونه
     async with session_scope() as s:
@@ -4703,7 +4707,7 @@ async def main() -> None:
     upd = _fake_update("patt:back", uid=9410)
     await pv_h3.target_back_cb(upd, _fake_ctx)
     rt = next((c[1] for c in upd.callback_query.calls if c[0] == "edit"), "")
-    check("بازگشت پنل هدف شانسی رو برمی‌گردونه", "هدف شانسی" in rt, rt[:60])
+    check("بازگشت پنل حمله پی‌وی رو برمی‌گردونه", "حمله پی‌وی" in rt, rt[:60])
 
     # حمله: برد + متن تمیز مهاجم + دی‌ام قربانی + مصونیت و کولدان
     pv_svc.pick_random_target = _pick9411
@@ -8408,12 +8412,13 @@ async def main() -> None:
 
     # ── کوئست‌های تیم: 8 تا، لول‌گیت و مقیاس‌خورده با جایزه بهبودیافته ──
     tq = {q["key"]: q for q in config.TEAM_QUESTS}
-    check("تیم 8 کوئست روزانه داره (کشتن | برداشت | کاشت | معدن | غذا | جستجو | واریز بانک | کاروان)",
-          len(config.TEAM_QUESTS) == 8
-          and [q["key"] for q in config.TEAM_QUESTS] == ["kills", "harvest", "plant", "mine", "feed", "search", "depbank", "caravan"],
+    check("تیم 11 کوئست روزانه داره (راند ۱۵: انرژی‌زا | محموله | فروش منابع هم اضافه شد)",
+          len(config.TEAM_QUESTS) == 11
+          and [q["key"] for q in config.TEAM_QUESTS] == ["kills", "harvest", "plant", "mine", "feed", "search", "depbank", "caravan",
+                                                        "drink", "shipment", "sellres"],
           str(list(tq)))
     check("ترتیب لول‌گیت کوئست‌های تیم 1 و 1 و 2 و 3 و 4 و 5 و 6 و 7ـه",
-          [q["min_level"] for q in config.TEAM_QUESTS] == [1, 1, 2, 3, 4, 5, 6, 7])
+          [q["min_level"] for q in config.TEAM_QUESTS] == [1, 1, 2, 3, 4, 5, 6, 7, 2, 4, 5])
     s1 = team_svc.team_quest_scaled(tq["kills"], 1)
     check("کوئست کش لول 1 همون مبناست با جایزه بیشتر",
           s1["target"] == 25 and s1["reward"] == 250 and s1["bank_reward"] == 2500,
@@ -8428,12 +8433,12 @@ async def main() -> None:
     check("تیایتل کوئست بانک تیم هم مقیاس عددش پر میشه",
           fa_num(team_svc.team_quest_scaled(tq["depbank"], 6)["target"]) in team_svc.team_quest_scaled(tq["depbank"], 6)["title"])
     check("کوئست لول‌گیت برای تیم کم‌لول Noneـه", team_svc.team_quest_scaled(tq["mine"], 2) is None)
-    check("لول 2 کوئست‌های معدن و غذا و جستجو و بانک و کاروان قفله",
-          [q["key"] for q in team_svc.locked_quests_view(2)] == ["mine", "feed", "search", "depbank", "caravan"])
+    check("لول 2 فقط انرژی‌زا گرنته بازه و بقیه غیراز کش و برداشت و کاشت قفلن (راند ۱۵)",
+          [q["key"] for q in team_svc.locked_quests_view(2)] == ["mine", "feed", "search", "depbank", "caravan", "shipment", "sellres"])
     td_view = TeamDaily(team_id=424242, day="2000-01-01", kills=0, harvests=0, kills_done=0, harvests_done=0)
     v8 = team_svc.quests_view(td_view, 8)
     v1 = team_svc.quests_view(td_view, 1)
-    check("استعلام لول 8 هر 8 کوئست رو داره", len(v8) == 8, str(len(v8)))
+    check("استعلام لول 8 هر 11 کوئست رو داره (راند ۱۵)", len(v8) == 11, str(len(v8)))
     check("استعلام لول 1 فقط 2 کوئست باز داره",
           len(v1) == 2 and {q["key"] for q in v1} == {"kills", "harvest"}, str([q["key"] for q in v1]))
     check("شانس جایزه بذر افسانه‌ای کوئست تیم ۱۰٪ بعد لول 7ـه",
@@ -8539,8 +8544,8 @@ async def main() -> None:
         pqu.dq_data = None
         pqs = await quests_svc.ensure_quests(s, pqu)
         await s.commit()
-    check("استخر کوئست لول 1 فقط حمله و معدنه",
-          bool(pqs) and all(q["kind"] in ("attack", "mine") for q in pqs), str([q["kind"] for q in pqs]))
+    check("استخر کوئست لول 1 حمله و معدن و انرژی‌زاست (راند ۱۵)",
+          bool(pqs) and all(q["kind"] in ("attack", "mine", "drink") for q in pqs), str([q["kind"] for q in pqs]))
     async with session_scope() as s:
         pqh, _ = await users.get_or_create(s, tg(7380, "pq6", "با‌سابقه"))
         pqh.level = 6
@@ -9425,7 +9430,7 @@ async def main() -> None:
           txt_sk.splitlines()[0] == "<b>⭐️ مهارت‌ها</b>" and "🎖 امتیاز مهارت: 19" in txt_sk
           and "هر لول‌آپ یه امتیاز مهارت(جز لول 10 و 20) می‌گیری" in txt_sk,
           txt_sk.splitlines()[4] if txt_sk else "-")
-    check("بلاک چهار قابلیت: اسم با لول، خط توضیح ▫️، خط الان/بعدی",
+    check("بلاک پنج قابلیت: اسم با لول، خط توضیح ▫️، خط الان/بعدی (راند ۱۵ استقامت اضافه شد)",
           "💥 قدرت | لول 0 از 8" in txt_sk and "▫️ هر لول 2% حمله بیشتر" in txt_sk
           and "⚡ سرعت | لول 0 از 8" in txt_sk and "▫️ هر لول 2% حمله و کاشت سریع‌تر" in txt_sk
           and "🛡 دفاع | لول 0 از 8" in txt_sk and "▫️ هر لول 2% دفاع بیشتر" in txt_sk
@@ -9588,7 +9593,7 @@ async def main() -> None:
           next((ln for ln in rep_ut.splitlines() if "🏅" in ln), "-"))
 
     # ═══ این دور: تجربه برداشت بر اساس کیفیت + دراپ جستجو کمتر + زره نرم + رنج مرحله‌ای پی‌وی ═══
-    # ═══ + جاسوسی دوباره همون طرف رایگان + برگشت لقب Teriaky Lord ═══
+    # ═══ + برگشت لقب Teriaky Lord (جاسوسی رایگان با درخواست کارفرما تو راند ۱۵ کلاً حذف شد) ═══
 
     # ── تجربه برداشت: بازه (کف، سقف) با کیفیت ⭐1 تا ⭐5 ──
     check("تجربه بذرهای عادی بین 5 تا 25 بر اساس کیفیت (باندهای درخواستی، راند ۱۱)",
@@ -9676,11 +9681,10 @@ async def main() -> None:
               t_fb2 is not None and t_fb2.telegram_id != 9982 and abs(t_fb2.level - 45) > 10,
               str((t_fb2.telegram_id, t_fb2.level) if t_fb2 else None))
 
-    # ── جاسوسی دوباره همون طرف رایگانه ──
+    # ── جاسوسی همیشه پولیه (راند ۱۵، درخواست کارفرما: مکانیک رایگان کلاً پاک شد) ──
     async with session_scope() as s:
         spyu, _ = await users.get_or_create(s, tg(9990, "spyr", "جاسوس"))
-        spyu.level, spyu.cash = 20, 10000
-        spyu.last_spy_target_id = None
+        spyu.level, spyu.cash = 20, 30000
         spp, _ = await users.get_or_create(s, tg(9991, "spvt", "هدف جاسوسی"))
         spp.cash, spp.level = 7777, 10
         id_spp = spp.id
@@ -9693,11 +9697,10 @@ async def main() -> None:
     upd_s1 = _fake_update(f"patt:spy:{id_spp}", uid=9990)
     await pv_h3.target_spy_cb(upd_s1, None)
     async with session_scope() as s:
-        spyu = await users.get_by_tg(s, 9990)
-        check("جاسوسی اول یه طرف هزینه برمیداره و آخرین هدف ثبت میشه",
-              spyu.cash == 10000 - cost_spy and spyu.last_spy_target_id == id_spp,
-              f"{spyu.cash} / {spyu.last_spy_target_id}")
+        cash_s1 = (await users.get_by_tg(s, 9990)).cash
         await s.commit()
+    check("جاسوسی اول 5000 هزینه برمیداره (راند ۱۵ سقف قیمت لول 20)",
+          cost_spy == 5000 and cash_s1 == 30000 - cost_spy, f"{cash_s1}")
 
     upd_s2 = _fake_update(f"patt:spy:{id_spp}", uid=9990)
     await pv_h3.target_spy_cb(upd_s2, None)
@@ -9707,28 +9710,28 @@ async def main() -> None:
     async with session_scope() as s:
         cash_after2 = (await users.get_by_tg(s, 9990)).cash
         await s.commit()
-    check("جاسوسی دوباره همون طرف رایگانه، پول کم نمیشه و دکمه رایگانه",
-          cash_after2 == 10000 - cost_spy
-          and ans_s2 is not None and "رایگان" in str(ans_s2[1])
-          and any("رایگان" in t for t in btns_s2),
+    check("جاسوسی دوباره همون طرف هم پولیه، نه الرت نه دکمه هیچ رایگانی ندارن",
+          cash_after2 == 30000 - 2 * cost_spy
+          and ans_s2 is not None and "رایگان" not in str(ans_s2[1])
+          and not any("رایگان" in t for t in btns_s2)
+          and any("5,000 TP" in t for t in btns_s2),
           f"{cash_after2} | {btns_s2}")
 
     upd_s3 = _fake_update(f"patt:spy:{id_spq}", uid=9990)
     await pv_h3.target_spy_cb(upd_s3, None)
     async with session_scope() as s:
-        spyu = await users.get_by_tg(s, 9990)
-        check("هدف که عوض بشه دوباره پولیه و آخرین هدف به‌روز میشه",
-              spyu.cash == 10000 - 2 * cost_spy and spyu.last_spy_target_id == id_spq,
-              f"{spyu.cash} / {spyu.last_spy_target_id}")
+        cash_after3 = (await users.get_by_tg(s, 9990)).cash
         await s.commit()
+    check("هدف دیگه هم باز 5000 کم میشه",
+          cash_after3 == 30000 - 3 * cost_spy, str(cash_after3))
 
     upd_s4 = _fake_update(f"patt:spy:{id_spp}", uid=9990)
     await pv_h3.target_spy_cb(upd_s4, None)
     async with session_scope() as s:
         cash_after4 = (await users.get_by_tg(s, 9990)).cash
         await s.commit()
-    check("برگشت به هدف قبلی هم پولیه چون آخرین جاسوس عوض شده",
-          cash_after4 == 10000 - 3 * cost_spy, str(cash_after4))
+    check("برگشت به هدف قبلی هم پولیه، جمعاً چهار بار 5000 رفت",
+          cash_after4 == 30000 - 4 * cost_spy, str(cash_after4))
 
     # ── زره‌های نرم‌شده (دمیج برگرده) ──
     check("دفاع زره‌های ته‌خط نرم شد",
@@ -10143,17 +10146,34 @@ async def main() -> None:
           and "فاز تست" not in start_h2.HELP_SECTIONS["battle"])
 
     # ── جدول شانس تعداد برداشت بر اساس لول زمین (کارفرما: همه شانسی جز افسانه‌ای‌ها) ──
-    check("جدول شانس تعداد برداشت: جمع هر ردیف 100ـه و اعداد لول آخر دقیقاً حرف کارفرماست",
+    check("جدول شانس تعداد برداشت: جمع هر ردیف 100ـه و سقفش از راند ۱۴ سه‌تاست (درخواست کارفرما، 6 عدد بزرگی بود)",
           all(sum(pct for _, pct in t) == 100 for t in config.HARVEST_QTY_CHANCES.values())
           and config.HARVEST_QTY_CHANCES[1] == ((1, 70), (2, 30))
-          and dict(config.HARVEST_QTY_CHANCES[6]) == {1: 7, 2: 20, 3: 25, 4: 25, 5: 15, 6: 8},
+          and config.HARVEST_QTY_CHANCES[2] == ((1, 60), (2, 30), (3, 10))
+          and dict(config.HARVEST_QTY_CHANCES[6]) == {1: 35, 2: 35, 3: 30}
+          and all(max(q for q, _ in t) <= 3 for t in config.HARVEST_QTY_CHANCES.values()),
           str(config.HARVEST_QTY_CHANCES))
-    check("لول 2 سه‌تایی و لول 3 چهار و لول 4 پنج و لول 5 شش‌تایی رو باز می‌کنه و شانس 5 و 6 کم شروع میشه",
-          max(q for q, _ in config.HARVEST_QTY_CHANCES[2]) == 3
-          and max(q for q, _ in config.HARVEST_QTY_CHANCES[3]) == 4
-          and max(q for q, _ in config.HARVEST_QTY_CHANCES[4]) == 5
-          and max(q for q, _ in config.HARVEST_QTY_CHANCES[5]) == 6
-          and dict(config.HARVEST_QTY_CHANCES[4])[5] == 5 and dict(config.HARVEST_QTY_CHANCES[5])[6] == 6)
+    check("لول 2 سه‌تایی رو باز می‌کنه و با آپگرید فقط شانسش میره بالا (10 به 15 و 20 و 25 و 30)",
+          all(max(q for q, _ in t) == 3 for lv, t in config.HARVEST_QTY_CHANCES.items() if lv >= 2)
+          and [dict(config.HARVEST_QTY_CHANCES[lv])[3] for lv in range(2, 7)] == [10, 15, 20, 25, 30]
+          and max(q for q, _ in config.HARVEST_QTY_CHANCES[1]) == 2)
+
+    # رول واقعی: کران‌های جدول با رندوم پچ‌شده + سقف 3 تو همه لول‌ها + افسانه‌ای همیشه 1
+    _rr14 = random.random
+    try:
+        random.random = lambda: 0.69
+        _q1 = farming.harvest_qty_roll(1, "marijuana")
+        random.random = lambda: 0.71
+        _q2 = farming.harvest_qty_roll(1, "marijuana")
+        random.random = lambda: 0.999
+        _qhi = max(farming.harvest_qty_roll(lv, "marijuana") for lv in range(1, 7))
+        random.random = lambda: 0.001
+        _qlo = min(farming.harvest_qty_roll(lv, "marijuana") for lv in range(1, 7))
+    finally:
+        random.random = _rr14
+    check("رول برداشت تو کران جدوله و از هر لولی بیشتر از 3 و کمتر از 1 نمیده",
+          _q1 == 1 and _q2 == 2 and _qhi == 3 and _qlo == 1
+          and farming.harvest_qty_roll(6, "jahannam") == 1, f"{_q1}/{_q2}/{_qhi}/{_qlo}")
 
     # ── ظرفیت انبار هر محصول: لول انبار × 10، از 10 شروع میشه (درخواست کارفرما) ──
     check("ظرفیت انبار هر محصول از 10 شروع میشه و با هر لول انبار 10 تا بیشتر میشه",
@@ -10654,14 +10674,14 @@ async def main() -> None:
         for _ in range(2000):
             _q = farming.harvest_qty_roll(_lvl, "marijuana")
             _lvl_counts[_lvl][_q] = _lvl_counts[_lvl].get(_q, 0) + 1
-    check("رول تعداد برداشت فقط از تعدادای باز اون لول زمینه",
+    check("رول تعداد برداشت فقط از تعدادای باز اون لول زمینه و از 3 رد نمیشه (راند ۱۴)",
           all(set(_lvl_counts[l]) <= {q for q, _ in config.HARVEST_QTY_CHANCES[l]} for l in range(1, 7))
-          and set(_lvl_counts[1]) == {1, 2} and set(_lvl_counts[6]) == {1, 2, 3, 4, 5, 6})
-    check("توزیع لول 1 حدود 70/30 و توزیع لول مکس نزدیک اعداد کارفرماست",
+          and set(_lvl_counts[1]) == {1, 2} and set(_lvl_counts[6]) == {1, 2, 3})
+    check("توزیع لول 1 حدود 70/30 و توزیع لول مکس نزدیک جدول راند ۱۴ـه (35/35/30)",
           0.63 <= _lvl_counts[1][1] / 2000 <= 0.77
-          and 0.04 <= _lvl_counts[6][6] / 2000 <= 0.12
-          and 0.10 <= _lvl_counts[6][5] / 2000 <= 0.21
-          and 0.19 <= _lvl_counts[6][4] / 2000 <= 0.31,
+          and 0.28 <= _lvl_counts[6][1] / 2000 <= 0.42
+          and 0.28 <= _lvl_counts[6][2] / 2000 <= 0.42
+          and 0.23 <= _lvl_counts[6][3] / 2000 <= 0.37,
           str({l: {q: round(c / 2000, 3) for q, c in _lvl_counts[l].items()} for l in (1, 6)}))
     check("بذرهای افسانه‌ای تو هر لول زمین همیشه دقیقاً 1 تا میدن",
           all(farming.harvest_qty_roll(lvl, leg) == 1
@@ -11489,8 +11509,8 @@ async def main() -> None:
               a_tot12 == a_atk0 + a_def0 and t_tot12 == a_tot12
               and info12["t_atk0"] == a_atk0 and info12["weather"] == "normal",
               f"{a_tot12}/{t_tot12}")
-        check("تساوی قدرت به نفع مدافعه و بیشتری قطعی برده",
-              not pv_svc.decide_win(t_tot12, a_tot12) and pv_svc.decide_win(t_tot12 + 1, a_tot12))
+        check("خارج رنج نزدیک: کمتر قطعی باخته و بیشتر قطعی برده (راند ۱۳)",
+              not pv_svc.decide_win(a_tot12 - 200, a_tot12) and pv_svc.decide_win(a_tot12 + 200, a_tot12))
 
         pa12.skill_defense = 3
         a_tot_d, _, _ = await pv_svc.total_powers(s, pa12, pt12)
@@ -11529,13 +11549,18 @@ async def main() -> None:
         await world_svc._meta_set(s, "weather_key", "normal")
         await s.commit()
 
-        # execute قطعی: بوست حمله ⇒ برد، بوست دفاع طرف ⇒ باخت
+        # execute به رول داور احترام می‌ذاره (داور با پچ قطعی میشه، راند ۱۳: رنج نزدیک شانسیه)
+        _dw12 = pv_svc.decide_win
         pa12.energy = config.MAX_ENERGY
         pa12.pv_attack_at = None
         pa12.skill_power = 3
         pt12.shield_until = None
-        res12w = await pv_svc.execute(s, pa12, pt12)
-        check("قدرت کل بیشتر قطعی برده و غارت کرده",
+        pv_svc.decide_win = lambda a, d: True
+        try:
+            res12w = await pv_svc.execute(s, pa12, pt12)
+        finally:
+            pv_svc.decide_win = _dw12
+        check("داور برد گفت پس برده و غارت کرده",
               res12w["ok"] and res12w["won"] and res12w["a_pow"] > res12w["d_pow"]
               and res12w["steal"] > 0, f'{res12w["a_pow"]}/{res12w["d_pow"]}')
         pa12.energy = config.MAX_ENERGY
@@ -11543,15 +11568,19 @@ async def main() -> None:
         pa12.skill_power = 0
         pt12.shield_until = None
         pt12.skill_defense = 5
-        res12l = await pv_svc.execute(s, pa12, pt12)
-        check("قدرت کل کمتر قطعی می‌بازه و جریمه به مدافع میرسه",
+        pv_svc.decide_win = lambda a, d: False
+        try:
+            res12l = await pv_svc.execute(s, pa12, pt12)
+        finally:
+            pv_svc.decide_win = _dw12
+        check("داور باخت گفت پس باخته و جریمه به مدافع میرسه",
               res12l["ok"] and not res12l["won"] and res12l["a_pow"] < res12l["d_pow"]
               and res12l["penalty"] > 0, f'{res12l["a_pow"]}/{res12l["d_pow"]}')
         pt12.skill_defense = 0
         pa12.skill_power = 0
         await s.commit()
 
-    # جاسوسی زنده: قدرت کل طرف زیر حمله و دفاعش نشون داده میشه + حکم تساوی
+    # جاسوسی زنده: فقط پول و قدرت کلی طرف لو میره (راند ۱۵ دیگه حکم و شانس نمیاد)
     async with session_scope() as s:
         pt12x = await users.get_by_tg(s, 99123)
         id_sp12 = pt12x.id
@@ -11560,10 +11589,448 @@ async def main() -> None:
     upd_sp12 = _fake_update(f"patt:spy:{id_sp12}", uid=99122)
     await pv_h3.target_spy_cb(upd_sp12, None)
     ans12 = next((c for c in upd_sp12.callback_query.calls if c[0] == "answer"), None)
-    check("جاسوسی استت‌ها و قدرت کل طرف رو زیر هم نشون میده و تساوی به نفع مدافه‌ست",
-          ans12 is not None and "⚔️ حمله" in str(ans12[1][0]) and "🛡 دفاع" in str(ans12[1][0])
-          and "💪 قدرت کلش" in str(ans12[1][0]) and "قدرت کل تو" in str(ans12[1][0])
-          and "⚖️ قدرت‌ها برابره" in str(ans12[1][0]), str(ans12[1][0] if ans12 else "-")[:110])
+    check("جاسوسی فقط پول و قدرت کلی طرف رو لو میده، بدون خط شانس و حکم (راند ۱۵)",
+          ans12 is not None and "💪 قدرت کلی:" in str(ans12[1][0])
+          and "💰 پول:" in str(ans12[1][0])
+          and "🎲" not in str(ans12[1][0]) and "✅" not in str(ans12[1][0]) and "❌" not in str(ans12[1][0]),
+          str(ans12[1][0] if ans12 else "-")[:110])
+
+
+    # ═══ راند ۱۳: پنل و جاسوسی جدید + رنج نزدیک شانسی + ضدتکرار سرچ + انرژی‌زا + محموله به چت مبدأ ═══
+    from services import energy as energy_svc
+    from services import pvattack
+    from handlers import energy as energy_h
+    from handlers import jobs as jobs_h13
+    import handlers as handlers_pkg
+    import inspect as inspect13
+    import re as re13
+
+    # ── پنل حمله: قالب دقیق درخواستی کارفرما ──
+    check("پنل حمله قالب کامل راند ۱۳ رو داره، با ایموجی و بدون نقطه آخر جمله",
+          attack_h2.PV_PANEL_TEXT.startswith("<b>⚔️ حمله پی‌وی</b>")
+          and all(x in attack_h2.PV_PANEL_TEXT for x in (
+              "🎯 با شروع حمله، یک بازیکن نزدیک به سطح خودت به‌صورت شانسی پیدا میشه",
+              "پیش‌نمایش حریف رو ببینی",
+              "قدرت کلیش به دست میاری",
+              "بر اساس قدرت کلی (قدرت حمله + قدرت دفاع) محاسبه میشه",
+              "حالت محافظت میشه",
+              "داخل گروه‌ها فعال هستند",
+          )), attack_h2.PV_PANEL_TEXT[:130])
+
+    # ── رنج نزدیک: شانس متناسب + رول ──
+    check("کانفیگ راند ۱۳ پی‌وی: اختلاف نزدیک ۱۰۰ و ضدتکرار ۲۰ تایی",
+          config.PV_ATTACK_CLOSE_DIFF == 100 and config.PV_SEEN_EXCLUDE_LAST == 20)
+    check("رنج نزدیک دقیقاً تا اختلاف ۱۰۰ هستش",
+          pv_svc.is_close(150, 100) and pv_svc.is_close(100, 100) and pv_svc.is_close(100, 200)
+          and not pv_svc.is_close(201, 100) and not pv_svc.is_close(100, 201))
+    check("شانس تو رنج نزدیک متناسب نسبت قدرت‌هاست و کران داره",
+          abs(pv_svc.close_win_chance(100, 100) - 0.5) < 1e-9
+          and pv_svc.close_win_chance(200, 100) == 200 / 300
+          and 0 < pv_svc.close_win_chance(1, 10000) < 1)
+    _rr13 = pvattack.random.random
+    try:
+        pvattack.random.random = lambda: 0.99
+        _c1 = not pv_svc.decide_win(190, 100)
+        pvattack.random.random = lambda: 0.01
+        _c2 = pv_svc.decide_win(110, 100)
+        pvattack.random.random = lambda: 0.30
+        _c3 = pv_svc.decide_win(100, 100)
+    finally:
+        pvattack.random.random = _rr13
+    check("تو رنج نزدیک رول خاله و بعدش دوباره قطعیه",
+          _c1 and _c2 and _c3 and pv_svc.decide_win(500, 100) and not pv_svc.decide_win(100, 500))
+
+    # execute تو رنج نزدیک: قدرت بیشتر تضمین نیس، رول تعیین می‌کنه
+    async def _tp13eq(session, a, t):
+        return 500, 480, {"a_atk0": 250, "a_def0": 250, "t_atk0": 240, "t_def0": 240, "weather": "normal"}
+    async with session_scope() as s:
+        ec1, _ = await users.get_or_create(s, tg(99130, "ec1", "نزدیکیک"))
+        ec2, _ = await users.get_or_create(s, tg(99131, "ec2", "نزدیکدو"))
+        ec1.level, ec2.level = 10, 10
+        ec1.cash, ec2.cash = 8000, 9000
+        ec2.shield_until = None
+        _rtp13 = pv_svc.total_powers
+        pv_svc.total_powers = _tp13eq
+        try:
+            ec1.energy, ec1.pv_attack_at = config.MAX_ENERGY, None
+            pvattack.random.random = lambda: 0.99  # شانس 51٪ ولی رول بد
+            res_c1 = await pv_svc.execute(s, ec1, ec2)
+            ec1.energy, ec1.pv_attack_at = config.MAX_ENERGY, None
+            ec2.shield_until = None
+            pvattack.random.random = lambda: 0.01  # رول خوب
+            res_c2 = await pv_svc.execute(s, ec1, ec2)
+        finally:
+            pvattack.random.random = _rr13
+            pv_svc.total_powers = _rtp13
+        check("تو رنج نزدیک رول بد با قدرت بیشتر می‌بازه و رول خوب می‌بره",
+              res_c1["ok"] and not res_c1["won"] and res_c1["a_pow"] == 500 and res_c1["d_pow"] == 480
+              and res_c2["ok"] and res_c2["won"], f"{res_c1} | {res_c2}")
+        await s.commit()
+
+    # ── ضدتکرار سرچ ──
+    pvattack.clear_seen_targets(99132)
+    for _i13 in range(25):
+        pvattack.note_target_shown(99132, 1000 + _i13)
+    seen13 = pvattack.seen_targets(99132)
+    check("لیست دیده‌شده فقط ۲۰ تای آخر رو نگه می‌داره (چرخه‌ای)",
+          len(seen13) == 20 and 1024 in seen13 and 1004 not in seen13, str(sorted(seen13)[:3]))
+    pvattack.clear_seen_targets(99132)
+    check("پاک کردن سرچ لیست دیده‌شده رو خالی می‌کنه", pvattack.seen_targets(99132) == set())
+
+    async with session_scope() as s:
+        hu13, _ = await users.get_or_create(s, tg(99133, "h13", "شکارچی‌سرچ"))
+        hu13.level, hu13.shield_until = 10, None
+        vt13, _ = await users.get_or_create(s, tg(99134, "v13", "دیده‌شده"))
+        vt13.level, vt13.shield_until = 10, None
+        await s.flush()
+        hu13id, vt13id = hu13.id, vt13.id
+        all_ids13 = {r[0] for r in (await s.execute(select(User.id))).all() if r[0] != hu13id}
+        none_13 = await pvattack._pick(s, hu13, exclude_ids=all_ids13)
+        check("حذف دسته‌جمعی همه کاندیداها هیچ هدفی برنمی‌گردونه", none_13 is None)
+        t13 = await pvattack._pick(s, hu13, exclude_ids=all_ids13 - {vt13id})
+        check("فقط یه نفر خارج لیست دیده‌شده باشه عیناً همون میاد",
+              t13 is not None and t13.id == vt13id, str(t13.telegram_id if t13 else None))
+        _old_mx = config.PV_SEEN_EXCLUDE_LAST
+        config.PV_SEEN_EXCLUDE_LAST = len(all_ids13) + 5
+        try:
+            pvattack.clear_seen_targets(99133)
+            for _aid in all_ids13:
+                pvattack.note_target_shown(99133, _aid)
+            t_fb13 = await pvattack.pick_random_target(s, hu13)
+        finally:
+            config.PV_SEEN_EXCLUDE_LAST = _old_mx
+            pvattack.clear_seen_targets(99133)
+        check("همه دیده شده باشن فالبک نمی‌ذاره سرچ بخشکه", t_fb13 is not None,
+              str(t_fb13.telegram_id if t_fb13 else None))
+        await s.commit()
+
+    # وایرینگ دکمه‌ها: نشون دادن هدف ثبت میشه و برگشت لیست رو پاک می‌کنه
+    async with session_scope() as s:
+        hw13, _ = await users.get_or_create(s, tg(99135, "hw13", "وایرینگ"))
+        hw13.level, hw13.energy, hw13.cash, hw13.pv_attack_at = 5, config.MAX_ENERGY, 5000, None
+        await s.commit()
+    pvattack.clear_seen_targets(99135)
+    _old_pk13 = pv_svc.pick_random_target
+    async def _pk13(session, u, exclude_id=None):
+        return await users.get_by_tg(session, 99134)
+    pv_svc.pick_random_target = _pk13
+    try:
+        upd13 = _fake_update("patt:go", uid=99135)
+        await pv_h3.target_go_cb(upd13, _fake_ctx)
+    finally:
+        pv_svc.pick_random_target = _old_pk13
+    check("هدف نشون‌داده‌شده تو سرچ ثبت میشه تا تکرار نخوره", pvattack.seen_targets(99135) != set())
+    upd13b = _fake_update("patt:back", uid=99135)
+    await pv_h3.target_back_cb(upd13b, _fake_ctx)
+    check("برگشت به پنل لیست دیده‌شده رو پاک می‌کنه", pvattack.seen_targets(99135) == set())
+
+    # ── انرژی‌زا: کانفیگ و سرویس خرید ──
+    check("کانفیگ انرژی‌زا: ۴ آیتم با مقدار و قیمت درخواستی کارفرما",
+          len(config.ENERGY_DRINKS) == 4
+          and [d["energy"] for d in config.ENERGY_DRINKS.values()] == [25, 50, 100, None]
+          and [d["price"] for d in config.ENERGY_DRINKS.values()] == [5000, 8000, 12000, 30000]
+          and config.ENERGY_DRINKS["bomb"]["boost"] == 0.30
+          and config.ENERGY_BOOST_SECONDS == 600 and config.ENERGY_BOOST_SWEEP_SECONDS == 30)
+    async with session_scope() as s:
+        en1, _ = await users.get_or_create(s, tg(99137, "endr", "تشنه‌انرژی"))
+        en1.cash, en1.energy, en1.boost_until = 20000, 10, None
+        ok_e, why_e, info_e = energy_svc.apply_drink(en1, "shot")
+        check("شات انرژی ۲۵ تا شارژ می‌کنه و ۵هزار برمیداره",
+              ok_e and info_e["gain"] == 25 and en1.energy == 35 and en1.cash == 15000 and not info_e["boosted"],
+              f"{ok_e}/{en1.energy}/{en1.cash}")
+        en1.energy = 90
+        ok_e, why_e, info_e = energy_svc.apply_drink(en1, "mega")
+        check("شارژ روی سقف ۱۰۰ کلمپ میشه",
+              ok_e and info_e["gain"] == 10 and en1.energy == config.MAX_ENERGY, f"{ok_e}/{en1.energy}")
+        cash_f = en1.cash
+        ok_e, why_e, _ = energy_svc.apply_drink(en1, "shot")
+        check("انرژی فول خرید نمیشه و پول دست‌نخورده", not ok_e and why_e == "full" and en1.cash == cash_f)
+        en1.energy, en1.cash = 10, 100
+        ok_e, why_e, _ = energy_svc.apply_drink(en1, "dobl")
+        check("پول کم انرژی‌زا نمیده و انرژی و پول دست‌نخورده",
+              not ok_e and why_e == "poor" and en1.energy == 10 and en1.cash == 100)
+        ok_e, why_e, _ = energy_svc.apply_drink(en1, "nope")
+        check("کلید ناشناس رد میشه", not ok_e and why_e == "badkey")
+        en1.cash = 50000
+        ok_e, why_e, info_e = energy_svc.apply_drink(en1, "bomb")
+        left_b = energy_svc.boost_left(en1)
+        check("بمب انرژی فول می‌کنه و بوست ۱۰ دقیقه‌ای ۳۰٪ می‌ده و ۳۰هزار برمیداره",
+              ok_e and info_e["boosted"] and en1.energy == config.MAX_ENERGY
+              and 590 <= left_b <= 600 and abs(energy_svc.drink_atk_boost(en1) - 0.30) < 1e-9
+              and en1.cash == 20000, f"{ok_e}/{left_b}/{en1.cash}")
+        ap13, dp13 = combat.combat_boost_pcts(en1, {}, [])
+        check("بوست انرژی‌زا تو درصدهای حمله می‌نشینه نه دفاع",
+              abs(ap13 - 0.30) < 1e-9 and abs(dp13) < 1e-9, f"{ap13}/{dp13}")
+        await s.commit()
+
+    # بوست تو قدرت کل نقش‌محور: مهاجم می‌گیره، مدافع نه
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "weather_key", "normal")
+        en1 = await users.get_by_tg(s, 99137)
+        dummy13, _ = await users.get_or_create(s, tg(99138, "endef", "مدافع‌خشک"))
+        dummy13.level = en1.level
+        a_p13, t_p13, _ = await pv_svc.total_powers(s, en1, dummy13)
+        a_raw13 = sum(combat.combat_raw_stats(en1, {}, []))
+        t_raw13 = sum(combat.combat_raw_stats(dummy13, {}, []))
+        check("قدرت کل مهاجم بوست‌دار ۳۰٪ بیشتره و قدرت مدافع دست‌نخورده (نقش‌محور)",
+              a_p13 == int(a_raw13 * 1.3) and t_p13 == t_raw13, f"{a_p13}/{a_raw13} | {t_p13}/{t_raw13}")
+        await s.commit()
+
+    # جاروی بوست تموم‌شده
+    async with session_scope() as s:
+        en1 = await users.get_by_tg(s, 99137)
+        en1.boost_until = now_utc() - timedelta(seconds=5)
+        tgs13 = await energy_svc.process_expired_boosts(s)
+        check("جاروی بوست تموم‌شده آیدی صاحبش رو میده و ریستش می‌کنه",
+              99137 in tgs13 and en1.boost_until is None and energy_svc.boost_left(en1) == 0,
+              str(tgs13[-3:]))
+        await s.commit()
+    check("جاب جاروی بوست هست و متن پایان اثر دقیقاً حرف کارفرماست (با ایموجی اضافه)",
+          callable(jobs_h13.boost_sweep_job)
+          and "⚡ اثر انرژی‌زا به پایان رسید" in inspect13.getsource(jobs_h13.boost_sweep_job))
+    check("جاب محموله خبر رو به چت مبدأ می‌فرسته",
+          'ev.get("chat") or ev["tg"]' in inspect13.getsource(jobs_h13.shipment_job))
+
+    # صفحه و خرید دکمه‌ای انرژی‌زا
+    async with session_scope() as s:
+        enx = await users.get_by_tg(s, 99137)
+        enx.cash, enx.energy, enx.boost_until = 60000, 40, None
+        enx.dq_date = iran_today()  # (راند ۱۵) کوئست drink تو برگه امروزش نیس، خرید انرژی‌زا جایزه‌ای نده
+        enx.dq_data = _json.dumps(
+            [{"kind": "attack", "target": 9, "progress": 0, "done": False, "reward": {"type": "tp", "amount": 1}}],
+            ensure_ascii=False)
+        await s.commit()
+    upd_en = _text_update("تی انرژی", 99137, "endr", "تشنه‌انرژی")
+    await energy_h.energy_cmd(upd_en, _fake_ctx)
+    rt_en = upd_en.message.calls[-1][1]
+    kb_en = upd_en.message.calls[-1][2].get("reply_markup")
+    btns_en = [b.text for row in kb_en.inline_keyboard for b in row]
+    cb_en = [b.callback_data for row in kb_en.inline_keyboard for b in row]
+    check("صفحه تی انرژی شارژ فعلی و دکمه ۴ آیتم با قیمت رو داره",
+          "<b>⚡ تی انرژی</b>" in rt_en and "40 از 100" in rt_en
+          and cb_en[:4] == ["en:buy:shot", "en:buy:dobl", "en:buy:mega", "en:buy:bomb"]
+          and any("5,000 TP" in t for t in btns_en) and any("30,000 TP" in t for t in btns_en)
+          and any("30% حمله" in t for t in btns_en), f"{rt_en[:60]} | {btns_en}")
+    upd_b = _fake_update("en:buy:mega", uid=99137)
+    await energy_h.energy_buy_cb(upd_b, _fake_ctx)
+    ans_b = next((c for c in upd_b.callback_query.calls if c[0] == "answer"), None)
+    async with session_scope() as s:
+        enx = await users.get_by_tg(s, 99137)
+        check("خرید مگا با دکمه: شارژ سقفی و پول کم و الرت نوش جون",
+              enx.energy == 100 and enx.cash == 48000
+              and ans_b is not None and "نوش جون" in str(ans_b[1][0]), f"{enx.energy}/{enx.cash}")
+        await s.commit()
+    upd_b2 = _fake_update("en:buy:bomb", uid=99137)
+    await energy_h.energy_buy_cb(upd_b2, _fake_ctx)
+    ans_b2 = next((c for c in upd_b2.callback_query.calls if c[0] == "answer"), None)
+    rt_b2 = next((c[1] for c in upd_b2.callback_query.calls if c[0] == "edit"), "")
+    async with session_scope() as s:
+        enx = await users.get_by_tg(s, 99137)
+        b13 = energy_svc.boost_left(enx)
+        check("بمب با دکمه: بوست فعال و الرت +۳۰٪ و تایمر بوست تو صفحه میاد",
+              ans_b2 is not None and "قدرت حملت +30%" in str(ans_b2[1][0])
+              and "🔥 بوست انرژی‌زا فعاله" in rt_b2 and "⏱" in rt_b2
+              and 590 <= b13 <= 600 and enx.cash == 18000, f"{ans_b2} | {b13} | {enx.cash}")
+        enx.boost_until = None
+        await s.commit()
+
+    # دستور متنی تی انرژی
+    _pats13 = {n: re13.compile(pp) for n, pp, _ in handlers_pkg.TEXT_HANDLERS}
+    check("«تی انرژی» و «تریاکی انرژی زا» و «تی انرژی‌زا» کار می‌کنن و «انرژی» تنها نه",
+          bool(_pats13["energy"].match("تی انرژی")) and bool(_pats13["energy"].match("تریاکی انرژی زا"))
+          and bool(_pats13["energy"].match("تی انرژی‌زا")) and not _pats13["energy"].match("انرژی"),
+          "energy pattern")
+
+    # ── محموله: چت مبدأ ثبت میشه و خبر رسیدن همونجا میره ──
+    from models import ProductStock as _PS13
+    async with session_scope() as s:
+        shu13, _ = await users.get_or_create(s, tg(99139, "ship13", "باربر"))
+        shu13.cash = 0
+        s.add(_PS13(user_id=shu13.id, crop="marijuana", qty=5, value=1500))
+        await s.flush()
+        ok_sh, msg_sh, sh13 = await smg_svc.send_shipment(s, shu13, "marijuana", 2, chat_id=-100123)
+        check("ارسال محموله چت مبدأ رو روی ردیف ثبت می‌کنه",
+              ok_sh and sh13.chat_id == -100123, f"{ok_sh}/{sh13.chat_id if sh13 else None}")
+        sh13.deliver_at = now_utc() - timedelta(seconds=1)
+        ev13 = await smg_svc.process_due_shipments(s)
+        check("خبر رسیدن محموله مقصدش چت مبدأست نه پی‌وی",
+              len(ev13) == 1 and ev13[0].get("chat") == -100123 and ev13[0]["tg"] == 99139,
+              str(ev13)[:90])
+        s.add(_PS13(user_id=shu13.id, crop="gharch", qty=3, value=1800))
+        await s.flush()
+        ok_sh2, _, sh14 = await smg_svc.send_shipment(s, shu13, "gharch", 2)
+        check("ارسال بدون چت، chat_id خالی می‌مونه", ok_sh2 and sh14.chat_id is None)
+        sh14.deliver_at = now_utc() - timedelta(seconds=1)
+        ev14 = await smg_svc.process_due_shipments(s)
+        check("بدون چت مبدأ خبر به پی‌وی میره (فالبک)",
+              len(ev14) == 1 and ev14[0].get("chat") == 99139, str(ev14)[:90])
+        await s.commit()
+
+    # ═══ راند ۱۵: جاسوسی همیشه پولی و دوخطی + مهارت استقامت + /energy زیر /heal + کوئست‌های جدید ═══
+
+    # ── قیمت‌های خطی جدید (درخواست کارفرما: 250 تا 5000 جاسوسی، 100 تا 2500 هدف شانسی) ──
+    check("قیمت جاسوسی لول 10 دقیقاً میانه بازه 2500 تی‌پوینته",
+          pv_svc.spy_cost(10) == 2500, str(pv_svc.spy_cost(10)))
+    check("قیمت هدف شانسی لول 10 عدد خطیه (1236)",
+          pv_svc.reroll_cost(10) == 1236, str(pv_svc.reroll_cost(10)))
+    check("مکانیک جاسوسی رایگان کلاً از سرویس پاک شده",
+          not hasattr(pv_svc, "spy_is_free"))
+    check("ستون مرده last_spy_target_id از مدل کاربر پاک شده",
+          not hasattr(User, "last_spy_target_id"))
+
+    # ── مهارت استقامت 🔋: هر لول 20 تا سقف انرژی (عددیه نه درصدی) ──
+    async with session_scope() as s:
+        st15, _ = await users.get_or_create(s, tg(9515, "stam15", "استقامتی"))
+        st15.skill_stamina = 0
+        check("سقف انرژی بدون استقامت همون 100 پایه‌ست",
+              energy_svc.max_energy(st15) == config.MAX_ENERGY)
+        st15.skill_stamina = 2
+        check("دو لول استقامت سقف انرژی رو 140 می‌کنه",
+              energy_svc.max_energy(st15) == config.MAX_ENERGY + 40)
+        st15.skill_stamina = config.SKILL_MAX_LEVEL
+        check("استقامت مکس 160 تا به سقف انرژی اضافه می‌کنه",
+              energy_svc.max_energy(st15) == config.MAX_ENERGY + 160)
+        st15.skill_stamina = 99
+        check("لول خیالی استقامت روی مکس کلمپ میشه",
+              energy_svc.max_energy(st15) == config.MAX_ENERGY + 160)
+        st15.skill_stamina = 2
+        txt_st = skills_h.skills_text(st15)
+        check("بلاک استقامت تو صفحه مهارت عددیه نه درصدی",
+              "🔋 استقامت | لول 2 از 8" in txt_st
+              and "الان +40 انرژی ، بعدی +60 انرژی" in txt_st
+              and "▫️ هر لول 20 تا به سقف انرژیت اضافه می‌کنه" in txt_st
+              and "%" not in next(ln for ln in txt_st.splitlines() if "بعدی +60" in ln),
+              txt_st.replace("\n", " | ")[-260:])
+        st15.skill_stamina = config.SKILL_MAX_LEVEL
+        txt_stm = skills_h.skills_text(st15)
+        check("استقامت مکس تاج می‌گیره: الان +160 انرژی ، 👑 مکس",
+              "الان +160 انرژی ، 👑 مکس" in txt_stm, txt_stm.replace("\n", " | ")[-200:])
+        await s.commit()
+
+    # ── لول‌آپ انرژی رو تا سقف استقامتی فول می‌کنه ──
+    async with session_scope() as s:
+        lu15, _ = await users.get_or_create(s, tg(9516, "lvl15", "لول‌آپی"))
+        lu15.skill_stamina = 3
+        lu15.energy = 7
+        users.add_xp(lu15, economy.xp_need(lu15.level))
+        check("لول‌آپ با سه لول استقامت انرژی رو تا 160 فول می‌کنه",
+              lu15.energy == 160 and lu15.level == 2, f"{lu15.energy}/{lu15.level}")
+        await s.commit()
+
+    # ── نبض انرژی: سقف هر کاربر جدا تو SQL حساب میشه ──
+    async with session_scope() as s:
+        pu15, _ = await users.get_or_create(s, tg(9517, "pul15", "نبضی"))
+        pu15.skill_stamina = 1
+        pu15.energy = 115
+        pu16, _ = await users.get_or_create(s, tg(9518, "pul16", "نبضیدو"))
+        pu16.skill_stamina = 0
+        pu16.energy = 115
+        await s.commit()
+        await s.execute(jobs_h13._energy_pulse_stmt())
+        await s.commit()
+    async with session_scope() as s:
+        pu15 = await users.get_by_tg(s, 9517)
+        pu16 = await users.get_by_tg(s, 9518)
+        check("نبض انرژی استقامتی رو تا 120 شارژ کرد و ساده رو بالای سقف 100 دست نزد",
+              pu15.energy == 120 and pu16.energy == 115, f"{pu15.energy}/{pu16.energy}")
+        await s.commit()
+
+    # ── انرژی‌زا با سقف پویا: مازاد سقف هدر نمیره ──
+    async with session_scope() as s:
+        dr15 = await users.get_by_tg(s, 9517)
+        dr15.energy = 110
+        dr15.cash = 99999
+        okd, whyd, detd = energy_svc.apply_drink(dr15, "shot")
+        check("شات 25 تایی روی 110 با سقف استقامتی 120 دقیقاً 10 تا شارژ می‌کنه",
+              okd and whyd == "ok" and detd["gain"] == 10 and dr15.energy == 120
+              and not detd["boosted"], f"{whyd}/{detd}/{dr15.energy}")
+        await s.commit()
+
+    # ── کامند /energy دقیقاً زیر /heal تو منوی دستورات تلگرام ──
+    _bot15 = open("bot.py", encoding="utf-8").read()
+    check("کامند energy دقیقاً زیر heal و بالای shop تو منوی رباته",
+          _bot15.index('BotCommand("heal"') < _bot15.index('BotCommand("energy"') < _bot15.index('BotCommand("shop"'))
+
+    # ── صفحه تی انرژی سقف پویا رو نشون میده ──
+    check("صفحه تی انرژی سقف استقامتی ورودی رو نشون میده",
+          "115 از 120" in energy_h.energy_home_text(115, 0, 120))
+
+    # ── کانفیگ کوئست‌های جدید ──
+    check("چهار کوئست روزانه جدید با گیت لول پلکانی اومدن",
+          config.DAILY_QUESTS["drink"]["min_level"] == 1 and config.DAILY_QUESTS["sellres"]["min_level"] == 2
+          and config.DAILY_QUESTS["caravan"]["min_level"] == 3 and config.DAILY_QUESTS["shipment"]["min_level"] == 4)
+    check("کوئست‌های قدیمی تیم سر جاشون و سه تای جدید ته لیستن",
+          [q["key"] for q in config.TEAM_QUESTS][:8] == ["kills", "harvest", "plant", "mine", "feed", "search", "depbank", "caravan"]
+          and [q["key"] for q in config.TEAM_QUESTS][8:] == ["drink", "shipment", "sellres"],
+          str([q["key"] for q in config.TEAM_QUESTS]))
+
+    # ── ادغام: خرید انرژی‌زا کوئست روزانه drink رو کامل و اعلام می‌کنه ──
+    async with session_scope() as s:
+        dq15, _ = await users.get_or_create(s, tg(9521, "dqink", "انرژی‌کوئستی"))
+        dq15.level = 5
+        dq15.cash = 50000
+        dq15.energy = 10
+        dq15.dq_date = iran_today()
+        dq15.dq_data = _json.dumps(
+            [{"kind": "drink", "target": 1, "progress": 0, "done": False, "reward": {"type": "tp", "amount": 200}},
+             {"kind": "search", "target": 9, "progress": 0, "done": False, "reward": {"type": "tp", "amount": 1}}],
+            ensure_ascii=False)
+        await s.commit()
+    upd_dq = _fake_update("en:buy:mega", uid=9521)
+    await energy_h.energy_buy_cb(upd_dq, _fake_ctx)
+    txts_dq = [c[1] for c in upd_dq.callback_query.calls if c[0] == "reply"]
+    async with session_scope() as s:
+        dq15 = await users.get_by_tg(s, 9521)
+        check("خرید انرژی‌زا کوئست drink رو کامل کرد و تبریک همونجا اومد (+200 جایزه)",
+              any("انرژی‌زا خوردن" in t and "200 تی‌پوینت" in t for t in txts_dq)
+              and dq15.cash == 50000 - 12000 + 200 and dq15.energy == 100,
+              f"{txts_dq} | {dq15.cash}/{dq15.energy}")
+        await s.commit()
+
+    # ── کوئست‌های تیمی جدید: تکمیل و جایزه نقدی + بانکی ──
+    async with session_scope() as s:
+        tq_o, _ = await users.get_or_create(s, tg(9522, "tq15o", "تیمی۱۵"))
+        tq_o.level = 10
+        tq_o.cash = 200000
+        ok_t, name_t = await team_svc.create_team(s, tq_o, "گروه راند پونزده")
+        assert ok_t, name_t
+        team15 = await team_svc.get_team_of(s, tq_o.id)
+        team15.level = 2
+        cash_o15, bank_o15 = tq_o.cash, team15.bank
+        for i in range(7):
+            assert (await team_svc.record_drink(s, tq_o)) is None, i
+        r15d = await team_svc.record_drink(s, tq_o)
+        check("کوئست تیمی انرژی‌زا با 8مین نوشیدنی (لول تیم 2) کامل شد",
+              r15d is not None and "انرژی‌زا" in r15d and "کامل شد" in r15d, str(r15d)[:90])
+        check("جایزه نقدی 400 و بانکی 4000 کوئست drink رسید",
+              tq_o.cash == cash_o15 + 400 and team15.bank == bank_o15 + 4000,
+              f"{tq_o.cash - cash_o15}/{team15.bank - bank_o15}")
+        team15.level = 4
+        cash_o15b, bank_o15b = tq_o.cash, team15.bank
+        for i in range(4):
+            assert (await team_svc.record_shipment(s, tq_o)) is None, i
+        r15s = await team_svc.record_shipment(s, tq_o)
+        check("کوئست تیمی محموله با 5مین ارسال (لول تیم 4) کامل شد (+550 نقدی +5500 بانکی)",
+              r15s is not None and "محموله" in r15s and "کامل شد" in r15s
+              and tq_o.cash == cash_o15b + 550 and team15.bank == bank_o15b + 5500, str(r15s)[:90])
+        team15.level = 5
+        cash_o15c, bank_o15c = tq_o.cash, team15.bank
+        assert (await team_svc.record_sellres(s, tq_o, 1999)) is None
+        r15r = await team_svc.record_sellres(s, tq_o, 1)
+        check("کوئست تیمی فروش منابع با واحد 2000م (لول تیم 5) کامل شد (+450 نقدی +4500 بانکی)",
+              r15r is not None and "منابع" in r15r
+              and tq_o.cash == cash_o15c + 450 and team15.bank == bank_o15c + 4500, str(r15r)[:90])
+        await s.commit()
+
+    # ── سیم‌کشی هندلرها: کاروان، فروش منابع، ارسال محموله ──
+    _w15 = open("handlers/world.py", encoding="utf-8").read()
+    _sm15 = open("handlers/smuggle.py", encoding="utf-8").read()
+    check("ضربه به کاروان علاوه بر تیم، کوئست روزانه caravan هم می‌خوره",
+          'track(s, user, "caravan")' in _w15)
+    check("فروش منابع با تعداد واحد به کوئست روزانه و تیمی می‌خوره",
+          'track(s, user, "sellres", int(amount))' in _w15 and "record_sellres(s, user, int(amount))" in _w15)
+    check("ارسال محموله به کوئست روزانه و تیمی می‌خوره",
+          'track(s, user, "shipment")' in _sm15 and "record_shipment(s, user)" in _sm15)
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

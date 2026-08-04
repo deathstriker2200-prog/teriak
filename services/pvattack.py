@@ -4,6 +4,7 @@
 راند ۱۲ درخواست کارفرما: «قدرت کل» (حمله + دفاع خام) دو طرف مقایسه میشه و درصدی نیس، مهاجم بیشتر بود برده وگرنه باخته
 بوست‌ها نقش‌محورن: مهاجم فقط بوست‌های حمله‌ای (نژاد سگ | آرتیفکت | مهارت قدرت | هوای تهاجمی) رو می‌گیره و هدف فقط بوست‌های دفاعی
 جاسوسی به‌جای شانس درصدی، استت‌ها و قدرت کل طرف رو نشون میده
+راند ۱۳: اختلاف قدرت تا PV_ATTACK_CLOSE_DIFF شانسی متناسب نسبت قدرت‌هاست، بیرونش قطعیه | هر هدف دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشه
 هدف‌ها اول حوالی لول خودتن (±۲ لول)، هر مرحله خالی بود یه لول بازتر تا ±۱۰، بعدش فالبک: اول بالاترها بعد پایین‌ترها
 بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره
 و از لیست حمله‌های پی‌وی خارج میشه
@@ -11,6 +12,7 @@
 """
 
 import random
+from collections import deque
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -54,11 +56,6 @@ def reroll_cost(level: int) -> int:
     return int(lo + (hi - lo) * (lv - 1) / span)
 
 
-def spy_is_free(user: User, target: User) -> bool:
-    """جاسوسی دوباره همون طرف رایگانه، تا هدف جاسوسیش عوض شه"""
-    return user.last_spy_target_id is not None and user.last_spy_target_id == target.id
-
-
 def spy_cost(level: int) -> int:
     """هزینه دکمه جاسوسی، خطی با لول جست‌وجوگر بین حداقل و حداکثر کانفیگ"""
     lo, hi = config.PV_SPY_MIN_COST, config.PV_SPY_MAX_COST
@@ -69,8 +66,24 @@ def spy_cost(level: int) -> int:
 
 # ───────── قدرت کل نقش‌محور 💪 (راند ۱۲) ─────────
 
+def is_close(a_total: int, t_total: int) -> bool:
+    """اختلاف قدرت‌ها تو رنج نزدیکه؟ (راند ۱۳: اینجا برد قطعی نیس و شانس رول میشه)"""
+    return abs(a_total - t_total) <= config.PV_ATTACK_CLOSE_DIFF
+
+
+def close_win_chance(a_total: int, t_total: int) -> float:
+    """شانس برد مهاجم تو رنج نزدیک، متناسب سهمش از جمع قدرت‌ها (تساوی یعنی پنجاه‌پنجاه)"""
+    tot = max(1, a_total + t_total)
+    return a_total / tot
+
+
 def decide_win(a_total: int, t_total: int) -> bool:
-    """برد مهاجم فقط وقتی قدرت کلش بیشتره، تساوی به نفع مدافعه (درخواست کارفرما، درصدی نیس)"""
+    """
+    داور نهایی برد مهاجم (راند ۱۳، درخواست کارفرما):
+    اختلاف تا PV_ATTACK_CLOSE_DIFF شانسی متناسب نسبت قدرت‌هاست، بیرونش قطعیه و بیشتر بود برده، تساوی یا کمتر باخته
+    """
+    if is_close(a_total, t_total):
+        return random.random() < close_win_chance(a_total, t_total)
     return a_total > t_total
 
 
@@ -114,13 +127,33 @@ def pv_steal_range(cash: int) -> float:
 
 # ───────── هدف شانسی 🎯 ─────────
 
-async def pick_random_target(session: AsyncSession, user: User, exclude_id: int | None = None) -> User | None:
-    """
-    یه هدف شانسی حوالی لول کاربر (±۴)، خودش و کسایی که مصونیت دارن حذف میشن
-    توی رنج کسی نبود فالبک وسیع: اول شانسی بین همه بالاترلولی‌ها، نبود بین پایین‌ترلولی‌ها
-    exclude_id آیدی هدف فعلی پیش‌نمایشه که دکمه «هدف دیگه» باید ردش کنه
-    هدفی نبود None برمی‌گرده
-    """
+# دیده‌شده‌های سرچ هر کاربر (راند ۱۳، حافظه فرّار با کلید آیدی تلگرام | با ری‌استارت ریست میشه):
+# هر هدفی که پیش‌نمایش داده میشه تا PV_SEEN_EXCLUDE_LAST نشون بعدی تکرار نمیشه
+_SEEN: dict[int, deque] = {}
+
+
+def note_target_shown(user_id: int, target_id: int) -> None:
+    """هدف نشون‌داده‌شده رو لیست اخیرهای کاربر (آیدی تلگرام) بنداز، فقط آخرین N تا نگه می‌مونه (چرخه‌ای)"""
+    dq = _SEEN.get(user_id)
+    if dq is None or dq.maxlen != config.PV_SEEN_EXCLUDE_LAST:
+        dq = deque(maxlen=config.PV_SEEN_EXCLUDE_LAST)
+        _SEEN[user_id] = dq
+    dq.append(target_id)
+
+
+def seen_targets(user_id: int) -> set[int]:
+    """ست آیدی هدف‌های اخیراً دیده‌شده کاربر"""
+    return set(_SEEN.get(user_id, ()))
+
+
+def clear_seen_targets(user_id: int) -> None:
+    """با تموم شدن سرچ (حمله یا برگشت به پنل) لیست دیده‌شده‌ها پاک میشه تا سرچ بعدی تازه باشه"""
+    _SEEN.pop(user_id, None)
+
+
+async def _pick(session: AsyncSession, user: User, exclude_id: int | None = None,
+                exclude_ids: set[int] | None = None) -> User | None:
+    """بدنه انتخاب هدف با امکان حذف دسته‌جمعی (دیده‌شده‌های سرچ)"""
     base = [
         User.id != user.id,
         (User.shield_until.is_(None)) | (User.shield_until <= now_utc()),
@@ -128,6 +161,8 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
     ]
     if exclude_id:
         base.append(User.id != exclude_id)
+    if exclude_ids:
+        base.append(User.id.notin_(exclude_ids))
     # اول نزدیک‌ترین بازه لول، هر مرحله که خالی بود یه لول بازتر میشه تا رنج مکس
     for rng in range(config.PV_ATTACK_LEVEL_RANGE, config.PV_ATTACK_MAX_RANGE + 1):
         q = select(User).where(*base, User.level >= user.level - rng, User.level <= user.level + rng)             .order_by(func.random()).limit(1)
@@ -142,6 +177,20 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
     # فالبک آخر: هرکی پایین‌تره
     q = select(User).where(*base, User.level < user.level).order_by(func.random()).limit(1)
     return (await session.execute(q)).scalar_one_or_none()
+
+
+async def pick_random_target(session: AsyncSession, user: User, exclude_id: int | None = None) -> User | None:
+    """
+    یه هدف شانسی حوالی لول کاربر، خودش و مصونیت‌دارها و نامرئی‌ها حذف میشن
+    اهداف اخیراً دیده‌شده تو سرچ همین کاربر (تا PV_SEEN_EXCLUDE_LAST تای آخر) هم کنار گذاشته میشن
+    exclude_id آیدی هدف فعلی پیش‌نمایشه که دکمه «هدف دیگه» باید ردش کنه
+    فالبک آخر: همه حوالی دیده شده باشن لیست دیده‌شده نادیده گرفته میشه تا سرچ هرگز نخشکه
+    """
+    seen = seen_targets(user.telegram_id)
+    t = await _pick(session, user, exclude_id=exclude_id, exclude_ids=seen or None)
+    if t is None and seen:
+        t = await _pick(session, user, exclude_id=exclude_id)
+    return t
 
 
 # ───────── اجرای حمله ⚔️ ─────────

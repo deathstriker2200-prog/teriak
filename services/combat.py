@@ -4,7 +4,7 @@
 
 import config
 from models import User
-from services import dogs as dog_svc, economy, users
+from services import dogs as dog_svc, economy, energy as energy_svc, users
 
 
 # ───────── استت‌ها ─────────
@@ -79,6 +79,7 @@ def combat_boost_pcts(user: User, item_keys, dogs: list) -> tuple[float, float]:
     artis = users.artifact_keys(levels)
     atk_p = dog_svc.trait_atk_pct(dogs) + (users.artifact_atk_mult(artis) - 1) + skill_pct(user, "power")
     def_p = dog_svc.trait_def_pct(dogs) + (users.artifact_def_mult(artis) - 1) + skill_pct(user, "defense")
+    atk_p += energy_svc.drink_atk_boost(user)  # بمب انرژی (راند ۱۳): بوست موقت فقط روی حمله، پس تو پی‌وی فقط مهاجم سود می‌بره
     return atk_p, def_p
 
 

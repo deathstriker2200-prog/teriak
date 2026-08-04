@@ -79,7 +79,6 @@ class User(Base):
 
     # آخرین حمله پی‌وی که خودت زدی — کولدان حمله پی‌وی روی این حساب میشه
     pv_attack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_spy_target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # جاسوسی دوباره همون طرف رایگانه
 
     # نبرد HP گروهی — جان دائمی بین نبردها میمونه | NULL یعنی هنوز مقداردهی نشده (فول حساب میشه)
     hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -121,6 +120,7 @@ class User(Base):
     skill_speed: Mapped[int] = mapped_column(Integer, default=0)
     skill_defense: Mapped[int] = mapped_column(Integer, default=0)
     skill_loot: Mapped[int] = mapped_column(Integer, default=0)
+    skill_stamina: Mapped[int] = mapped_column(Integer, default=0)  # 🔋 استقامت، راند ۱۵: هر لول 20 تا سقف انرژی بیشتر
 
     # 🛡 تجهیزات — سلاح/زره انتخاب‌شده کاربر (NULL یعنی خودکار همون بهترین)
     equipped_weapon: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -128,6 +128,9 @@ class User(Base):
 
     # 💀 سم Viper-X — تا این زمان حمله و دفاع کاربر کمتره
     poison_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # ⚡ بوست انرژی‌زا (بمب انرژی) — تا این زمان قدرت حمله کاربر بیشتره، بعدش با جارو خبر پایان اثر میره پی‌وی
+    boost_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
@@ -426,6 +429,8 @@ class Shipment(Base):
     pay: Mapped[int] = mapped_column(Integer, default=0)     # مبلغی که قرار است موقع رسیدن پرداخت بشه
     outcome: Mapped[str] = mapped_column(String(10), default="clean")  # clean | police | delayed
     hops: Mapped[int] = mapped_column(Integer, default=0)
+    # چتی که محموله از توش ارسال شده — خبر رسیدنش همونجا میره (گروه بود همون گروه، درخواست کارفرما) | NULL یعنی پی‌وی
+    chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     deliver_at: Mapped[datetime] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 

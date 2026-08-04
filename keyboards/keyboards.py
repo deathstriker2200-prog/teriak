@@ -636,8 +636,8 @@ def pv_result_kb() -> InlineKeyboardMarkup:
 
 
 def pv_target_kb(target_id: int, reroll_cost: int, spy_cost: int) -> InlineKeyboardMarkup:
-    """پیش‌نمایش هدف پی‌وی: حمله | جاسوسی (دوباره همون طرف رایگانه) | هدف دیگه پولی | بازگشت"""
-    spy_label = "🕵 جاسوسی | رایگان 🔁" if spy_cost <= 0 else f"🕵 جاسوسی | 🪙 {money_tp(spy_cost)}"
+    """پیش‌نمایش هدف پی‌وی: حمله | جاسوسی پولی | هدف دیگه پولی | بازگشت"""
+    spy_label = f"🕵 جاسوسی | 🪙 {money_tp(spy_cost)}"
     return InlineKeyboardMarkup([
         [_btn("⚔️ حمله", f"patt:hit:{target_id}", DANGER)],
         [_btn(spy_label, f"patt:spy:{target_id}", PRIMARY)],
@@ -671,6 +671,23 @@ def heal_kb() -> InlineKeyboardMarkup:
         rows.append([_btn(
             f"{it['name']} | 🪙 {money_tp(it['price'])} | 🏥 {gain}",
             f"heal:buy:{key}", SUCCESS,
+        )])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def energy_kb() -> InlineKeyboardMarkup:
+    """کیبورد بخش انرژی‌زا ⚡، هر آیتم با یه کلیک خریده و همون لحظه خورده میشه"""
+    pct = int(round((config.ENERGY_DRINKS["bomb"]["boost"] or 0) * 100))
+    rows: list[list[InlineKeyboardButton]] = []
+    for key, it in config.ENERGY_DRINKS.items():
+        if it["energy"] is None:
+            gain = f"⚡ فول + 🔥 {fa_num(pct)}% حمله"
+        else:
+            gain = f"⚡ انرژی +{fa_num(it['energy'])}"
+        rows.append([_btn(
+            f"{it['name']} | 🪙 {money_tp(it['price'])} | {gain}",
+            f"en:buy:{key}", SUCCESS,
         )])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
