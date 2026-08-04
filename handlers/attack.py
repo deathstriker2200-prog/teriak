@@ -2,7 +2,7 @@
 هدف دیگه هزینه‌داره (با لول جست‌وجوگر از 25 تا 1000 تی‌پوینت) و هر حمله 1 دقیقه کولدان داره
 قربانی سپر ۶ ساعته داشته باشه مهاجم انتخاب داره: با پول بشکنه یا بی‌خیال
 بعد حمله، به قربانی تو پی‌وی خبر حمله می‌رسه که چقدر دزدیده شد و چه تجربه کمی گرفت
-سیستم قدیمی: مقایسه قدرت حمله با دفاع حریف و شانس درصدی برد
+سیستم قدیمی راند ۱۲: قدرت کل (حمله + دفاع) دو طرف مقایسه میشه و درصدی نیس، بیشتر بود میبری
 نبرد HP فقط توی گروه‌ها با دستورهای جنگ انجام میشه، اینجا سیستم جداست"""
 
 from telegram import Update
@@ -23,8 +23,8 @@ PV_PANEL_TEXT = (
     "<b>⚔️ حمله پی‌وی</b>\n\n"
     "🎯 هدف شانسی نزدیک لولت رو پیدا کن\n\n"
     "👀 قبل از حمله پیش‌نمایشش رو می‌بینی و می‌تونی عوضش کنی\n"
-    "🕵 با جاسوسی جیب و قدرت دفاع و شانس بردت لو میره\n"
-    "🎲 نتیجه نبرد بر اساس قدرت حمله و دفاع محاسبه میشه\n"
+    "🕵 با جاسوسی جیب و قدرت کل طرف لو میره\n"
+    "💪 نتیجه نبرد مقایسه قدرت کله (حمله + دفاع)، بیشتر بود میبری\n"
     "🛡 بعد از حمله حریف مدتی از حمله‌های پی‌وی مصون میشه\n\n"
     "⚔️ نبردهای واقعی با HP فقط داخل گروه‌ها انجام میشن"
 )
@@ -49,14 +49,14 @@ async def attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: s
 
 
 async def _target_view(s, user: User, victim: User) -> tuple[str, object]:
-    """متن و کیبورد پیش‌نمایش هدف، شانس برد فقط با دکمه جاسوسی (هزینه‌دار) لو میره"""
+    """متن و کیبورد پیش‌نمایش هدف، قدرت کل طرف فقط با دکمه جاسوسی (هزینه‌دار) لو میره"""
     name = users.display_name(victim)
     text = (
         "<b>🎯 هدف پیدا شد</b>\n\n"
         f"👤 {esc(name)}\n"
         f"⭐ لول {fa_num(victim.level)}\n"
         f"⚡ هزینه حمله {fa_num(config.PV_ATTACK_ENERGY_COST)} انرژی\n\n"
-        "🕵 با جاسوسی جیب و قدرت دفاع و شانس بردت لو میره\n"
+        "🕵 با جاسوسی جیب و قدرت کل طرف لو میره\n"
         "می‌زنیش یا یه هدف دیگه می‌خوای؟"
     )
     spy_c = 0 if pvattack.spy_is_free(user, victim) else pvattack.spy_cost(user.level)
@@ -116,7 +116,7 @@ async def target_next_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🕵 جاسوسی، با پول جیب و قدرت دفاع و درصد شانس برد طرف لو میره"""
+    """🕵 جاسوسی، با پول جیب و استت‌ها و قدرت کل طرف و نتیجه مقایسه لو میره"""
     target_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -133,9 +133,13 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if not free:
             user.cash -= cost
         user.last_spy_target_id = cur.id
-        a_atk, _ = await pvattack.powers(s, user)
-        _, t_dfn = await pvattack.powers(s, cur)
-        pct = round(pvattack.win_chance(a_atk, t_dfn) * 100)
+        a_tot, t_tot, info = await pvattack.total_powers(s, user, cur)
+        if a_tot > t_tot:
+            verdict = "✅ قدرتت بیشتره، حمله بزنی میبری"
+        elif a_tot == t_tot:
+            verdict = "⚖️ قدرت‌ها برابره، تساوی به نفع مدافه‌ست"
+        else:
+            verdict = "❌ قدرتش بیشتره، حمله بزنی میبازی"
         cash = cur.cash
         name = users.display_name(cur)
         text, markup = await _target_view(s, user, cur)
@@ -143,8 +147,9 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     alert = (
         f"🕵 جاسوسی از «{esc(name)}» گزارش داد\n"
         f"💰 جیبش {money(cash)}\n"
-        f"🛡 قدرت دفاع {fa_num(t_dfn)}\n"
-        f"🎲 شانس بردت {fa_num(pct)} درصد"
+        f"⚔️ حمله {fa_num(info['t_atk0'])} | 🛡 دفاع {fa_num(info['t_def0'])}\n"
+        f"💪 قدرت کلش {fa_num(t_tot)} | قدرت کل تو {fa_num(a_tot)}\n"
+        f"{verdict}"
     )
     if free:
         alert += "\n🔁 همون طرفی که جاسوش بودی، این یکی رایگان بود"
@@ -171,6 +176,7 @@ def _victim_text(attacker_name: str, result: dict) -> str:
         "<b>🚨 بهت حمله شد</b>\n\n"
         f"{head}\n"
         f"{money_line}\n"
+        f"💪 قدرت کل تو {fa_num(result['d_pow'])} ✕ طرف {fa_num(result['a_pow'])}\n"
         f"✨ {fa_num(result['victim_xp'])} تجربه گرفتی\n\n"
         f"🛡 تا {fa_num(config.PV_ATTACK_SHIELD_SECONDS // 3600)} ساعت از حملات در امانی"
     )
@@ -253,6 +259,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         text = (
             f"<b>⚔️ بردی!</b>\n\n"
             f"{loot_line}\n"
+            f"💪 قدرت کل تو {fa_num(result['a_pow'])} ✕ طرف {fa_num(result['d_pow'])}\n"
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
     else:
@@ -263,6 +270,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         text = (
             f"<b>🛡 حریف «{esc(name)}» تونست دفاع کنه، باختی</b>\n\n"
             f"{lose_line}\n"
+            f"💪 قدرت کل طرف {fa_num(result['d_pow'])} ✕ تو {fa_num(result['a_pow'])}\n"
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
 

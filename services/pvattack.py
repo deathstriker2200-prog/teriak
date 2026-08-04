@@ -1,7 +1,9 @@
 """
 حمله پی‌وی کلاسیک ⚔️، سیستم قدیمی بدون HP
 
-قدرت حمله مهاجم با دفاع حریف مقایسه میشه و شانس برد درصدی درمیاد
+راند ۱۲ درخواست کارفرما: «قدرت کل» (حمله + دفاع خام) دو طرف مقایسه میشه و درصدی نیس، مهاجم بیشتر بود برده وگرنه باخته
+بوست‌ها نقش‌محورن: مهاجم فقط بوست‌های حمله‌ای (نژاد سگ | آرتیفکت | مهارت قدرت | هوای تهاجمی) رو می‌گیره و هدف فقط بوست‌های دفاعی
+جاسوسی به‌جای شانس درصدی، استت‌ها و قدرت کل طرف رو نشون میده
 هدف‌ها اول حوالی لول خودتن (±۲ لول)، هر مرحله خالی بود یه لول بازتر تا ±۱۰، بعدش فالبک: اول بالاترها بعد پایین‌ترها
 بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره
 و از لیست حمله‌های پی‌وی خارج میشه
@@ -65,13 +67,39 @@ def spy_cost(level: int) -> int:
     return int(lo + (hi - lo) * (lv - 1) / span)
 
 
-# ───────── قدرت و شانس 🎲 ─────────
+# ───────── قدرت کل نقش‌محور 💪 (راند ۱۲) ─────────
 
-async def powers(session: AsyncSession, user: User) -> tuple[int, int]:
-    """(حمله, دفاع) کاربر با آیتم‌ها و سگ‌هاش، مبنای مقایسه کلاسیک"""
-    items = await user_svc.get_item_keys(session, user.id)
-    dogs = await dog_svc.get_user_dogs(session, user.id)
-    return combat.combat_stats(user, items, dogs)
+def decide_win(a_total: int, t_total: int) -> bool:
+    """برد مهاجم فقط وقتی قدرت کلش بیشتره، تساوی به نفع مدافعه (درخواست کارفرما، درصدی نیس)"""
+    return a_total > t_total
+
+
+async def total_powers(session: AsyncSession, attacker: User, target: User) -> tuple[int, int, dict]:
+    """
+    (قدرت کل مهاجم, قدرت کل هدف, جزئیات استت خام) | مبنا = حمله + دفاع خام هر دو طرف
+    بوست‌ها نقش‌محورن (درخواست کارفرما): به قدرت کل مهاجم فقط بوست‌های حمله‌ای‌اش اضافه میشه (نه بوست دفاع)
+    و به قدرت کل هدف فقط بوست‌های دفاعی‌اش (نه بوست حمله) | هوا هم همین نقش رو داره (طوفان مهاجم رو ضعیف می‌کنه، مه مدافع رو قوی)
+    """
+    a_items = await user_svc.get_item_keys(session, attacker.id)
+    t_items = await user_svc.get_item_keys(session, target.id)
+    a_dogs = await dog_svc.get_user_dogs(session, attacker.id)
+    t_dogs = await dog_svc.get_user_dogs(session, target.id)
+
+    a_atk0, a_def0 = combat.combat_raw_stats(attacker, a_items, a_dogs)
+    t_atk0, t_def0 = combat.combat_raw_stats(target, t_items, t_dogs)
+    a_ap, _ = combat.combat_boost_pcts(attacker, a_items, a_dogs)
+    _, t_dp = combat.combat_boost_pcts(target, t_items, t_dogs)
+
+    from services import world as world_svc
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    watk, wdef = world_svc.weather_combat_mods(wkey, wpct)
+
+    a_total = int((a_atk0 + a_def0) * (1 + a_ap + watk))
+    t_total = int((t_atk0 + t_def0) * (1 + t_dp + wdef))
+    return max(1, a_total), max(1, t_total), {
+        "a_atk0": a_atk0, "a_def0": a_def0,
+        "t_atk0": t_atk0, "t_def0": t_def0, "weather": wkey,
+    }
 
 
 def pv_steal_range(cash: int) -> float:
@@ -82,11 +110,6 @@ def pv_steal_range(cash: int) -> float:
     lo, hi = config.PV_ATTACK_STEAL_TIERS[-1][1:]
     return random.uniform(lo, hi)
 
-
-def win_chance(a_atk: int, t_dfn: int) -> float:
-    """شانس برد مهاجم، پایه ۵۰ درصد و هر واحد اختلاف قدرت جابه‌جاش می‌کنه (با کف و سقف)"""
-    raw = config.PV_BASE_CHANCE + (a_atk - t_dfn) * config.PV_ATTACK_CHANCE_SCALE
-    return max(config.PV_ATTACK_MIN_CHANCE, min(config.PV_ATTACK_MAX_CHANCE, raw))
 
 
 # ───────── هدف شانسی 🎯 ─────────
@@ -148,11 +171,9 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     attacker.pv_attack_at = now_utc()
     await actionlog.log(session, "pvattack")  # آمار حمله‌های پی‌وی پنل ادمین
 
-    a_atk, _ = await powers(session, attacker)
-    _, t_dfn = await powers(session, victim)
+    a_total, t_total, _info = await total_powers(session, attacker, victim)
     artis = user_svc.artifact_keys(await user_svc.get_item_keys(session, attacker.id))
-    chance = win_chance(a_atk, t_dfn)
-    won = random.random() < chance
+    won = decide_win(a_total, t_total)
 
     # مصونیت قربانی بعد از حمله، تو برد و باخت هر دو
     victim.shield_until = now_utc() + timedelta(seconds=config.PV_ATTACK_SHIELD_SECONDS)
@@ -192,12 +213,11 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     return {
         "ok": True,
         "won": won,
-        "chance": chance,
         "steal": steal,
         "penalty": penalty,
         "xp": xp,
         "victim_xp": victim_xp,
         "notes": notes,
-        "a_pow": a_atk,
-        "d_pow": t_dfn,
+        "a_pow": a_total,
+        "d_pow": t_total,
     }

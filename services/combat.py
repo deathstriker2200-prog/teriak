@@ -82,14 +82,11 @@ def combat_boost_pcts(user: User, item_keys, dogs: list) -> tuple[float, float]:
     return atk_p, def_p
 
 
-def combat_stats(user: User, item_keys, dogs: list,
-                 atk_extra: float = 0.0, def_extra: float = 0.0) -> tuple[int, int]:
+def combat_raw_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
     """
-    (حمله, دفاع) = پایه بر اساس لول + بهترین سلاح (با لول ارتقا) + سگ‌ها / بهترین زره
+    (حمله, دفاع) خام = پایه بر اساس لول + بهترین سلاح/زره (با لول ارتقا) + سگ‌ها | بدون درصدهای بوست
+    مبنای «قدرت کل» حمله پی‌وی راند ۱۲، که بوست‌ها نقش‌محور روش سوار میشن
     سگ‌ها فقط قدرت حمله میدن (شخصیت حذف شده)
-    همه درصدها (نژاد سگ + آرتیفکت + مهارت + extraهای نبردی مثل باف تیم/هوا/سم)
-    روی مقدار اولیه جمع میشن (additive، درخواست کارفرما) نه ضرب پشت سر هم
-    بونس تیم و آب و هوا توی services.battle به‌صورت atk_extra/def_extra تزریق میشن
     """
     levels = _levels_map(item_keys)
     atk = config.ATK_BASE + config.ATK_PER_LEVEL * user.level
@@ -104,7 +101,17 @@ def combat_stats(user: User, item_keys, dogs: list,
     dfn += _effective_bonus(armor_bonus, user.level)
 
     atk += sum(dog_svc.dog_attack(d) for d in dogs)
+    return atk, dfn
 
+
+def combat_stats(user: User, item_keys, dogs: list,
+                 atk_extra: float = 0.0, def_extra: float = 0.0) -> tuple[int, int]:
+    """
+    (حمله, دفاع) = استت خام + همه درصدها (نژاد سگ + آرتیفکت + مهارت + extraهای نبردی مثل باف تیم/هوا/سم)
+    روی مقدار اولیه جمع میشن (additive، درخواست کارفرما) نه ضرب پشت سر هم
+    بونس تیم و آب و هوا توی services.battle به‌صورت atk_extra/def_extra تزریق میشن
+    """
+    atk, dfn = combat_raw_stats(user, item_keys, dogs)
     atk_p, def_p = combat_boost_pcts(user, item_keys, dogs)
     atk = int(atk * (1 + atk_p + atk_extra))
     dfn = int(dfn * (1 + def_p + def_extra))
