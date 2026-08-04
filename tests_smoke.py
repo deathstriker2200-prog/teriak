@@ -77,22 +77,24 @@ async def main() -> None:
           and config.SEEDS["jahannam"]["price"] == 0 and config.SEEDS["eblis"]["price"] == 0 and config.SEEDS["mutant"]["price"] == 0)
     check("بذر افسانه‌ای تو لیست شاپ نمیاد",
           "jahannam" not in shop_svc.shop_seeds() and "eblis" not in shop_svc.shop_seeds() and "mutant" not in shop_svc.shop_seeds())
-    check("بذر جهش‌یافته از جهنم و ابلیس نایاب‌تره: فروش 150,000 و سقف خودش 200,000ـه",
-          config.SEEDS["mutant"]["sell"] == 150000 and config.SEEDS["mutant"].get("cap") == 200000)
+    check("بذر جهش‌یافته از جهنم و ابلیس نایاب‌تره: فروش 110,000 و سقف خودش 200,000ـه (راند ۹ ارزان‌تر شد)",
+          config.SEEDS["mutant"]["sell"] == 110000 and config.SEEDS["mutant"].get("cap") == 200000)
     _mrate = [o for o in config.SEARCH_OUTCOMES if o["key"] == "seed_mutant"]
     _cloot = [l for l in config.CARAVAN_LOOT if l["key"] == "mutant"]
     _hrate = [o for o in config.SEARCH_OUTCOMES if o["key"] == "seed_hell"]
-    check("دراپ جستجو: جهنم ۱٫۵٪ و جهش‌یافته ۰٫۴٪ شد (کاروان همون ۱٪ مونده)",
-          _mrate and _mrate[0]["chance"] == 0.004 and _hrate and _hrate[0]["chance"] == 0.015
+    _drate = [o for o in config.SEARCH_OUTCOMES if o["key"] == "seed_devil"]
+    check("دراپ جستجو بیشتر شد: جهنم ۵٪ و ابلیس ۳٫۵٪ و جهش‌یافته ۱٫۵٪ (کاروان همون ۱٪ مونده، درخواست کارفرما راند ۹)",
+          _mrate and _mrate[0]["chance"] == 0.015 and _hrate and _hrate[0]["chance"] == 0.05
+          and _drate and _drate[0]["chance"] == 0.035
           and _cloot and _cloot[0]["chance"] == 0.01)
     check("جمع شانس جستجوها ۱ـه", abs(sum(o["chance"] for o in config.SEARCH_OUTCOMES) - 1.0) < 1e-9)
     check("جمع شانس لوت کاروان ۱ـه", abs(sum(l["chance"] for l in config.CARAVAN_LOOT) - 1.0) < 1e-9)
-    check("قیمت فروش بذر ابلیس 50,000 و بذر جهنم 27,000ـه (بکم کوچیک از دوبرابر کوکائین)",
-          config.SEEDS["eblis"]["sell"] == 50000 and config.SEEDS["jahannam"]["sell"] == 27000)
+    check("قیمت فروش بذر ابلیس 37,000 و بذر جهنم 19,000ـه (همچنان بکم کوچیک از دوبرابر پله قبلی، راند ۹)",
+          config.SEEDS["eblis"]["sell"] == 37000 and config.SEEDS["jahannam"]["sell"] == 19000)
     _rates = {k: config.SEEDS[k]["sell"] / config.SEEDS[k]["grow_min"] for k in ("cocaine", "jahannam", "eblis")}
     check("سود هر دقیقه رشد: جهنم از کوکائین و ابلیس از جهنم بصرفه‌تره ولی فقط بکم",
           config.SEEDS["jahannam"]["grow_min"] == 45 and config.SEEDS["eblis"]["grow_min"] == 80
-          and _rates["cocaine"] == 560 and _rates["jahannam"] == 600 and _rates["eblis"] == 625
+          and _rates["cocaine"] == 400 and round(_rates["jahannam"], 1) == 422.2 and _rates["eblis"] == 462.5
           and 0 < _rates["jahannam"] - _rates["cocaine"] <= 50
           and 0 < _rates["eblis"] - _rates["jahannam"] <= 50,
           str({k: round(v, 1) for k, v in _rates.items()}))
@@ -118,8 +120,8 @@ async def main() -> None:
         ok_lg, _a, _ex, _dq, _nn = await farming.harvest_all(s, lgu)
         from services import smuggle as _smg
         _prod = await _smg.get_products(s, lgu.id)
-        check("تعداد ثابت برداشت جهنم 1 تاست و انبارش ارزش قفل‌شده داره (⭐5 لول 20 = 37,260 زیر سقف 60,000)",
-              ok_lg and lgu.cash == lg_cash and _prod["jahannam"].qty == 1 and _prod["jahannam"].value == 37260,
+        check("تعداد ثابت برداشت جهنم 1 تاست و انبارش ارزش قفل‌شده داره (⭐5 لول 20 = 26,219 زیر سقف 60,000)",
+              ok_lg and lgu.cash == lg_cash and _prod["jahannam"].qty == 1 and _prod["jahannam"].value == 26219,
               f"{lgu.cash - lg_cash} | {_prod.get('jahannam').value if _prod.get('jahannam') else None}")
         check("سقف فروش جهش‌یافته جدای خودشه و کوکائین سقف نداره",
               farming.apply_legendary_cap("mutant", 999999) == 200000
@@ -132,8 +134,8 @@ async def main() -> None:
         ok_lg2, _a2, _ex2, _dq2, _nn2 = await farming.harvest_all(s, lgu)
         _prod2 = await _smg.get_products(s, lgu.id)
         _q_c = _prod2["cocaine"].qty
-        check("کوکائین هم دیگه شانسیه (زمین لول 1: 1 یا 2 تا) و سقف نمی‌خوره (هر دونه ⭐5 لول 20 = 19,320)",
-              ok_lg2 and _q_c in (1, 2) and _prod2["cocaine"].value == 19320 * _q_c,
+        check("کوکائین هم دیگه شانسیه (زمین لول 1: 1 یا 2 تا) و سقف نمی‌خوره (هر دونه ⭐5 لول 20 = 13,799)",
+              ok_lg2 and _q_c in (1, 2) and _prod2["cocaine"].value == 13799 * _q_c,
               f"{_q_c} | {_prod2['cocaine'].value}")
         await s.commit()
     world_svc.roll_quality = _orig_quality
@@ -535,7 +537,7 @@ async def main() -> None:
         check("جدول HP تو کانفیگ ۲۰ رده داره", len(config.HP_TABLE) == 20)
         check("سقف لول بازی ۲۰ه", config.MAX_LEVEL == 20)
 
-        # ── دمیج نبرد HP: واریانس ۳۰٪ و قانون زیادی‌قوتی (کریتیکال خاموش که بازه الکی نشکنه) ──
+        # ── دمیج نبرد HP: فرمول (حمله - دفاع) ÷ 3 با واریانس ۳۰٪ و قانون زیادی‌قوتی ──
         random.seed(7)
         _old_crit = config.BATTLE_CRIT_CHANCE
         config.BATTLE_CRIT_CHANCE = 0.0
@@ -543,30 +545,29 @@ async def main() -> None:
             dms = [battle_svc.roll_damage(150, 100, 200)[0] for _ in range(300)]
         finally:
             config.BATTLE_CRIT_CHANCE = _old_crit
-        ratio = 150 / (150 + 100)
-        pct_exp = config.BATTLE_DMG_PCT_MIN + (config.BATTLE_DMG_PCT_MAX - config.BATTLE_DMG_PCT_MIN) * ratio
-        raw_exp = 200 * pct_exp
+        raw_exp = (150 - 100) / config.BATTLE_DMG_DIVISOR
         v30 = config.BATTLE_DMG_VARIANCE
-        check("دمیج همیشه تو بازه واریانس 30% نوسان داره",
+        check("دمیج تابع فرمول (حمله منهی دفاع) تقسیم بر 3 و تو بازه واریانس 30% نوسان داره",
               all(round(raw_exp * (1 - v30)) <= d <= round(raw_exp * (1 + v30)) for d in dms)
               and max(dms) > min(dms), f"{min(dms)}..{max(dms)} (خام {raw_exp:.1f})")
+        check("دفاع به‌بزرگی حمله یا بیشتر، هیچ دمیجی نمی‌خوره",
+              battle_svc.roll_damage(100, 100, 200)[0] == 0 and battle_svc.roll_damage(100, 130, 200)[0] == 0)
         check("دفاع به اندازه نسبت قانون بزرگ‌تر، هیچ دمیجی نمی‌خوره",
               battle_svc.roll_damage(10, int(10 * config.BATTLE_NO_DAMAGE_DEF_RATIO), 200)[0] == 0)
-        check("کانفیگ دمیج درصدی مکس HP و نسبت و واریانس",
+        check("کانفیگ دمیج: تقسیمگر 3 و واریانس 30% و نسبت قانون (راند ۹ درخواست کارفرما)",
               config.BATTLE_DMG_VARIANCE == 0.30 and config.BATTLE_NO_DAMAGE_DEF_RATIO == 3.0
-              and config.BATTLE_DMG_PCT_MIN == 0.05 and config.BATTLE_DMG_PCT_MAX == 0.20)
+              and config.BATTLE_DMG_DIVISOR == 3)
         random.seed(21)
         _oc2 = config.BATTLE_CRIT_CHANCE
         config.BATTLE_CRIT_CHANCE = 0.0
         try:
-            dms_w = [battle_svc.roll_damage(80, 200, 400)[0] for _ in range(200)]
+            dms_w = [battle_svc.roll_damage(110, 50, 400)[0] for _ in range(200)]
             dms_s = [battle_svc.roll_damage(200, 50, 400)[0] for _ in range(200)]
         finally:
             config.BATTLE_CRIT_CHANCE = _oc2
-        check("دمیج بین کف و سقف درصدی مکس HP قربانی می‌چرخه و قوی‌تر بودن بیشتر می‌زنه",
-              min(dms_w) >= round(400 * config.BATTLE_DMG_PCT_MIN * (1 - v30))
-              and max(dms_s) <= round(400 * config.BATTLE_DMG_PCT_MAX * (1 + v30))
-              and sum(dms_s) > sum(dms_w) * 1.5, f"{min(dms_w)}..{max(dms_s)}")
+        check("قوی‌تر بودن خیلی بیشتر می‌زنه و دفاع کمتر دمیج رو بالا می‌بره",
+              all(d >= 1 for d in dms_w) and sum(dms_s) > sum(dms_w) * 2,
+              f"{min(dms_w)}..{max(dms_s)}")
 
         # ── ضربه کامل نبرد HP (سرویس) ──
         from models import InventoryItem
@@ -2056,6 +2057,7 @@ async def main() -> None:
     async with session_scope() as s:
         su = await users.get_by_tg(s, 8802)
         su.level = 20  # لول از سشن قبل سمت دیتابیس ذخیره شده، اینجا هم تاکید
+        su.shelter_level = 8  # ظرفیت انبار بذر 45 تا بشه که دراپ‌های 3000 جستجو جا بشن (راند ۹ سقف انبار رعایت میشه)
         counts: dict = {}
         money_bounds: list[int] = []
         for _ in range(3000):
@@ -2065,7 +2067,7 @@ async def main() -> None:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
             if r["status"] == "money":
                 money_bounds.append(r["amount"])
-        check("همه نتیجه‌های جستجو دیده میشن (حتی جهش‌یافته با دراپ ۰٫۴٪)",
+        check("همه نتیجه‌های جستجو دیده میشن (حتی جهش‌یافته با دراپ ۱٫۵٪ جدید)",
               all(counts.get(k) for k in ("money", "seed_common", "seed_rare", "seed_hell", "seed_devil", "seed_mutant", "thief")),
               str(counts))
         check("دراپ جهش‌یافته از ابلیس هم کمتره", counts.get("seed_mutant", 0) < counts.get("seed_devil", 0), str(counts))
@@ -5984,12 +5986,12 @@ async def main() -> None:
         check("خط مدال‌ها تو پروفایل تیمه", "🎖 مدال‌ها" in st_md and "<b>📊 آمار</b>" in st_md, st_md[:160])
         await s.commit()
 
-    # ── لیدربرد بازیکن: تب‌دار، پیش‌فرض هفتگی، مدال‌محور ──
+    # ── لیدربرد بازیکن: تب‌دار، پیش‌فرض کلی (راند ۱۰)، مدال‌محور ──
     upd_rk = _fake_update("menu:rank", uid=1001)
     await rank_h2.rank_cb(upd_rk, None)
     ed_rk = next((c for c in upd_rk.callback_query.calls if c[0] == "edit"), None)
-    check("پیش‌فرض لیدربرد تب هفتگیه",
-          ed_rk is not None and "<b>🏆 لیدربرد بازیکنا</b>" in ed_rk[1] and "🗓 هفتگی" in ed_rk[1],
+    check("پیش‌فرض لیدربرد بازشده تب کلیه",
+          ed_rk is not None and "<b>🏆 لیدربرد بازیکنا</b>" in ed_rk[1] and "🌍 کلی" in ed_rk[1],
           ed_rk[1][:90] if ed_rk else "-")
     check("لیدربرد قالب جدید: لول و رتبه و توضیح مدال",
           ed_rk is not None and "[Lv." in ed_rk[1] and "│" in ed_rk[1] and "🎖️" in ed_rk[1]
@@ -5999,16 +6001,16 @@ async def main() -> None:
     mk_rk = ed_rk[2].get("reply_markup") if ed_rk else None
     row_rk = [(b.text, b.callback_data) for b in mk_rk.inline_keyboard[0]] if mk_rk else []
     check("سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو لیدربرد",
-          row_rk == [("📅 روزانه", "rank:tab:week:day"),
-                     ("🗓 هفتگی", "rank:tab:week:week"),
-                     ("🌍 کلی", "rank:tab:week:all")],
+          row_rk == [("📅 روزانه", "rank:tab:all:day"),
+                     ("🗓 هفتگی", "rank:tab:all:week"),
+                     ("🌍 کلی", "rank:tab:all:all")],
           str(row_rk))
-    upd_rk2 = _fake_update("rank:tab:week:day", uid=1001)
+    upd_rk2 = _fake_update("rank:tab:all:day", uid=1001)
     await rank_h2.rank_tab_cb(upd_rk2, None)
     ed_rk2 = next((c for c in upd_rk2.callback_query.calls if c[0] == "edit"), None)
     check("سوئیچ به تب روزانه لیدربرد",
           ed_rk2 is not None and "<b>🏆 لیدربرد بازیکنا</b>" in ed_rk2[1] and "📅 روزانه" in ed_rk2[1])
-    upd_rk3 = _fake_update("rank:tab:week:week", uid=1001)
+    upd_rk3 = _fake_update("rank:tab:all:all", uid=1001)
     await rank_h2.rank_tab_cb(upd_rk3, None)
     check("زدن رو دکمه تب فعلی لیدربرد هیچ واکنشی نداره",
           not any(c[0] == "edit" for c in upd_rk3.callback_query.calls)
@@ -6019,8 +6021,8 @@ async def main() -> None:
     upd_tt = _fake_update("ttop:x", uid=1001)
     await team_h.top_teams_text(upd_tt, None)
     ed_tt = next((c for c in upd_tt.callback_query.calls if c[0] == "edit"), None)
-    check("لیدربرد تیم پیش‌فرض هفتگیه و با مدال رتبه‌بندی میشه",
-          ed_tt is not None and "<b>🏆 لیدربرد تیم‌ها</b>" in ed_tt[1] and "📅 هفتگی" in ed_tt[1] and "🎖️" in ed_tt[1],
+    check("لیدربرد تیم پیش‌فرض کلیه و با مدال رتبه‌بندی میشه",
+          ed_tt is not None and "<b>🏆 لیدربرد تیم‌ها</b>" in ed_tt[1] and "🌍 کلی" in ed_tt[1] and "🎖️" in ed_tt[1],
           ed_tt[1][:110] if ed_tt else "-")
     check("قالب جدید لیدربرد تیم: [Lv.] با جداکننده و فوتر توضیح",
           ed_tt is not None and "🎖️ مجموع مدال‌های اعضای تیم" in ed_tt[1]
@@ -6029,16 +6031,16 @@ async def main() -> None:
     mk_tt = ed_tt[2].get("reply_markup") if ed_tt else None
     row_tt = [(b.text, b.callback_data) for b in mk_tt.inline_keyboard[0]] if mk_tt else []
     check("سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو لیدربرد تیم",
-          row_tt == [("☀️ روزانه", "ttop:tab:week:day"),
-                     ("📅 هفتگی", "ttop:tab:week:week"),
-                     ("🌍 کلی", "ttop:tab:week:all")],
+          row_tt == [("☀️ روزانه", "ttop:tab:all:day"),
+                     ("📅 هفتگی", "ttop:tab:all:week"),
+                     ("🌍 کلی", "ttop:tab:all:all")],
           str(row_tt))
-    upd_tt2 = _fake_update("ttop:tab:week:day", uid=1001)
+    upd_tt2 = _fake_update("ttop:tab:all:day", uid=1001)
     await team_h.top_teams_tab_cb(upd_tt2, None)
     ed_tt2 = next((c for c in upd_tt2.callback_query.calls if c[0] == "edit"), None)
     check("سوئیچ به تب روزانه لیدربرد تیم",
           ed_tt2 is not None and "🏆 لیدربرد تیم‌ها" in ed_tt2[1] and "☀️ روزانه" in ed_tt2[1])
-    upd_tt3 = _fake_update("ttop:tab:week:week", uid=1001)
+    upd_tt3 = _fake_update("ttop:tab:all:all", uid=1001)
     await team_h.top_teams_tab_cb(upd_tt3, None)
     check("زدن رو دکمه تب فعلی لیدربرد تیم هیچ واکنشی نداره",
           not any(c[0] == "edit" for c in upd_tt3.callback_query.calls)
@@ -9586,22 +9588,22 @@ async def main() -> None:
     # ═══ + جاسوسی دوباره همون طرف رایگان + برگشت لقب Teriaky Lord ═══
 
     # ── تجربه برداشت: بازه (کف، سقف) با کیفیت ⭐1 تا ⭐5 ──
-    check("تجربه بذرهای عادی بین 4 تا 25 بر اساس کیفیت",
-          economy.crop_xp("marijuana", 1) == 4 and economy.crop_xp("marijuana", 5) == 8
-          and economy.crop_xp("cocaine", 1) == 16 and economy.crop_xp("cocaine", 5) == 25
-          and all(4 <= economy.crop_xp(k, st) <= 25 for k in
+    check("تجربه بذرهای عادی بین 2 تا 22 بر اساس کیفیت (بازه فشرده، راند ۱۰)",
+          economy.crop_xp("marijuana", 1) == 2 and economy.crop_xp("marijuana", 5) == 3
+          and economy.crop_xp("cocaine", 1) == 15 and economy.crop_xp("cocaine", 5) == 22
+          and all(2 <= economy.crop_xp(k, st) <= 22 for k in
                   ("marijuana", "gharch", "peyote", "kratom", "khashkhash", "teriak", "cocaine")
                   for st in range(1, 6)),
           str(economy.crop_xp("cocaine", 3)))
-    check("افسانه‌ای‌ها با میانگین ⭐3 = 80 و 200 و 500 و سقف کلی 500",
-          economy.crop_xp("jahannam", 3) == 80 and economy.crop_xp("eblis", 3) == 200
-          and economy.crop_xp("mutant", 3) == 500 and economy.crop_xp("mutant", 5) == 500
-          and economy.crop_xp("jahannam", 1) == 40 and economy.crop_xp("jahannam", 5) == 120
-          and economy.crop_xp("eblis", 1) == 100 and economy.crop_xp("eblis", 5) == 300,
+    check("افسانه‌ای‌ها با میانگین ⭐3 = 53 و 133 و 333 و سقف کلی 333 (دو سوم قبلی، راند ۹)",
+          economy.crop_xp("jahannam", 3) == 53 and economy.crop_xp("eblis", 3) == 133
+          and economy.crop_xp("mutant", 3) == 333 and economy.crop_xp("mutant", 5) == 333
+          and economy.crop_xp("jahannam", 1) == 27 and economy.crop_xp("jahannam", 5) == 80
+          and economy.crop_xp("eblis", 1) == 67 and economy.crop_xp("eblis", 5) == 200,
           str(economy.crop_xp("jahannam", 3)))
-    check("کف و سقف کلی تجربه برداشت 4 تا 500",
-          min(economy.crop_xp(k, 1) for k in config.SEEDS) == 4
-          and max(economy.crop_xp(k, 5) for k in config.SEEDS) == 500)
+    check("کف و سقف کلی تجربه برداشت 2 تا 333",
+          min(economy.crop_xp(k, 1) for k in config.SEEDS) == 2
+          and max(economy.crop_xp(k, 5) for k in config.SEEDS) == 333)
 
     # برداشت واقعی با کیفیت ثابت ⭐، تجربه دقیق کف بازه‌ست
     async with session_scope() as s:
@@ -9621,14 +9623,14 @@ async def main() -> None:
         xp0 = qxu.xp or 0
         ok_qx, _a, _ex, _dq, _nn = await farming.harvest_all(s, qxu)
         world_svc.roll_quality = _orig_q2
-        check("برداشت ماری‌جوانا با کیفیت ⭐ دقیقاً 4 تجربه میده",
-              ok_qx and (qxu.xp or 0) - xp0 == 4, f"{(qxu.xp or 0) - xp0}")
+        check("برداشت ماری‌جوانا با کیفیت ⭐ دقیقاً 2 تجربه میده (کف بازه جدید)",
+              ok_qx and (qxu.xp or 0) - xp0 == 2, f"{(qxu.xp or 0) - xp0}")
         await s.commit()
 
     # ── درصد جستجوی افسانه‌ای‌ها ──
     _srch = {o["key"]: o["chance"] for o in config.SEARCH_OUTCOMES}
-    check("دراپ جستجو: جهنم 1.5٪ و ابلیس 1٪ و جهش‌یافته 0.4٪ و جمع شانس‌ها 1",
-          _srch["seed_hell"] == 0.015 and _srch["seed_devil"] == 0.01 and _srch["seed_mutant"] == 0.004
+    check("دراپ جستجو: جهنم 5٪ و ابلیس 3.5٪ و جهش‌یافته 1.5٪ و جمع شانس‌ها 1 (راند ۹)",
+          _srch["seed_hell"] == 0.05 and _srch["seed_devil"] == 0.035 and _srch["seed_mutant"] == 0.015
           and abs(sum(_srch.values()) - 1.0) < 1e-9, str(_srch))
 
     # ── رنج مرحله‌ای هدف پی‌وی: ±2 → ±3 → … → ±10 → فالبک ──
@@ -9761,7 +9763,9 @@ async def main() -> None:
         check("جستجوی لول 1 فقط نتیجه‌های پایه و بذر معمولی/کمیاب پایین داره",
               not lst.get("seed_hell") and not lst.get("seed_devil") and not lst.get("seed_mutant")
               and not lstock.get("cocaine") and not lstock.get("jahannam") and not lstock.get("eblis")
-              and not lstock.get("mutant") and sum(lstock.values()) > 800,
+              and not lstock.get("mutant")
+              and sum(lst.get(k, 0) for k in ("seed_common", "seed_rare")) > 900
+              and sum(lstock.values()) > 0,
               f"{lst} | {lstock}")
         lsu.level = 8
         lst8: dict = {}
@@ -10096,8 +10100,8 @@ async def main() -> None:
           "shelter:cat:prod" not in shop_d and "smc:page" not in shop_d and "sm:page" not in shop_d, str(shop_d))
 
     # ═══ این دور: تقویت دمیج نبرد (مکس‌دوئل 30 تا 40 درخواست کارفرما) + غارت ضربه پله‌ای ═══
-    check("کف و سقف دمیج دوباره خیلی تقویت شد: ۵٪ تا ۲۰٪ مکس HP (راند ۸ درخواست کارفرما)",
-          config.BATTLE_DMG_PCT_MIN == 0.05 and config.BATTLE_DMG_PCT_MAX == 0.20)
+    check("فرمول دمیج راند ۹ درخواست کارفرما: (حمله - دفاع حریف) تقسیم بر 3",
+          config.BATTLE_DMG_DIVISOR == 3)
     check("سقف غارت هر ضربه پله‌ای شد (زیر 10هزار 5٪، بالای 500هزار 1٪)",
           config.BATTLE_STEAL_TIERS[0] == (10_000, 0.05) and config.BATTLE_STEAL_TIERS[-1] == (None, 0.01))
     random.seed(42)
@@ -10112,13 +10116,13 @@ async def main() -> None:
     mean_m = sum(d_maxed) / len(d_maxed)
     mean_t = sum(d_titan) / len(d_titan)
     mean_n = sum(d_naked) / len(d_naked)
-    check("دوئل مکس‌شده (حمله 700 طرف زره‌مکس) میانگین دمیج حدود 85 شد (راند ۸ درخواست کارفرما)",
-          80 <= mean_m <= 90, f"میانگین {mean_m:.1f}")
-    check("ضربه‌های مکس‌دوئل حدود 60 تا 111 پخش میشن (با واریانس) و از 25-47 قبلی خیلی بالاترن",
-          min(d_maxed) >= 55 and max(d_maxed) <= 120 and max(d_maxed) >= 95,
+    check("دوئل مکس‌شده (حمله 700 طرف 443) میانگین دمیج حدود 86ه یعنی (700-443)/3",
+          80 <= mean_m <= 92, f"میانگین {mean_m:.1f}")
+    check("ضربه‌های مکس‌دوئل حدود 60 تا 111 پخش میشن (با واریانس)",
+          min(d_maxed) >= 55 and max(d_maxed) <= 118 and max(d_maxed) >= 95,
           f"{min(d_maxed)}..{max(d_maxed)}")
-    check("زره ضعیف‌تر دمیج خیلی بیشتره",
-          mean_m < mean_t < mean_n and mean_n >= 100,
+    check("زره ضعیف‌تر دمیج خیلی بیشتره (دفاع 43 یعنی 219 میانگین)",
+          mean_m < mean_t < mean_n and mean_n >= 200,
           f"{mean_m:.1f} < {mean_t:.1f} < {mean_n:.1f}")
     st_max, _ = battle_svc.steal_for_hit(600, 600, 100000, [], [], [])
     check("ضربه تمام‌قد روی جیب 100هزارتا فقط ۱٫۵٪ (1500) غارت می‌کنه (پله جدید)",
@@ -10688,7 +10692,7 @@ async def main() -> None:
           and f"💰 ارزش برداشت تقریبا {money(val5)}، هنوز نقد نشده" in ex5
           and "ارزش برداشت ~" not in ex5
           and "\n🚚 برای نقد کردن: بخش «انبار» ارسال محموله یا فروش به کاروان قاچاق" in ex5
-          and "\n✨ 4 تجربه" in ex5,
+          and f"\n✨ {economy.crop_xp('marijuana', 1)} تجربه" in ex5,
           (ex5 or "").replace("\n", " | ")[:240])
 
     # ── چیدمان جدید خلاصه انبار (قالب دقیق کارفرما) ──
@@ -11096,31 +11100,32 @@ async def main() -> None:
     upd_tl9 = _text_update("توقف لاگ @spytarget", uid=1001, uname="theadmin", fname="ادمین")
     await admin_h.tracklog_stop_text(upd_tl9, None)  # تمیزکاری، ته تست‌ها لاگ فعالی نمونه
 
-    # ═══ این دور: بالانس نبرد راند ۸ درخواست کارفرما ═══
-    # دمیج خیلی بیشتر + بیهوشی طولانی‌تر (۳۰ دقیقه) + درمان گران‌تر + درصد بوست additive واحد
-    check("راند ۸: کف و سقف دمیج ۵٪ تا ۲۰٪ مکس HP و بیهوشی ۱۸۰۰ ثانیه",
-          config.BATTLE_DMG_PCT_MIN == 0.05 and config.BATTLE_DMG_PCT_MAX == 0.20
-          and config.BATTLE_DEAD_SECONDS == 1800)
+    # ═══ بالانس نبرد راند ۸+۹ درخواست کارفرما ═══
+    # فرمول دمیج جدید + بیهوشی طولانی‌تر (۳۰ دقیقه) + درمان گران‌تر + درصد بوست additive واحد
+    check("بیهوشی ۱۸۰۰ ثانیه و تقسیمگر دمیج 3 (فرمول راند ۹)",
+          config.BATTLE_DEAD_SECONDS == 1800 and config.BATTLE_DMG_DIVISOR == 3)
     check("راند ۸: درمان گران‌تر شد تا برگشتن به نبرد هزینه‌دار بشه",
           config.HEAL_ITEMS["band"]["price"] == 750 and config.HEAL_ITEMS["kit"]["price"] == 2000
           and config.HEAL_ITEMS["box"]["price"] == 6000
           and config.HEAL_ITEMS["band"]["price"] < config.HEAL_ITEMS["kit"]["price"]
           < config.HEAL_ITEMS["box"]["price"])
 
-    # دوئل هم‌قد: حدود ۸ ضربه تا زمین زدن (قبلاً حدود ۲۰ بود، شکایت کارفرما)
-    random.seed(8)
-    _ocr8 = config.BATTLE_CRIT_CHANCE
+    # فرمول (حمله - دفاع) ÷ 3: هر ضربه چقدر از HP می‌دزده
+    random.seed(9)
+    _ocr9 = config.BATTLE_CRIT_CHANCE
     config.BATTLE_CRIT_CHANCE = 0.0
     try:
-        _d_eq = [battle_svc.roll_damage(100, 100, 600)[0] for _ in range(400)]
-        _d_hi = [battle_svc.roll_damage(200, 43, 600)[0] for _ in range(400)]
+        _d_eq = [battle_svc.roll_damage(700, 443, 600)[0] for _ in range(400)]
+        _d_hi = [battle_svc.roll_damage(700, 43, 600)[0] for _ in range(400)]
     finally:
-        config.BATTLE_CRIT_CHANCE = _ocr8
+        config.BATTLE_CRIT_CHANCE = _ocr9
     _m_eq, _m_hi = sum(_d_eq) / len(_d_eq), sum(_d_hi) / len(_d_hi)
-    check("دوئل هم‌قد هر ضربه میانگین حدود ۱۲٫۵٪ مکس HP (۸ ضربه تا زمین زدن)",
-          70 <= _m_eq <= 80 and 7 <= 600 / _m_eq <= 9, f"میانگین {_m_eq:.1f} -> {600 / _m_eq:.1f} ضربه")
-    check("مهاجم قوی‌تر حدود ۵-۶ ضربه طرف رو زمین می‌زنه (دیگه دمیج مزخرف کم نیس)",
-          95 <= _m_hi <= 112 and 600 / _m_hi <= 6.5, f"میانگین {_m_hi:.1f} -> {600 / _m_hi:.1f} ضربه")
+    check("دوئل مکس‌گر هر ضربه میانگین ~86 دمیج (≈۷ ضربه تا زمین زدن 600 HP)",
+          80 <= _m_eq <= 92 and 6 <= 600 / _m_eq <= 8, f"میانگین {_m_eq:.1f} -> {600 / _m_eq:.1f} ضربه")
+    check("مهاجم مکس روی مدافع ضعیف ~219 دمیج (≈۳ ضربه، دفاع پایین دیگه جون نمی‌کنه)",
+          205 <= _m_hi <= 233 and 600 / _m_hi <= 3.3, f"میانگین {_m_hi:.1f} -> {600 / _m_hi:.1f} ضربه")
+    check("دفاع به‌بزرگی حمله یا بیشتر ضربه نمی‌نشینه (صفر دمیج، پیام زیادی قدرتمنده)",
+          battle_svc.roll_damage(100, 100, 600)[0] == 0 and battle_svc.roll_damage(100, 250, 600)[0] == 0)
 
     # بوست‌ها additive روی مقدار اولیه جمع میشن، نه ضرب زنجیره‌ای (درخواست کارفرما)
     from models import InventoryItem as _InvR8
@@ -11163,6 +11168,193 @@ async def main() -> None:
               and _in8["weather"] == "normal" and _in8["tbuff"] == 0.0 and _in8["defcut"] == 0.0
               and "poison_self" not in _in8 and "poison_target" not in _in8, str(_in8))
         await s.commit()
+
+    # ═══ این دور: راند ۹ درخواست کارفرما ═══
+    # دراپ جستجو بیشتر + قیمت بذرهای بالایی کمتر (برداشت چندتایی) + تجربه زمین دو سوم
+    # + فرمول دمیج (حمله - دفاع)÷3 + ظرفیت بذر تو جستجو/کاروان/کوئست + تایم کاشت دقیق + چک پلیس
+    _ch9 = {o["key"]: o["chance"] for o in config.SEARCH_OUTCOMES}
+    check("دراپ جستجو راند ۹: جهنم ۵٪ ابلیس ۳٫۵٪ جهش‌یافته ۱٫۵٪ و جمع شانس‌ها 1",
+          _ch9["seed_hell"] == 0.05 and _ch9["seed_devil"] == 0.035 and _ch9["seed_mutant"] == 0.015
+          and abs(sum(_ch9.values()) - 1.0) < 1e-9, str(_ch9))
+
+    check("بذرهای بالایی ارزان‌تر شدن چون برداشت شانسی چندتاییه | خریدشون هم تنظیم شد",
+          config.SEEDS["khashkhash"]["price"] == 1450 and config.SEEDS["khashkhash"]["sell"] == 3600
+          and config.SEEDS["teriak"]["price"] == 1600 and config.SEEDS["teriak"]["sell"] == 4000
+          and config.SEEDS["cocaine"]["price"] == 4000 and config.SEEDS["cocaine"]["sell"] == 10000
+          and config.SEEDS["marijuana"]["price"] == 120 and config.SEEDS["marijuana"]["sell"] == 300)
+    check("افسانه‌ای‌ها هم به‌تبع ارزان‌تر شدن و رابطه «بکم کمتر از دوبرابر پله قبلی» حفظ شد",
+          config.SEEDS["jahannam"]["sell"] == 19000 and config.SEEDS["eblis"]["sell"] == 37000
+          and config.SEEDS["mutant"]["sell"] == 110000
+          and config.SEEDS["jahannam"]["sell"] < 2 * config.SEEDS["cocaine"]["sell"]
+          and config.SEEDS["eblis"]["sell"] < 2 * config.SEEDS["jahannam"]["sell"]
+          and config.SEEDS["mutant"]["sell"] > 2 * config.SEEDS["eblis"]["sell"])
+    check("تجربه زمین: تریاک و کوکائین بیشتر شدن و بقیه کمتر (راند ۱۰)",
+          config.SEEDS["marijuana"]["xp"] == (2, 3) and config.SEEDS["cocaine"]["xp"] == (15, 22)
+          and config.SEEDS["teriak"]["xp"] == (11, 16) and config.SEEDS["mutant"]["xp"] == (333, 333))
+    _rt9 = {k: config.SEEDS[k]["sell"] / config.SEEDS[k]["grow_min"] for k in ("cocaine", "jahannam", "eblis")}
+    check("به‌ازای هر دقیقه رشد هنوز افسانه‌ای‌ها بصرفه‌تر و صعودیه",
+          _rt9["cocaine"] < _rt9["jahannam"] < _rt9["eblis"], str({k: round(v, 1) for k, v in _rt9.items()}))
+
+    # ── ظرفیت بذر: seed_room و try_add_seed و جستجو ──
+    async with session_scope() as s:
+        sfu, _ = await users.get_or_create(s, tg(999130, "seedfull", "پرانبار"))
+        sfu.level = 20
+        sfu.last_search_at = None
+        _cap9 = world_svc.seed_storage_cap(sfu)
+        await farming.add_seed_stock(s, sfu.id, "marijuana", _cap9)
+        await farming.add_seed_stock(s, sfu.id, "gharch", _cap9)
+        await s.commit()
+    async with session_scope() as s:
+        sfu2 = await users.get_by_tg(s, 999130)
+        st9 = await farming.get_stock(s, sfu2.id)
+        check("seed_room صفره و try_add_seed هیچی اضافه نمی‌کنه وقتی انبار بذر پره",
+              farming.seed_room(sfu2, st9, "marijuana") == 0
+              and await farming.try_add_seed(s, sfu2, "marijuana", 1) == 0
+              and (await farming.get_stock(s, sfu2.id))["marijuana"] == _cap9)
+        check("try_add_seed تا سقف انبار پر می‌کنه و مازاد رو نمی‌ندازه توش",
+              await farming.try_add_seed(s, sfu2, "peyote", 99) == _cap9
+              and (await farming.get_stock(s, sfu2.id))["peyote"] == _cap9)
+        await s.commit()
+
+    _oc9a, _oc9b = random.choices, random.choice
+    random.choices = lambda seq, weights=None, k=1: [config.SEARCH_OUTCOMES[1]]  # seed_common
+    random.choice = lambda seq: seq[0]
+    try:
+        async with session_scope() as s:
+            sfu3 = await users.get_by_tg(s, 999130)
+            sfu3.last_search_at = None
+            r_full = await world_svc.do_search(s, sfu3, luck=1.0)
+            check("جستجو با انبار بذر پر بذر رو اضافه نمی‌کنه و فلگ full میده (رفع باگ کارفرما)",
+                  r_full["status"] == "seed_common" and r_full.get("full") is True, str(r_full))
+            await s.commit()
+        upd_s9 = _text_update("تریاکی جستجو", uid=999130, uname="seedfull", fname="پرانبار")
+        async with session_scope() as s:
+            sfu4 = await users.get_by_tg(s, 999130)
+            sfu4.last_search_at = None
+            await s.commit()
+        await world_h2.search_cmd(upd_s9, None)
+        check("متن جستجوی انبار پر «افتاد زمین» میگه نه «رفت تو انبارت»",
+              "انبار بذرت پر بود، افتاد زمین" in upd_s9.message.calls[-1][1]
+              and "رفت تو انبارت" not in upd_s9.message.calls[-1][1],
+              upd_s9.message.calls[-1][1][:120])
+        async with session_scope() as s:
+            sfu5 = await users.get_by_tg(s, 999130)
+            await farming.add_seed_stock(s, sfu5.id, "marijuana", -1)
+            sfu5.last_search_at = None
+            r_ok9 = await world_svc.do_search(s, sfu5, luck=1.0)
+            check("با جای خالی انبار بذر دوباره میره تو انبار و فلگ full نمی‌خوره",
+                  r_ok9["status"] == "seed_common" and not r_ok9.get("full")
+                  and (await farming.get_stock(s, sfu5.id))["marijuana"] == _cap9)
+            await s.commit()
+    finally:
+        random.choices, random.choice = _oc9a, _oc9b
+
+    # خلاصه کاروان خبر بذرهای افتاده رو میده
+    _txt_cv9 = world_svc.caravan_end_text(
+        [{"name": "تستی", "dmg": 100, "money": 500, "seeds": [], "full_seeds": 2, "top": True, "user_id": 1}],
+        killed=True)
+    check("خلاصه کاروان وقتی انبار بذر پره خبر بذرهای افتاده رو میده",
+          "انبار بذرت پر بود و 2 بذر افتاد زمین" in _txt_cv9, _txt_cv9[:120])
+
+    # ── تایم صفحه انتخاب بذر دقیقاً همون تابع اجراست (هوا + لول تازه زمین) ──
+    async with session_scope() as s:
+        pku, _ = await users.get_or_create(s, tg(999131, "picker9", "بذرگذار"))
+        pku.level = 20
+        await world_svc._meta_set(s, "weather_key", "rain")
+        await world_svc._meta_set(s, "weather_pct", "30")  # درصد رول باران، که تست تداخل با متا قدیمی نگیره
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        pkp = Plot(user_id=pku.id, status="empty", level=4)
+        s.add(pkp)
+        await s.flush()
+        pkp_id = pkp.id
+        await farming.add_seed_stock(s, pku.id, "marijuana", 2)
+        await s.commit()
+    upd_pk = _fake_update(f"farm:plant:{pkp_id}", uid=999131)
+    await farm_h2.plant_picker(upd_pk, None)
+    _pkc = next(c for c in upd_pk.callback_query.calls if c[0] in ("edit", "reply"))
+    _pkb = _pkc[2].get("reply_markup")
+    _pk_labels = [b.text for row in _pkb.inline_keyboard for b in row]
+    check("تایم کاشت تو صفحه انتخاب با باران و لول 4 زمین ۸۳ ثانیه‌ست (مثل اجرای واقعی)",
+          any("1 دقیقه و 23 ثانیه" in t for t in _pk_labels)
+          and not any("1 دقیقه و 49 ثانیه" in t for t in _pk_labels), str(_pk_labels))
+    async with session_scope() as s:
+        pkp3 = await s.get(Plot, pkp_id)
+        pkp3.level = 6  # ارتقای زمین، تایم صفحه باید همون لحظه عوض بشه
+        await s.commit()
+    upd_pk2 = _fake_update(f"farm:plant:{pkp_id}", uid=999131)
+    await farm_h2.plant_picker(upd_pk2, None)
+    _pkc2 = next(c for c in upd_pk2.callback_query.calls if c[0] in ("edit", "reply"))
+    _pkb2 = _pkc2[2].get("reply_markup")
+    _pk_labels2 = [b.text for row in _pkb2.inline_keyboard for b in row]
+    check("بعد ارتقای زمین به لول 6 تایم صفحه بلافاصله آپدیت میشه (42 ثانیه، باگ تایم کاشت رفع شد)",
+          any("42 ثانیه" in t for t in _pk_labels2)
+          and not any("1 دقیقه و 23 ثانیه" in t for t in _pk_labels2), str(_pk_labels2))
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_pct", "0")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        await s.commit()
+
+    # ── پلیس محموله سالم کار می‌کنه (چک کارفرما): ۸٪ توقیف | ۵٪ تأخیر | ۸۷٪ سالم ──
+    random.seed(99)
+    _pol9 = {"police": 0, "delayed": 0, "clean": 0}
+    for _ in range(4000):
+        _pol9[smg_svc.roll_outcome()] += 1
+    check("رول سرنوشت محموله درسته: حدود ۸٪ توقیف و ۵٪ تأخیر (پلیس فعاله)",
+          0.068 < _pol9["police"] / 4000 < 0.093 and 0.038 < _pol9["delayed"] / 4000 < 0.063,
+          str({k: round(v / 4000, 3) for k, v in _pol9.items()}))
+    check("کانفیگ پلیس محموله: توقیف ۸٪، بعد توقیف ۷۰٪ ارزش پرداخت میشه، تأخیر ۵٪",
+          config.SHIPMENT_POLICE_CHANCE == 0.08 and config.SHIPMENT_POLICE_PAY == 0.70
+          and config.SHIPMENT_DELAY_CHANCE == 0.05)
+
+    # ═══ راند ۱۰: لیدربرد مستقیم روی تب کلی + بازتعادل تجربه بذرها ═══
+
+    # ── لیدربرد بازیکن و تیم: باز کردنش مستقیم روی «کلی» می‌افته ──
+    upd_lb10 = _fake_update("menu:rank", uid=1001)
+    await rank_h2.rank_cb(upd_lb10, None)
+    ed_lb10 = next((c for c in upd_lb10.callback_query.calls if c[0] == "edit"), None)
+    check("باز کردن لیدربرد بازیکن مستقیم تب کلی رو نشون میده",
+          ed_lb10 is not None and "🌍 کلی" in ed_lb10[1], (ed_lb10[1] if ed_lb10 else "-")[:90])
+    mk_lb10 = ed_lb10[2].get("reply_markup") if ed_lb10 else None
+    row_lb10 = [(b.text, b.callback_data) for b in mk_lb10.inline_keyboard[0]] if mk_lb10 else []
+    check("دکمه‌های لیدربرد با مبنای کلی ساخته میشن تا خودشون تب رو تنظیم کنن",
+          row_lb10 == [("📅 روزانه", "rank:tab:all:day"),
+                       ("🗓 هفتگی", "rank:tab:all:week"),
+                       ("🌍 کلی", "rank:tab:all:all")], str(row_lb10))
+    upd_lb11 = _fake_update("rank:tab:all:week", uid=1001)
+    await rank_h2.rank_tab_cb(upd_lb11, None)
+    ed_lb11 = next((c for c in upd_lb11.callback_query.calls if c[0] == "edit"), None)
+    check("سوییچ از تب کلی به هفتگی همچنان کار می‌کنه",
+          ed_lb11 is not None and "🗓 هفتگی" in ed_lb11[1])
+    upd_tb10 = _fake_update("ttop:x", uid=1001)
+    await team_h.top_teams_text(upd_tb10, None)
+    ed_tb10 = next((c for c in upd_tb10.callback_query.calls if c[0] == "edit"), None)
+    check("لیدربرد تیم هم مستقیم روی تب کلی باز میشه",
+          ed_tb10 is not None and "🌍 کلی" in ed_tb10[1], (ed_tb10[1] if ed_tb10 else "-")[:90])
+
+    # ── بازتعادل تجربه برداشت: تریاک و کوکائین بیشتر، بقیه کمتر، بازه فشرده ──
+    _ORDER10 = ("marijuana", "gharch", "peyote", "kratom", "khashkhash", "teriak", "cocaine")
+    _xp10 = {k: config.SEEDS[k]["xp"] for k in _ORDER10}
+    check("راند ۱۰: تجربه تریاک (11,16) و کوکائین (15,22) رفت بالا",
+          _xp10["teriak"] == (11, 16) and _xp10["cocaine"] == (15, 22), str(_xp10))
+    check("راند ۱۰: تجربه بقله‌ترها کمتر شد تا اختلافشون با کوکائین زیاد نشه",
+          _xp10["marijuana"] == (2, 3) and _xp10["gharch"] == (3, 4) and _xp10["peyote"] == (4, 5)
+          and _xp10["kratom"] == (5, 7) and _xp10["khashkhash"] == (6, 9), str(_xp10))
+    check("بازه تجربه بذرهای عادی فشرده‌ست: کف 2 و سقف 22",
+          min(v[0] for v in _xp10.values()) == 2 and max(v[1] for v in _xp10.values()) == 22,
+          str(_xp10))
+    _c3, _t3, _m3 = economy.crop_xp("cocaine", 3), economy.crop_xp("teriak", 3), economy.crop_xp("marijuana", 3)
+    check("میانگین ⭐3 جدید: کوکائین 19 و تریاک 13 و ماری‌جوانا 2",
+          _c3 == 19 and _t3 == 13 and _m3 == 2, f"{_c3}/{_t3}/{_m3}")
+    check("ترتیب تجربه بذرها صعودی مونده و پله‌ها حداکثر دوبرابر هم‌ان",
+          all(_xp10[a][0] < _xp10[b][0] and _xp10[a][1] < _xp10[b][1]
+              for a, b in zip(_ORDER10, _ORDER10[1:]))
+          and all(_xp10[b][1] <= 2 * _xp10[a][1] for a, b in zip(_ORDER10, _ORDER10[1:])),
+          str(_xp10))
+    check("افسانه‌ای‌ها دست نخوردن و کف جهنم از سقف کوکائین بالاتره",
+          config.SEEDS["jahannam"]["xp"] == (27, 80) and config.SEEDS["eblis"]["xp"] == (67, 200)
+          and config.SEEDS["mutant"]["xp"] == (333, 333)
+          and config.SEEDS["jahannam"]["xp"][0] > _xp10["cocaine"][1])
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

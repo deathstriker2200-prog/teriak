@@ -64,10 +64,15 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
     else:
         seed_name = config.SEEDS[res["seed"]]["name"]
+        tail = (
+            "🌾 ولی انبار بذرت پر بود، افتاد زمین 😖"
+            if res.get("full") else
+            "رفت تو انبارت، بکارش یا نگهش دار 🌾"
+        )
         text = (
             "<b>🔍 جستجو</b>\n\n"
             f"{o['emoji']} {o['text']} <b>({esc(seed_name)})</b>\n\n"
-            "رفت تو انبارت، بکارش یا نگهش دار 🌾"
+            f"{tail}"
         )
     if luck > 1:
         text += "\n\n🍀 سگ خوش‌شانست شانس خوبت رو بیشتر کرد"

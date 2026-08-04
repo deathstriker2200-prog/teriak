@@ -44,6 +44,24 @@ async def add_seed_stock(session: AsyncSession, user_id: int, seed_key: str, amo
         session.add(SeedStock(user_id=user_id, seed_key=seed_key, count=amount))
 
 
+def seed_room(user: User, stock: dict[str, int], seed_key: str) -> int:
+    """جای خالی انبار برای یه بذر خاص (ظرفیت هر بذر با لول پناهگاه بیشتر میشه)"""
+    cap = config.SHELTER_SEED_CAP_BASE + config.SHELTER_SEED_CAP_PER_LEVEL * user.shelter_level
+    return max(0, cap - stock.get(seed_key, 0))
+
+
+async def try_add_seed(session: AsyncSession, user: User, seed_key: str, amount: int = 1) -> int:
+    """
+    تا جایی که انبار جا داره بذر اضافه می‌کنه و تعداد واقعی اضافه‌شده رو برمی‌گردونه
+    درخواست کارفرما راند ۹: جستجو/کاروان/کوئست نباید از ظرفیت انبار رد بشن
+    """
+    stock = await get_stock(session, user.id)
+    take = min(amount, seed_room(user, stock, seed_key))
+    if take > 0:
+        await add_seed_stock(session, user.id, seed_key, take)
+    return take
+
+
 # ───────── خرید زمین (قیمت/زمان ساخت متفاوت برای هرکی + گیت لول) ─────────
 
 async def buy_plot(session: AsyncSession, user: User) -> tuple[bool, str]:

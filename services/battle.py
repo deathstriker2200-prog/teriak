@@ -146,18 +146,19 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
 def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
     """
     (دمیج نهایی یه ضربه, کریتیکال بود؟)
-    دمیج درصدی از مکس HP قربانیه: هرچی حمله نسبت به دفاع حریف قوی‌تر، درصد بالاتر
-    (بین کف و سقف کانفیگ) و بعد واریانس رندوم، که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
-    دمیج صفر فقط وقتی حریف حسابی قوی‌تره (دفاع ≥ نسبت کانفیگ برابر حمله)
+    فرمول درخواستی کارفرما (راند ۹): (حمله - دفاع حریف) ÷ BATTLE_DMG_DIVISOR
+    بعد واریانس رندوم که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
+    دمیج صفر دو حالت داره: دفاع ≥ نسبت کانفیگ برابر حمله (زیادی قدرتمنده) یا دفاع حریف
+    به‌بزرگی حمله‌ست که ضربه اصلاً نمی‌نشینه (هر دو پیام زیادی قدرتمنده رو میدن)
     کریتیکال با شانس کم دمیج نهایی رو چند برابر می‌کنه
     """
     if dfn >= atk * config.BATTLE_NO_DAMAGE_DEF_RATIO:
         return 0, False
-    ratio = atk / max(1, atk + dfn)  # ۰ تا ۱، برتری نسبی حمله به دفاع
-    pct = config.BATTLE_DMG_PCT_MIN + (config.BATTLE_DMG_PCT_MAX - config.BATTLE_DMG_PCT_MIN) * ratio
-    raw = max(1, victim_max_hp) * pct
+    base = (atk - dfn) / config.BATTLE_DMG_DIVISOR
+    if base < 1:
+        return 0, False
     v = config.BATTLE_DMG_VARIANCE
-    dmg = max(1, round(raw * random.uniform(1 - v, 1 + v)))
+    dmg = max(1, round(base * random.uniform(1 - v, 1 + v)))
     crit = random.random() < config.BATTLE_CRIT_CHANCE
     if crit:
         dmg = max(1, round(dmg * config.BATTLE_CRIT_MULT))
